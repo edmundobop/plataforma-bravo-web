@@ -1,0 +1,204 @@
+const express = require('express');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const { body, validationResult } = require('express-validator');
+const { query } = require('../config/database');
+const { authenticateToken, authorizeRoles } = require('../middleware/auth');
+
+const router = express.Router();
+
+// Validações
+const loginValidation = [
+  body('email').isEmail().withMessage('Email inválido'),
+  body('senha').isLength({ min: 6 }).withMessage('Senha deve ter pelo menos 6 caracteres')
+];
+
+const registerValidation = [
+  body('nome').isLength({ min: 2 }).withMessage('Nome deve ter pelo menos 2 caracteres'),
+  body('email').isEmail().withMessage('Email inválido'),
+  body('senha').isLength({ min: 6 }).withMessage('Senha deve ter pelo menos 6 caracteres'),
+  body('matricula').isLength({ min: 3 }).withMessage('Matrícula deve ter pelo menos 3 caracteres'),
+  body('posto_graduacao').notEmpty().withMessage('Posto/Graduação é obrigatório'),
+  body('setor').notEmpty().withMessage('Setor é obrigatório')
+];
+
+// Login
+router.post('/login', loginValidation, async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { email, senha } = req.body;
+
+    // Buscar usuário
+    const result = await query(
+      'SELECT * FROM usuarios WHERE email = $1 AND ativo = true',
+      [email.toLowerCase()]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Credenciais inválidas' });
+    }
+
+    const user = result.rows[0];
+
+    // Verificar senha
+    const isValidPassword = await bcrypt.compare(senha, user.senha);
+    if (!isValidPassword) {
+      return res.status(401).json({ error: 'Credenciais inválidas' });
+    }
+
+    // Atualizar último login
+    await query(
+      'UPDATE usuarios SET ultimo_login = CURRENT_TIMESTAMP WHERE id = $1',
+      [user.id]
+    );
+
+    // Gerar token JWT
+    const token = jwt.sign(
+      { userId: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN }
+    );
+
+    // Remover senha da resposta
+    const { senha: _, ...userWithoutPassword } = user;
+
+    res.json({
+      message: 'Login realizado com sucesso',
+      token,
+      user: userWithoutPassword
+    });
+  } catch (error) {
+    console.error('Erro no login:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Registro (apenas admins podem registrar novos usuários)
+router.post('/register', authenticateToken, authorizeRoles('admin'), registerValidation, async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { nome, email, senha, matricula, posto_graduacao, setor, telefone, role = 'usuario' } = req.body;
+
+    // Verificar se email já existe
+    const emailExists = await query(
+      'SELECT id FROM usuarios WHERE email = $1',
+      [email.toLowerCase()]
+    );
+
+    if (emailExists.rows.length > 0) {
+      return res.status(400).json({ error: 'Email já cadastrado' });
+    }
+
+    // Verificar se matrícula já existe
+    const matriculaExists = await query(
+      'SELECT id FROM usuarios WHERE matricula = $1',
+      [matricula]
+    );
+
+    if (matriculaExists.rows.length > 0) {
+      return res.status(400).json({ error: 'Matrícula já cadastrada' });
+    }
+
+    // Hash da senha
+    const hashedPassword = await bcrypt.hash(senha, parseInt(process.env.BCRYPT_ROUNDS));
+
+    // Inserir usuário
+    const result = await query(
+      `INSERT INTO usuarios (nome, email, senha, matricula, posto_graduacao, setor, telefone, role)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id, nome, email, matricula, posto_graduacao, setor, telefone, role, ativo, created_at`,
+      [nome, email.toLowerCase(), hashedPassword, matricula, posto_graduacao, setor, telefone, role]
+    );
+
+    const newUser = result.rows[0];
+
+    // Criar notificação de boas-vindas
+    await query(
+      `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [
+        newUser.id,
+        'Bem-vindo ao Sistema CBMGO',
+        `Olá ${nome}, sua conta foi criada com sucesso. Acesse os módulos disponíveis e explore as funcionalidades.`,
+        'info',
+        'sistema'
+      ]
+    );
+
+    res.status(201).json({
+      message: 'Usuário criado com sucesso',
+      user: newUser
+    });
+  } catch (error) {
+    console.error('Erro no registro:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Verificar token
+router.get('/verify', authenticateToken, async (req, res) => {
+  res.json({
+    valid: true,
+    user: req.user
+  });
+});
+
+// Alterar senha
+router.put('/change-password', authenticateToken, [
+  body('senhaAtual').notEmpty().withMessage('Senha atual é obrigatória'),
+  body('novaSenha').isLength({ min: 6 }).withMessage('Nova senha deve ter pelo menos 6 caracteres')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { senhaAtual, novaSenha } = req.body;
+    const userId = req.user.id;
+
+    // Buscar senha atual
+    const result = await query(
+      'SELECT senha FROM usuarios WHERE id = $1',
+      [userId]
+    );
+
+    const user = result.rows[0];
+
+    // Verificar senha atual
+    const isValidPassword = await bcrypt.compare(senhaAtual, user.senha);
+    if (!isValidPassword) {
+      return res.status(400).json({ error: 'Senha atual incorreta' });
+    }
+
+    // Hash da nova senha
+    const hashedNewPassword = await bcrypt.hash(novaSenha, parseInt(process.env.BCRYPT_ROUNDS));
+
+    // Atualizar senha
+    await query(
+      'UPDATE usuarios SET senha = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [hashedNewPassword, userId]
+    );
+
+    res.json({ message: 'Senha alterada com sucesso' });
+  } catch (error) {
+    console.error('Erro ao alterar senha:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Logout (invalidar token - implementação básica)
+router.post('/logout', authenticateToken, (req, res) => {
+  // Em uma implementação mais robusta, você manteria uma blacklist de tokens
+  res.json({ message: 'Logout realizado com sucesso' });
+});
+
+module.exports = router;
