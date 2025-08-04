@@ -390,7 +390,7 @@ const Notificacoes = () => {
                   <MenuItem value="">Todos</MenuItem>
                   <MenuItem value="frota">Frota</MenuItem>
                   <MenuItem value="almoxarifado">Almoxarifado</MenuItem>
-                  <MenuItem value="emprestimos">Empréstimos</MenuItem>
+                  <MenuItem value="emprestimos">Cautelas</MenuItem>
                   <MenuItem value="operacional">Operacional</MenuItem>
                   <MenuItem value="usuarios">Usuários</MenuItem>
                   <MenuItem value="dashboard">Dashboard</MenuItem>
@@ -894,7 +894,7 @@ const Notificacoes = () => {
                     <MenuItem value="">Geral</MenuItem>
                     <MenuItem value="frota">Frota</MenuItem>
                     <MenuItem value="almoxarifado">Almoxarifado</MenuItem>
-                    <MenuItem value="emprestimos">Empréstimos</MenuItem>
+                    <MenuItem value="emprestimos">Cautelas</MenuItem>
                     <MenuItem value="operacional">Operacional</MenuItem>
                     <MenuItem value="usuarios">Usuários</MenuItem>
                     <MenuItem value="dashboard">Dashboard</MenuItem>

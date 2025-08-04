@@ -118,14 +118,14 @@ export const almoxarifadoService = {
   getRelatorioEstoque: (params) => api.get('/almoxarifado/relatorio', { params }),
 };
 
-// Serviços de empréstimos
+// Serviços de cautelas
 export const emprestimosService = {
   // Equipamentos
   getEquipamentos: (params) => api.get('/emprestimos/equipamentos', { params }),
   getEquipamentoById: (id) => api.get(`/emprestimos/equipamentos/${id}`),
   createEquipamento: (equipamentoData) => api.post('/emprestimos/equipamentos', equipamentoData),
   
-  // Empréstimos
+  // Cautelas
   getEmprestimos: (params) => api.get('/emprestimos', { params }),
   getEmprestimoById: (id) => api.get(`/emprestimos/${id}`),
   createEmprestimo: (emprestimoData) => api.post('/emprestimos', emprestimoData),

@@ -514,7 +514,7 @@ const Perfil = () => {
                     {estatisticas?.emprestimos || 0}
                   </Typography>
                   <Typography variant="body2" color="textSecondary">
-                    Empréstimos Realizados
+                    Cautelas Realizadas
                   </Typography>
                 </Box>
               </Box>

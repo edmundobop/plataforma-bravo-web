@@ -54,6 +54,7 @@ import {
   Check as CheckIcon,
   Close as CloseIcon,
   Person as PersonIcon,
+  People as PeopleIcon,
   AccessTime as TimeIcon,
   CalendarToday as CalendarIcon,
   Group as GroupIcon,
@@ -105,13 +106,30 @@ const Operacional = () => {
   const [extrasLoading, setExtrasLoading] = useState(false);
   const [extrasFilters, setExtrasFilters] = useState({
     status: '',
-    usuario_id: '',
+    solicitante_id: '',
     data_inicio: '',
     data_fim: '',
     page: 1,
     limit: 10,
   });
   const [extrasPagination, setExtrasPagination] = useState({
+    total: 0,
+    pages: 0,
+    current_page: 1,
+  });
+  
+  // Estados para usuários operacionais
+  const [usuarios, setUsuarios] = useState([]);
+  const [usuariosLoading, setUsuariosLoading] = useState(false);
+  const [usuariosFilters, setUsuariosFilters] = useState({
+    setor: '',
+    posto: '',
+    status: 'ativo',
+    search: '',
+    page: 1,
+    limit: 10,
+  });
+  const [usuariosPagination, setUsuariosPagination] = useState({
     total: 0,
     pages: 0,
     current_page: 1,
@@ -140,6 +158,9 @@ const Operacional = () => {
         break;
       case 2:
         loadExtras();
+        break;
+      case 3:
+        loadUsuarios();
         break;
       default:
         break;
@@ -185,6 +206,20 @@ const Operacional = () => {
       setError('Erro ao carregar serviços extras');
     } finally {
       setExtrasLoading(false);
+    }
+  };
+
+  const loadUsuarios = async () => {
+    try {
+      setUsuariosLoading(true);
+      const response = await operacionalService.getUsuarios(usuariosFilters);
+      setUsuarios(response.data.usuarios || []);
+      setUsuariosPagination(response.data.pagination || {});
+    } catch (err) {
+      console.error('Erro ao carregar usuários:', err);
+      setError('Erro ao carregar usuários');
+    } finally {
+      setUsuariosLoading(false);
     }
   };
 
@@ -755,6 +790,184 @@ const Operacional = () => {
     </Box>
   );
 
+  const renderUsuariosTab = () => (
+    <Box>
+      {/* Filtros */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                fullWidth
+                label="Buscar usuário"
+                value={usuariosFilters.search}
+                onChange={(e) => setUsuariosFilters(prev => ({ ...prev, search: e.target.value }))}
+                placeholder="Nome, matrícula..."
+                InputProps={{
+                  startAdornment: <SearchIcon color="action" sx={{ mr: 1 }} />,
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={2}>
+              <FormControl fullWidth>
+                <InputLabel>Setor</InputLabel>
+                <Select
+                  value={usuariosFilters.setor}
+                  onChange={(e) => setUsuariosFilters(prev => ({ ...prev, setor: e.target.value }))}
+                  label="Setor"
+                >
+                  <MenuItem value="">Todos</MenuItem>
+                  <MenuItem value="operacional">Operacional</MenuItem>
+                  <MenuItem value="administrativo">Administrativo</MenuItem>
+                  <MenuItem value="comando">Comando</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6} md={2}>
+              <FormControl fullWidth>
+                <InputLabel>Posto</InputLabel>
+                <Select
+                  value={usuariosFilters.posto}
+                  onChange={(e) => setUsuariosFilters(prev => ({ ...prev, posto: e.target.value }))}
+                  label="Posto"
+                >
+                  <MenuItem value="">Todos</MenuItem>
+                  <MenuItem value="soldado">Soldado</MenuItem>
+                  <MenuItem value="cabo">Cabo</MenuItem>
+                  <MenuItem value="sargento">Sargento</MenuItem>
+                  <MenuItem value="tenente">Tenente</MenuItem>
+                  <MenuItem value="capitao">Capitão</MenuItem>
+                  <MenuItem value="major">Major</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6} md={2}>
+              <FormControl fullWidth>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={usuariosFilters.status}
+                  onChange={(e) => setUsuariosFilters(prev => ({ ...prev, status: e.target.value }))}
+                  label="Status"
+                >
+                  <MenuItem value="">Todos</MenuItem>
+                  <MenuItem value="ativo">Ativo</MenuItem>
+                  <MenuItem value="inativo">Inativo</MenuItem>
+                  <MenuItem value="licenca">Em Licença</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Button
+                fullWidth
+                variant="outlined"
+                onClick={loadUsuarios}
+                startIcon={<FilterIcon />}
+              >
+                Filtrar
+              </Button>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
+
+      {/* Tabela de usuários */}
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell>Usuário</TableCell>
+              <TableCell>Matrícula</TableCell>
+              <TableCell>Posto</TableCell>
+              <TableCell>Setor</TableCell>
+              <TableCell>Telefone</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell>Ações</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {usuariosLoading ? (
+              <TableRow>
+                <TableCell colSpan={7} align="center">
+                  <CircularProgress />
+                </TableCell>
+              </TableRow>
+            ) : usuarios.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} align="center">
+                  Nenhum usuário encontrado
+                </TableCell>
+              </TableRow>
+            ) : (
+              usuarios.map((usuario) => (
+                <TableRow key={usuario.id}>
+                  <TableCell>
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
+                        {usuario.nome?.charAt(0)?.toUpperCase()}
+                      </Avatar>
+                      <Box>
+                        <Typography variant="body2" fontWeight="medium">
+                          {usuario.nome}
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          {usuario.email}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </TableCell>
+                  <TableCell>{usuario.matricula}</TableCell>
+                  <TableCell>
+                    <Chip
+                      label={usuario.posto}
+                      size="small"
+                      color="primary"
+                      variant="outlined"
+                    />
+                  </TableCell>
+                  <TableCell>{usuario.setor}</TableCell>
+                  <TableCell>{usuario.telefone || '-'}</TableCell>
+                  <TableCell>
+                    <Chip
+                      label={usuario.status}
+                      size="small"
+                      color={usuario.status === 'ativo' ? 'success' : usuario.status === 'licenca' ? 'warning' : 'error'}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        setSelectedItem(usuario);
+                        setAnchorEl(e.currentTarget);
+                      }}
+                    >
+                      <MoreVertIcon />
+                    </IconButton>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      {/* Paginação */}
+      {usuariosPagination.pages > 1 && (
+        <Box display="flex" justifyContent="center" mt={3}>
+          <Pagination
+            count={usuariosPagination.pages}
+            page={usuariosPagination.current_page}
+            onChange={(e, page) => {
+              setUsuariosFilters(prev => ({ ...prev, page }));
+              loadUsuarios();
+            }}
+            color="primary"
+          />
+        </Box>
+      )}
+    </Box>
+  );
+
   return (
     <Box>
       {/* Header */}
@@ -775,7 +988,18 @@ const Operacional = () => {
 
       {/* Tabs */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-        <Tabs value={activeTab} onChange={handleTabChange}>
+        <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
+          <Tab 
+            icon={
+              <Badge 
+                badgeContent={usuarios.filter(u => u.status === 'ativo').length} 
+                color="primary"
+              >
+                <PeopleIcon />
+              </Badge>
+            } 
+            label="Usuários" 
+          />
           <Tab 
             icon={
               <Badge 
@@ -813,18 +1037,20 @@ const Operacional = () => {
       </Box>
 
       {/* Conteúdo das tabs */}
-      {activeTab === 0 && renderEscalasTab()}
-      {activeTab === 1 && renderTrocasTab()}
-      {activeTab === 2 && renderExtrasTab()}
+      {activeTab === 0 && renderUsuariosTab()}
+      {activeTab === 1 && renderEscalasTab()}
+      {activeTab === 2 && renderTrocasTab()}
+      {activeTab === 3 && renderExtrasTab()}
 
       {/* FAB para adicionar */}
       <Fab
         color="primary"
         sx={{ position: 'fixed', bottom: 16, right: 16 }}
         onClick={() => {
-          if (activeTab === 0) handleOpenDialog('escala');
-          else if (activeTab === 1) handleOpenDialog('troca');
-          else if (activeTab === 2) handleOpenDialog('extra');
+          if (activeTab === 0) handleOpenDialog('usuario');
+          else if (activeTab === 1) handleOpenDialog('escala');
+          else if (activeTab === 2) handleOpenDialog('troca');
+          else if (activeTab === 3) handleOpenDialog('extra');
         }}
       >
         <AddIcon />

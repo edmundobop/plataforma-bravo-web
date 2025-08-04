@@ -121,7 +121,7 @@ function App() {
                 {/* Módulo Almoxarifado */}
                 <Route path="almoxarifado/*" element={<Almoxarifado />} />
                 
-                {/* Módulo Empréstimos */}
+                {/* Módulo Cautelas */}
                 <Route path="emprestimos/*" element={<Emprestimos />} />
                 
                 {/* Módulo Operacional */}

@@ -184,7 +184,7 @@ const Dashboard = () => {
                     {estatisticas?.emprestimos_ativos || 0}
                   </Typography>
                   <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>
-                    Empréstimos Ativos
+                    Cautelas Ativas
                   </Typography>
                 </Box>
                 <AssignmentIcon sx={{ fontSize: 40, color: 'rgba(255,255,255,0.8)' }} />
@@ -410,7 +410,7 @@ const Dashboard = () => {
                 <AssignmentIcon color="primary" sx={{ fontSize: 32 }} />
                 <Box>
                   <Typography variant="subtitle1" fontWeight="bold">
-                    Empréstimos
+                    Cautelas
                   </Typography>
                   <Typography variant="body2" color="textSecondary">
                     Cautela de equipamentos

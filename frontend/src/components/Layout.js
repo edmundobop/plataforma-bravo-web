@@ -89,7 +89,7 @@ const Layout = () => {
       roles: ['admin', 'gestor', 'operador'],
     },
     {
-      text: 'Empréstimos',
+      text: 'Cautelas',
       icon: <AssignmentIcon />,
       path: '/emprestimos',
       roles: ['admin', 'gestor', 'operador'],
@@ -216,7 +216,7 @@ const Layout = () => {
             {location.pathname === '/dashboard' && 'Dashboard'}
             {location.pathname.startsWith('/frota') && 'Gestão de Frota'}
             {location.pathname.startsWith('/almoxarifado') && 'Almoxarifado'}
-            {location.pathname.startsWith('/emprestimos') && 'Empréstimos'}
+            {location.pathname.startsWith('/emprestimos') && 'Cautelas'}
             {location.pathname.startsWith('/operacional') && 'Operacional'}
             {location.pathname.startsWith('/usuarios') && 'Usuários'}
             {location.pathname === '/perfil' && 'Meu Perfil'}

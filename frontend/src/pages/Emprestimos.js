@@ -78,7 +78,7 @@ const Emprestimos = () => {
     current_page: 1,
   });
   
-  // Estados para empréstimos
+  // Estados para cautelas
   const [emprestimos, setEmprestimos] = useState([]);
   const [emprestimosLoading, setEmprestimosLoading] = useState(false);
   const [emprestimosFilters, setEmprestimosFilters] = useState({
@@ -142,8 +142,8 @@ const Emprestimos = () => {
       setEmprestimos(response.data.emprestimos || []);
       setEmprestimosPagination(response.data.pagination || {});
     } catch (err) {
-      console.error('Erro ao carregar empréstimos:', err);
-      setError('Erro ao carregar empréstimos');
+      console.error('Erro ao carregar cautelas:', err);
+      setError('Erro ao carregar cautelas');
     } finally {
       setEmprestimosLoading(false);
     }
@@ -475,14 +475,14 @@ const Emprestimos = () => {
         </CardContent>
       </Card>
 
-      {/* Tabela de empréstimos */}
+      {/* Tabela de cautelas */}
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
             <TableRow>
               <TableCell>Equipamento</TableCell>
               <TableCell>Usuário</TableCell>
-              <TableCell>Data Empréstimo</TableCell>
+              <TableCell>Data Cautela</TableCell>
               <TableCell>Data Vencimento</TableCell>
               <TableCell>Data Devolução</TableCell>
               <TableCell>Status</TableCell>
@@ -499,7 +499,7 @@ const Emprestimos = () => {
             ) : emprestimos.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} align="center">
-                  Nenhum empréstimo encontrado
+                  Nenhuma cautela encontrada
                 </TableCell>
               </TableRow>
             ) : (
@@ -608,7 +608,7 @@ const Emprestimos = () => {
       {/* Header */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" gutterBottom fontWeight="bold">
-          Gestão de Empréstimos
+          Gestão de Cautelas
         </Typography>
         <Typography variant="body1" color="textSecondary">
           Controle de cautela de equipamentos
@@ -644,7 +644,7 @@ const Emprestimos = () => {
                 <AssignmentIcon />
               </Badge>
             } 
-            label="Empréstimos" 
+            label="Cautelas" 
           />
         </Tabs>
       </Box>
@@ -705,7 +705,7 @@ const Emprestimos = () => {
       >
         <DialogTitle>
           {dialogType === 'equipamento' && (selectedItem ? 'Editar Equipamento' : 'Novo Equipamento')}
-          {dialogType === 'emprestimo' && (selectedItem?.id ? 'Visualizar Empréstimo' : 'Novo Empréstimo')}
+          {dialogType === 'emprestimo' && (selectedItem?.id ? 'Visualizar Cautela' : 'Nova Cautela')}
           {dialogType === 'devolucao' && 'Devolver Equipamento'}
         </DialogTitle>
         <DialogContent>
