@@ -27,17 +27,25 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Configuração do Swagger
+const { swaggerUi, specs } = require('./config/swagger');
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, {
+  explorer: true,
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'Plataforma BRAVO - API Documentation'
+}));
+
 // Socket.io para notificações em tempo real
 io.on('connection', (socket) => {
-  console.log('Usuário conectado:', socket.id);
+  console.log('Cliente conectado:', socket.id);
   
-  socket.on('join_room', (room) => {
+  socket.on('join-room', (room) => {
     socket.join(room);
-    console.log(`Usuário ${socket.id} entrou na sala ${room}`);
+    console.log(`Cliente ${socket.id} entrou na sala ${room}`);
   });
   
   socket.on('disconnect', () => {
-    console.log('Usuário desconectado:', socket.id);
+    console.log('Cliente desconectado:', socket.id);
   });
 });
 

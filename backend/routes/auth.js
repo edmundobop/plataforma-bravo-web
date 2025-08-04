@@ -1,3 +1,10 @@
+/**
+ * @swagger
+ * tags:
+ *   name: Autenticação
+ *   description: Endpoints para autenticação e gerenciamento de usuários
+ */
+
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -21,6 +28,72 @@ const registerValidation = [
   body('posto_graduacao').notEmpty().withMessage('Posto/Graduação é obrigatório'),
   body('setor').notEmpty().withMessage('Setor é obrigatório')
 ];
+
+/**
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     summary: Realizar login no sistema
+ *     tags: [Autenticação]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/LoginRequest'
+ *           example:
+ *             email: "admin@cbmgo.gov.br"
+ *             senha: "123456"
+ *     responses:
+ *       200:
+ *         description: Login realizado com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/LoginResponse'
+ *             example:
+ *               token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+ *               user:
+ *                 id: 1
+ *                 nome: "Administrador"
+ *                 email: "admin@cbmgo.gov.br"
+ *                 matricula: "123456"
+ *                 posto_graduacao: "Coronel"
+ *                 setor: "Administração"
+ *                 role: "admin"
+ *                 ativo: true
+ *       400:
+ *         description: Dados de entrada inválidos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 errors:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       msg:
+ *                         type: string
+ *                       param:
+ *                         type: string
+ *       401:
+ *         description: Credenciais inválidas
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               error: "Credenciais inválidas"
+ *       500:
+ *         description: Erro interno do servidor
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 
 // Login
 router.post('/login', loginValidation, async (req, res) => {
@@ -194,6 +267,40 @@ router.put('/change-password', authenticateToken, [
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
+
+/**
+ * @swagger
+ * /api/auth/logout:
+ *   post:
+ *     summary: Realizar logout do sistema
+ *     tags: [Autenticação]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Logout realizado com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *             example:
+ *               message: "Logout realizado com sucesso"
+ *       401:
+ *         description: Token de acesso requerido
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Token inválido ou expirado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 
 // Logout (invalidar token - implementação básica)
 router.post('/logout', authenticateToken, (req, res) => {
