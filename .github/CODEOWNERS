@@ -1,0 +1,25 @@
+# Proprietários globais do código
+* @edmundobop
+
+# Arquivos específicos
+/frontend/ @edmundobop
+/backend/ @edmundobop
+/docs/ @edmundobop
+/.github/ @edmundobop
+
+# Arquivos críticos (só você como owner)
+/package.json @edmundobop
+/backend/config/ @edmundobop
+/.env.example @edmundobop
+/README.md @edmundobop
+/FLUXO_VERSIONAMENTO.md @edmundobop
+/DIAGRAMA_COLABORACAO.md @edmundobop
+/CONFIGURACAO_AUTOMATICA.md @edmundobop
+
+# Arquivos de configuração Git
+/.gitignore @edmundobop
+/.github/ @edmundobop
+
+# Nota: Substitua 'malthus-username' pelo username real do GitHub do Malthus
+# quando ele criar a conta ou informar o username
+# Exemplo: /frontend/components/ @edmundobop @malthus-github-username
