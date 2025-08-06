@@ -131,7 +131,20 @@ const Notificacoes = () => {
   const loadNotificacoes = async () => {
     try {
       setNotificacoesLoading(true);
-      const response = await notificacoesService.getNotificacoes(filters);
+      
+      // Mapear o filtro de status para o formato esperado pelo backend
+      const params = { ...filters };
+      if (filters.status === 'lida') {
+        params.lida = 'true';
+        delete params.status;
+      } else if (filters.status === 'nao_lida') {
+        params.lida = 'false';
+        delete params.status;
+      } else {
+        delete params.status;
+      }
+      
+      const response = await notificacoesService.getNotificacoes(params);
       setNotificacoes(response.data.notificacoes || []);
       setPagination(response.data.pagination || {});
     } catch (err) {
