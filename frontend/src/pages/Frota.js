@@ -804,13 +804,18 @@ const Frota = () => {
                   </FormControl>
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Setor Responsável"
-                    value={formData.setor_responsavel || ''}
-                    onChange={(e) => handleFormChange('setor_responsavel', e.target.value)}
-                    placeholder="Ex: 1º Pelotão, Resgate, Operações"
-                  />
+                  <FormControl fullWidth>
+                    <InputLabel>Setor Responsável</InputLabel>
+                    <Select
+                      value={formData.setor_responsavel || ''}
+                      onChange={(e) => handleFormChange('setor_responsavel', e.target.value)}
+                      label="Setor Responsável"
+                    >
+                      <MenuItem value="Operacional">Operacional</MenuItem>
+                      <MenuItem value="Administrativo">Administrativo</MenuItem>
+                      <MenuItem value="Outro">Outro</MenuItem>
+                    </Select>
+                  </FormControl>
                 </Grid>
                 <Grid item xs={12}>
                   <TextField
