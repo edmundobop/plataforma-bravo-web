@@ -1,0 +1,85 @@
+# Configuração automática do repositório via Probot Settings
+repository:
+  name: plataforma-bravo-web
+  description: "Sistema de Gestão Operacional - Plataforma Bravo"
+  homepage: "https://plataforma-bravo.com"
+  topics:
+    - nodejs
+    - react
+    - postgresql
+    - gestao-operacional
+  private: false
+  has_issues: true
+  has_projects: true
+  has_wiki: false
+  has_downloads: true
+  default_branch: main
+  allow_squash_merge: true
+  allow_merge_commit: false
+  allow_rebase_merge: true
+  delete_branch_on_merge: true
+
+# Proteção de Branches
+branches:
+  - name: main
+    protection:
+      required_status_checks:
+        strict: true
+        contexts:
+          - "continuous-integration"
+          - "tests"
+      enforce_admins: false
+      required_pull_request_reviews:
+        required_approving_review_count: 1
+        dismiss_stale_reviews: true
+        require_code_owner_reviews: true
+        dismissal_restrictions:
+          users: []
+          teams: []
+      restrictions:
+        users: []
+        teams: []
+        apps: []
+      allow_force_pushes: false
+      allow_deletions: false
+
+  - name: develop
+    protection:
+      required_status_checks:
+        strict: false
+        contexts: []
+      enforce_admins: false
+      required_pull_request_reviews:
+        required_approving_review_count: 1
+        dismiss_stale_reviews: false
+        require_code_owner_reviews: false
+      restrictions: null
+      allow_force_pushes: false
+      allow_deletions: false
+
+# Labels padronizadas
+labels:
+  - name: "🐛 bug"
+    color: "d73a4a"
+    description: "Algo não está funcionando"
+  - name: "📚 documentation"
+    color: "0075ca"
+    description: "Melhorias ou adições à documentação"
+  - name: "🚀 enhancement"
+    color: "a2eeef"
+    description: "Nova funcionalidade ou solicitação"
+  - name: "❓ question"
+    color: "d876e3"
+    description: "Informações adicionais são solicitadas"
+  - name: "🔧 wontfix"
+    color: "ffffff"
+    description: "Isso não será trabalhado"
+  - name: "✅ ready-for-review"
+    color: "0e8a16"
+    description: "PR pronto para revisão"
+  - name: "🚧 work-in-progress"
+    color: "fbca04"
+    description: "Trabalho em andamento"
+  - name: "🔥 hotfix"
+    color: "b60205"
+    description: "Correção urgente"

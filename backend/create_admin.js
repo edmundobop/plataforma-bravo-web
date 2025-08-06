@@ -7,7 +7,7 @@ async function createAdmin() {
     
     // Verificar se já existe um admin
     const existingAdmin = await query(
-      "SELECT id FROM usuarios WHERE email = $1 OR role = 'admin'",
+      'SELECT id FROM usuarios WHERE email = $1 OR role = \'admin\'',
       ['admin@cbmgo.gov.br']
     );
     

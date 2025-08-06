@@ -1,0 +1,26 @@
+# Proprietários globais do código
+* @edmundobop
+
+# Arquivos específicos
+/frontend/ @edmundobop @malthusrs
+/backend/ @edmundobop @malthusrs
+/docs/ @edmundobop
+/.github/ @edmundobop
+
+# Arquivos críticos (só você como owner)
+/package.json @edmundobop
+/backend/config/ @edmundobop
+/.env.example @edmundobop
+/README.md @edmundobop
+/FLUXO_VERSIONAMENTO.md @edmundobop
+/DIAGRAMA_COLABORACAO.md @edmundobop
+/CONFIGURACAO_AUTOMATICA.md @edmundobop
+
+# Arquivos de configuração Git
+/.gitignore @edmundobop
+/.github/ @edmundobop
+
+# Colaboração ativa com Malthus
+/frontend/components/ @edmundobop @malthusrs
+/backend/routes/ @edmundobop @malthusrs
+/frontend/src/pages/ @edmundobop @malthusrs

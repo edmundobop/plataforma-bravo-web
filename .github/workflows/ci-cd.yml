@@ -1,10 +1,14 @@
-name: CI/CD Pipeline
+name: 🚀 CI/CD Pipeline Enhanced
 
 on:
   push:
     branches: [ main, develop ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
+
+env:
+  NODE_VERSION: '18.x'
+  POSTGRES_VERSION: '13'
 
 jobs:
   test:
@@ -29,22 +33,28 @@ jobs:
         node-version: [18.x, 20.x]
     
     steps:
-    - name: Checkout code
+    - name: 📥 Checkout Code
       uses: actions/checkout@v4
     
-    - name: Setup Node.js ${{ matrix.node-version }}
+    - name: 🟢 Setup Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
         cache-dependency-path: backend/package-lock.json
     
-    - name: Install backend dependencies
+    - name: 📦 Install Backend Dependencies
       run: |
         cd backend
         npm ci
     
-    - name: Setup test environment
+    - name: 📦 Install Frontend Dependencies
+      run: |
+        cd frontend
+        npm ci
+      continue-on-error: true
+    
+    - name: ⚙️ Setup Test Environment
       run: |
         cd backend
         cp .env.example .env.test
