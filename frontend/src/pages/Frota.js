@@ -18,11 +18,11 @@ import {
   TableHead,
   TableRow,
   Paper,
+  Alert,
   Chip,
   IconButton,
   Menu,
   MenuItem,
-  Alert,
   CircularProgress,
   Tabs,
   Tab,
@@ -177,30 +177,38 @@ const Frota = () => {
   const handleSubmit = async () => {
     try {
       setLoading(true);
+      setError('');
+      
+      console.log('Salvando dados:', { dialogType, selectedItem: selectedItem?.id, formData });
       
       if (dialogType === 'viatura') {
         if (selectedItem) {
-          await frotaService.updateViatura(selectedItem.id, formData);
+          const response = await frotaService.updateViatura(selectedItem.id, formData);
+          console.log('Viatura atualizada:', response);
         } else {
-          await frotaService.createViatura(formData);
+          const response = await frotaService.createViatura(formData);
+          console.log('Viatura criada:', response);
         }
-        loadViaturas();
+        await loadViaturas();
       } else if (dialogType === 'checklist') {
         await frotaService.createChecklist(formData);
-        loadChecklists();
+        await loadChecklists();
       } else if (dialogType === 'manutencao') {
         if (selectedItem) {
           await frotaService.updateManutencao(selectedItem.id, formData);
         } else {
           await frotaService.createManutencao(formData);
         }
-        loadManutencoes();
+        await loadManutencoes();
       }
       
+      console.log('Dados salvos com sucesso, fechando diálogo');
       handleCloseDialog();
     } catch (err) {
       console.error('Erro ao salvar:', err);
-      setError('Erro ao salvar dados');
+      const errorMessage = err.response?.data?.error || err.response?.data?.message || err.message || 'Erro ao salvar dados';
+      setError(errorMessage);
+      // Não fechar o diálogo em caso de erro para que o usuário possa corrigir
     } finally {
       setLoading(false);
     }
@@ -666,6 +674,11 @@ const Frota = () => {
           {dialogType === 'manutencao' && (selectedItem ? 'Editar Manutenção' : 'Nova Manutenção')}
         </DialogTitle>
         <DialogContent>
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
           {dialogType === 'viatura' && (
             <Box sx={{ mt: 2 }}>
               <Grid container spacing={2}>
