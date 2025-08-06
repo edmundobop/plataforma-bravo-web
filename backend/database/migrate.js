@@ -45,7 +45,7 @@ const createTables = async () => {
       )
     `);
 
-    // Adicionar colunas tipo e nome se a tabela já existir
+    // Adicionar colunas tipo, nome e unidade_bm se a tabela já existir
     await query(`
       DO $$
       BEGIN
@@ -54,6 +54,9 @@ const createTables = async () => {
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='viaturas' AND column_name='nome') THEN
           ALTER TABLE viaturas ADD COLUMN nome VARCHAR(100);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='viaturas' AND column_name='unidade_bm') THEN
+          ALTER TABLE viaturas ADD COLUMN unidade_bm VARCHAR(100);
         END IF;
       END $$;
     `);

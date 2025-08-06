@@ -129,14 +129,14 @@ router.post('/viaturas', authorizeRoles('admin', 'gestor'), [
 
     const {
       tipo, nome, prefixo, modelo, marca, ano, placa, chassi, renavam,
-      km_atual, status, setor_responsavel, observacoes
+      km_atual, status, setor_responsavel, observacoes, unidade_bm
     } = req.body;
 
     const result = await query(
-      `INSERT INTO viaturas (tipo, nome, prefixo, modelo, marca, ano, placa, chassi, renavam, km_atual, status, setor_responsavel, observacoes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      `INSERT INTO viaturas (tipo, nome, prefixo, modelo, marca, ano, placa, chassi, renavam, km_atual, status, setor_responsavel, observacoes, unidade_bm)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING *`,
-      [tipo, nome, prefixo, modelo, marca, ano, placa, chassi, renavam, km_atual || 0, status || 'disponivel', setor_responsavel, observacoes]
+      [tipo, nome, prefixo, modelo, marca, ano, placa, chassi, renavam, km_atual || 0, status || 'disponivel', setor_responsavel, observacoes, unidade_bm]
     );
 
     // Criar notificação
@@ -185,7 +185,7 @@ router.put('/viaturas/:id', authorizeRoles('admin', 'gestor'), [
     const { id } = req.params;
     const {
       tipo, nome, prefixo, modelo, marca, ano, placa, chassi, renavam,
-      km_atual, status, setor_responsavel, observacoes
+      km_atual, status, setor_responsavel, observacoes, unidade_bm
     } = req.body;
 
     // Verificar se a viatura existe
@@ -198,10 +198,10 @@ router.put('/viaturas/:id', authorizeRoles('admin', 'gestor'), [
       `UPDATE viaturas SET 
        tipo = $1, nome = $2, prefixo = $3, modelo = $4, marca = $5, ano = $6, 
        placa = $7, chassi = $8, renavam = $9, km_atual = $10, status = $11, 
-       setor_responsavel = $12, observacoes = $13, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $14
+       setor_responsavel = $12, observacoes = $13, unidade_bm = $14, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $15
        RETURNING *`,
-      [tipo, nome, prefixo, modelo, marca, ano, placa, chassi, renavam, km_atual || 0, status || 'disponivel', setor_responsavel, observacoes, id]
+      [tipo, nome, prefixo, modelo, marca, ano, placa, chassi, renavam, km_atual || 0, status || 'disponivel', setor_responsavel, observacoes, unidade_bm, id]
     );
 
     // Criar notificação
