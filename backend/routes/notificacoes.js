@@ -279,6 +279,24 @@ router.post('/', authorizeRoles('admin', 'gestor'), [
   }
 });
 
+// Deletar todas as notificações lidas
+router.delete('/lidas', async (req, res) => {
+  try {
+    const result = await query(
+      'DELETE FROM notificacoes WHERE usuario_id = $1 AND lida = true',
+      [req.user.id]
+    );
+
+    res.json({
+      message: 'Todas as notificações lidas foram deletadas',
+      deletadas: result.rowCount
+    });
+  } catch (error) {
+    console.error('Erro ao deletar notificações lidas:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 // Deletar notificação
 router.delete('/:id', async (req, res) => {
   try {
@@ -296,24 +314,6 @@ router.delete('/:id', async (req, res) => {
     res.json({ message: 'Notificação deletada com sucesso' });
   } catch (error) {
     console.error('Erro ao deletar notificação:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
-
-// Deletar todas as notificações lidas
-router.delete('/lidas', async (req, res) => {
-  try {
-    const result = await query(
-      'DELETE FROM notificacoes WHERE usuario_id = $1 AND lida = true',
-      [req.user.id]
-    );
-
-    res.json({
-      message: 'Todas as notificações lidas foram deletadas',
-      deletadas: result.rowCount
-    });
-  } catch (error) {
-    console.error('Erro ao deletar notificações lidas:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
