@@ -464,11 +464,14 @@ const Notificacoes = () => {
             notificacoes.map((notificacao, index) => (
               <React.Fragment key={notificacao.id}>
                 <ListItem
+                  button
+                  onClick={() => handleOpenDialog('view', notificacao)}
                   sx={{
                     bgcolor: notificacao.lida ? 'transparent' : 'action.hover',
                     '&:hover': {
                       bgcolor: 'action.selected',
                     },
+                    cursor: 'pointer',
                   }}
                 >
                   <ListItemAvatar>
