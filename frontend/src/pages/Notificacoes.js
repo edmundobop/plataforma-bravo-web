@@ -251,6 +251,18 @@ const Notificacoes = () => {
     }
   };
 
+  const handleMarkAsUnread = async (notificationId) => {
+    try {
+      await notificacoesService.markAsUnread(notificationId);
+      loadNotificacoes();
+      loadEstatisticas();
+      setSuccess('Notificação marcada como não lida');
+    } catch (err) {
+      console.error('Erro ao marcar como não lida:', err);
+      setError('Erro ao marcar notificação como não lida');
+    }
+  };
+
   const handleMarkAllAsRead = async () => {
     try {
       await notificacoesService.markAllAsRead();
@@ -767,13 +779,21 @@ const Notificacoes = () => {
           <ViewIcon sx={{ mr: 1 }} />
           Visualizar
         </MenuItem>
-        {!selectedNotification?.lida && (
+        {!selectedNotification?.lida ? (
           <MenuItem onClick={() => {
             handleMarkAsRead(selectedNotification.id);
             setAnchorEl(null);
           }}>
             <MarkReadIcon sx={{ mr: 1 }} />
             Marcar como Lida
+          </MenuItem>
+        ) : (
+          <MenuItem onClick={() => {
+            handleMarkAsUnread(selectedNotification.id);
+            setAnchorEl(null);
+          }}>
+            <MarkUnreadIcon sx={{ mr: 1 }} />
+            Marcar como Não Lida
           </MenuItem>
         )}
         <MenuItem 

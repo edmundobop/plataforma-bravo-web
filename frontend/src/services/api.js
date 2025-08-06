@@ -166,6 +166,7 @@ export const notificacoesService = {
   getNotificacoes: (params) => api.get('/notificacoes', { params }),
   getNotificacaoById: (id) => api.get(`/notificacoes/${id}`),
   markAsRead: (id) => api.put(`/notificacoes/${id}/lida`),
+  markAsUnread: (id) => api.put(`/notificacoes/${id}/nao-lida`),
   markAllAsRead: () => api.put('/notificacoes/todas/lidas'),
   deleteNotificacao: (id) => api.delete(`/notificacoes/${id}`),
   deleteReadNotificacoes: () => api.delete('/notificacoes/lidas'),

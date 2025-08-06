@@ -150,6 +150,38 @@ router.put('/:id/lida', async (req, res) => {
   }
 });
 
+// Marcar notificação como não lida
+router.put('/:id/nao-lida', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await query(
+      'UPDATE notificacoes SET lida = false, data_leitura = NULL WHERE id = $1 AND usuario_id = $2 RETURNING *',
+      [id, req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Notificação não encontrada' });
+    }
+
+    // Emitir evento via Socket.io
+    if (req.io) {
+      req.io.to(`user_${req.user.id}`).emit('notificacao_nao_lida', {
+        id: parseInt(id),
+        usuario_id: req.user.id
+      });
+    }
+
+    res.json({
+      message: 'Notificação marcada como não lida',
+      notificacao: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Erro ao marcar notificação como não lida:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 // Marcar todas as notificações como lidas
 router.put('/todas/lidas', async (req, res) => {
   try {
