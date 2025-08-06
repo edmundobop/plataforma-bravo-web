@@ -700,6 +700,16 @@ const Frota = () => {
                   </FormControl>
                 </Grid>
                 <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    required
+                    label="Prefixo"
+                    value={formData.prefixo || ''}
+                    onChange={(e) => handleFormChange('prefixo', e.target.value)}
+                    placeholder="Ex: ABT-01, UR-02"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
                   <FormControl fullWidth required>
                     <InputLabel>Unidade BM</InputLabel>
                     <Select
@@ -711,16 +721,6 @@ const Frota = () => {
                       <MenuItem value="16 DBM Caiapônia">16 DBM Caiapônia</MenuItem>
                     </Select>
                   </FormControl>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    required
-                    label="Prefixo"
-                    value={formData.prefixo || ''}
-                    onChange={(e) => handleFormChange('prefixo', e.target.value)}
-                    placeholder="Ex: ABT-01, UR-02"
-                  />
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <TextField
