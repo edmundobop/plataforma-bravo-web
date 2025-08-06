@@ -2,8 +2,8 @@
 * @edmundobop
 
 # Arquivos específicos
-/frontend/ @edmundobop
-/backend/ @edmundobop
+/frontend/ @edmundobop @malthusrs
+/backend/ @edmundobop @malthusrs
 /docs/ @edmundobop
 /.github/ @edmundobop
 
@@ -20,6 +20,7 @@
 /.gitignore @edmundobop
 /.github/ @edmundobop
 
-# Nota: Substitua 'malthus-username' pelo username real do GitHub do Malthus
-# quando ele criar a conta ou informar o username
-# Exemplo: /frontend/components/ @edmundobop @malthus-github-username
+# Colaboração ativa com Malthus
+/frontend/components/ @edmundobop @malthusrs
+/backend/routes/ @edmundobop @malthusrs
+/frontend/src/pages/ @edmundobop @malthusrs

@@ -27,16 +27,16 @@
 #### **B. Adicionar Colaborador Malthus**
 ```bash
 # Via GitHub CLI
-gh repo invite malthus-username --role push
+gh repo invite malthusrs --role push
 
 # Ou via interface web:
 # Settings → Manage access → Invite a collaborator
 ```
 
-#### **C. Atualizar CODEOWNERS (quando souber o username do Malthus)**
+#### **C. ✅ CODEOWNERS Atualizado**
 ```bash
-# Editar .github/CODEOWNERS
-# Substituir 'malthus-username' pelo username real
+# ✅ Já configurado com username: malthusrs
+# Revisões automáticas ativas para frontend e backend
 ```
 
 ---
@@ -102,7 +102,7 @@ gh repo invite malthus-username --role push
 - [ ] **CODEOWNERS ativo:** Revisões automáticas funcionando
 - [ ] **CI/CD rodando:** Actions executam em push/PR
 - [ ] **Probot Settings:** Configurações automáticas ativas
-- [ ] **Colaborador adicionado:** Malthus tem acesso push
+- [ ] **Colaborador adicionado:** malthusrs tem acesso push
 
 ### **Teste Rápido:**
 

@@ -173,6 +173,15 @@ Write-Host ""
 Write-Host "🔄 Próximos passos:" -ForegroundColor Yellow
 Write-Host "  1. Instalar Probot Settings (se não instalado)" -ForegroundColor White
 Write-Host "  2. Adicionar colaborador Malthus" -ForegroundColor White
+Write-Host ""
+Write-Host "🤝 Adicionando colaborador Malthus..." -ForegroundColor Yellow
+try {
+    gh api repos/$owner/$repo/collaborators/malthusrs --method PUT --field permission=push
+    Write-Host "✅ Colaborador malthusrs adicionado com sucesso!" -ForegroundColor Green
+}
+catch {
+    Write-Host "⚠️ Erro ao adicionar colaborador: $($_.Exception.Message)" -ForegroundColor Red
+}
 Write-Host "  3. Testar workflow com um PR" -ForegroundColor White
 Write-Host "  4. Começar desenvolvimento nas branches de feature" -ForegroundColor White
 Write-Host ""
