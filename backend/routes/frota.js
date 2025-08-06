@@ -113,6 +113,8 @@ router.get('/viaturas/:id', async (req, res) => {
 
 // Criar viatura
 router.post('/viaturas', authorizeRoles('admin', 'gestor'), [
+  body('tipo').isIn(['ABT', 'ABTF', 'UR', 'AV', 'ASA', 'MOB']).withMessage('Tipo de viatura inválido'),
+  body('nome').notEmpty().withMessage('Nome da viatura é obrigatório'),
   body('prefixo').notEmpty().withMessage('Prefixo é obrigatório'),
   body('modelo').notEmpty().withMessage('Modelo é obrigatório'),
   body('marca').notEmpty().withMessage('Marca é obrigatória'),
@@ -126,15 +128,15 @@ router.post('/viaturas', authorizeRoles('admin', 'gestor'), [
     }
 
     const {
-      prefixo, modelo, marca, ano, placa, chassi, renavam,
-      km_atual, setor_responsavel, observacoes
+      tipo, nome, prefixo, modelo, marca, ano, placa, chassi, renavam,
+      km_atual, status, setor_responsavel, observacoes
     } = req.body;
 
     const result = await query(
-      `INSERT INTO viaturas (prefixo, modelo, marca, ano, placa, chassi, renavam, km_atual, setor_responsavel, observacoes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO viaturas (tipo, nome, prefixo, modelo, marca, ano, placa, chassi, renavam, km_atual, status, setor_responsavel, observacoes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
-      [prefixo, modelo, marca, ano, placa, chassi, renavam, km_atual || 0, setor_responsavel, observacoes]
+      [tipo, nome, prefixo, modelo, marca, ano, placa, chassi, renavam, km_atual || 0, status || 'disponivel', setor_responsavel, observacoes]
     );
 
     // Criar notificação
@@ -144,7 +146,7 @@ router.post('/viaturas', authorizeRoles('admin', 'gestor'), [
       [
         req.user.id,
         'Nova Viatura Cadastrada',
-        `Viatura ${prefixo} - ${marca} ${modelo} foi cadastrada no sistema.`,
+        `Viatura ${nome} (${prefixo}) - ${marca} ${modelo} foi cadastrada no sistema.`,
         'success',
         'frota',
         result.rows[0].id

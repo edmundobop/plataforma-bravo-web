@@ -666,10 +666,163 @@ const Frota = () => {
           {dialogType === 'manutencao' && (selectedItem ? 'Editar Manutenção' : 'Nova Manutenção')}
         </DialogTitle>
         <DialogContent>
-          {/* Formulários específicos serão implementados conforme necessário */}
-          <Typography variant="body2" color="textSecondary">
-            Formulário em desenvolvimento...
-          </Typography>
+          {dialogType === 'viatura' && (
+            <Box sx={{ mt: 2 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth required>
+                    <InputLabel>Tipo da Viatura</InputLabel>
+                    <Select
+                      value={formData.tipo || ''}
+                      onChange={(e) => handleFormChange('tipo', e.target.value)}
+                      label="Tipo da Viatura"
+                    >
+                      <MenuItem value="ABT">ABT - Auto Bomba Tanque</MenuItem>
+                      <MenuItem value="ABTF">ABTF - Auto Bomba Tanque Florestal</MenuItem>
+                      <MenuItem value="UR">UR - Unidade de Resgate</MenuItem>
+                      <MenuItem value="AV">AV - Auto Viatura</MenuItem>
+                      <MenuItem value="ASA">ASA - Auto Socorro de Altura</MenuItem>
+                      <MenuItem value="MOB">MOB - Motocicleta</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    required
+                    label="Nome da Viatura"
+                    value={formData.nome || ''}
+                    onChange={(e) => handleFormChange('nome', e.target.value)}
+                    placeholder="Ex: Viatura 01, Resgate Principal, etc."
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    required
+                    label="Prefixo"
+                    value={formData.prefixo || ''}
+                    onChange={(e) => handleFormChange('prefixo', e.target.value)}
+                    placeholder="Ex: ABT-01, UR-02"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    required
+                    label="Placa"
+                    value={formData.placa || ''}
+                    onChange={(e) => handleFormChange('placa', e.target.value)}
+                    placeholder="Ex: ABC-1234"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    required
+                    label="Marca"
+                    value={formData.marca || ''}
+                    onChange={(e) => handleFormChange('marca', e.target.value)}
+                    placeholder="Ex: Mercedes-Benz, Volkswagen"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    required
+                    label="Modelo"
+                    value={formData.modelo || ''}
+                    onChange={(e) => handleFormChange('modelo', e.target.value)}
+                    placeholder="Ex: Atego 1719, Sprinter 415"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    required
+                    type="number"
+                    label="Ano"
+                    value={formData.ano || ''}
+                    onChange={(e) => handleFormChange('ano', parseInt(e.target.value))}
+                    inputProps={{ min: 1900, max: new Date().getFullYear() + 1 }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    type="number"
+                    label="Quilometragem Atual"
+                    value={formData.km_atual || ''}
+                    onChange={(e) => handleFormChange('km_atual', parseInt(e.target.value))}
+                    inputProps={{ min: 0 }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Chassi"
+                    value={formData.chassi || ''}
+                    onChange={(e) => handleFormChange('chassi', e.target.value)}
+                    placeholder="Número do chassi"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="RENAVAM"
+                    value={formData.renavam || ''}
+                    onChange={(e) => handleFormChange('renavam', e.target.value)}
+                    placeholder="Número do RENAVAM"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Status</InputLabel>
+                    <Select
+                      value={formData.status || 'disponivel'}
+                      onChange={(e) => handleFormChange('status', e.target.value)}
+                      label="Status"
+                    >
+                      <MenuItem value="disponivel">Disponível</MenuItem>
+                      <MenuItem value="em_uso">Em Uso</MenuItem>
+                      <MenuItem value="manutencao">Em Manutenção</MenuItem>
+                      <MenuItem value="indisponivel">Indisponível</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Setor Responsável"
+                    value={formData.setor_responsavel || ''}
+                    onChange={(e) => handleFormChange('setor_responsavel', e.target.value)}
+                    placeholder="Ex: 1º Pelotão, Resgate, Operações"
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    multiline
+                    rows={3}
+                    label="Observações"
+                    value={formData.observacoes || ''}
+                    onChange={(e) => handleFormChange('observacoes', e.target.value)}
+                    placeholder="Informações adicionais sobre a viatura..."
+                  />
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+          {dialogType === 'checklist' && (
+            <Typography variant="body2" color="textSecondary">
+              Formulário de checklist em desenvolvimento...
+            </Typography>
+          )}
+          {dialogType === 'manutencao' && (
+            <Typography variant="body2" color="textSecondary">
+              Formulário de manutenção em desenvolvimento...
+            </Typography>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog}>Cancelar</Button>

@@ -27,6 +27,8 @@ const createTables = async () => {
     await query(`
       CREATE TABLE IF NOT EXISTS viaturas (
         id SERIAL PRIMARY KEY,
+        tipo VARCHAR(10) NOT NULL CHECK (tipo IN ('ABT', 'ABTF', 'UR', 'AV', 'ASA', 'MOB')),
+        nome VARCHAR(100) NOT NULL,
         prefixo VARCHAR(20) UNIQUE NOT NULL,
         modelo VARCHAR(100) NOT NULL,
         marca VARCHAR(50) NOT NULL,
@@ -41,6 +43,19 @@ const createTables = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
+    `);
+
+    // Adicionar colunas tipo e nome se a tabela já existir
+    await query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='viaturas' AND column_name='tipo') THEN
+          ALTER TABLE viaturas ADD COLUMN tipo VARCHAR(10) CHECK (tipo IN ('ABT', 'ABTF', 'UR', 'AV', 'ASA', 'MOB'));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='viaturas' AND column_name='nome') THEN
+          ALTER TABLE viaturas ADD COLUMN nome VARCHAR(100);
+        END IF;
+      END $$;
     `);
 
     await query(`
