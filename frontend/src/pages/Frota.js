@@ -180,7 +180,7 @@ const Frota = () => {
       
       if (dialogType === 'viatura') {
         if (selectedItem) {
-          // Atualizar viatura (implementar quando necessário)
+          await frotaService.updateViatura(selectedItem.id, formData);
         } else {
           await frotaService.createViatura(formData);
         }

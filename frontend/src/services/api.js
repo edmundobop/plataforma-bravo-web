@@ -88,6 +88,7 @@ export const frotaService = {
   getViaturas: (params) => api.get('/frota/viaturas', { params }),
   getViaturaById: (id) => api.get(`/frota/viaturas/${id}`),
   createViatura: (viaturaData) => api.post('/frota/viaturas', viaturaData),
+  updateViatura: (id, viaturaData) => api.put(`/frota/viaturas/${id}`, viaturaData),
   
   // Checklists
   getChecklists: (params) => api.get('/frota/checklists', { params }),

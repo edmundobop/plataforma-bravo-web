@@ -166,6 +166,71 @@ router.post('/viaturas', authorizeRoles('admin', 'gestor'), [
   }
 });
 
+// Atualizar viatura
+router.put('/viaturas/:id', authorizeRoles('admin', 'gestor'), [
+  body('tipo').isIn(['ABT', 'ABTF', 'UR', 'AV', 'ASA', 'MOB']).withMessage('Tipo de viatura inválido'),
+  body('nome').notEmpty().withMessage('Nome da viatura é obrigatório'),
+  body('prefixo').notEmpty().withMessage('Prefixo é obrigatório'),
+  body('modelo').notEmpty().withMessage('Modelo é obrigatório'),
+  body('marca').notEmpty().withMessage('Marca é obrigatória'),
+  body('placa').notEmpty().withMessage('Placa é obrigatória'),
+  body('ano').isInt({ min: 1900, max: new Date().getFullYear() + 1 }).withMessage('Ano inválido')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { id } = req.params;
+    const {
+      tipo, nome, prefixo, modelo, marca, ano, placa, chassi, renavam,
+      km_atual, status, setor_responsavel, observacoes
+    } = req.body;
+
+    // Verificar se a viatura existe
+    const existingViatura = await query('SELECT * FROM viaturas WHERE id = $1', [id]);
+    if (existingViatura.rows.length === 0) {
+      return res.status(404).json({ error: 'Viatura não encontrada' });
+    }
+
+    const result = await query(
+      `UPDATE viaturas SET 
+       tipo = $1, nome = $2, prefixo = $3, modelo = $4, marca = $5, ano = $6, 
+       placa = $7, chassi = $8, renavam = $9, km_atual = $10, status = $11, 
+       setor_responsavel = $12, observacoes = $13, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $14
+       RETURNING *`,
+      [tipo, nome, prefixo, modelo, marca, ano, placa, chassi, renavam, km_atual || 0, status || 'disponivel', setor_responsavel, observacoes, id]
+    );
+
+    // Criar notificação
+    await query(
+      `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        req.user.id,
+        'Viatura Atualizada',
+        `Viatura ${nome} (${prefixo}) - ${marca} ${modelo} foi atualizada no sistema.`,
+        'info',
+        'frota',
+        id
+      ]
+    );
+
+    res.json({
+      message: 'Viatura atualizada com sucesso',
+      viatura: result.rows[0]
+    });
+  } catch (error) {
+    if (error.code === '23505') {
+      return res.status(400).json({ error: 'Prefixo ou placa já cadastrados' });
+    }
+    console.error('Erro ao atualizar viatura:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 // CHECKLISTS
 
 // Listar checklists
