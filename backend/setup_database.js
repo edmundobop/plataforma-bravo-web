@@ -35,7 +35,7 @@ async function setupDatabase() {
     // Verificar se o banco já existe
     console.log('🔍 Verificando banco cbmgo_db...');
     const dbExists = await adminClient.query(
-      "SELECT 1 FROM pg_database WHERE datname = 'cbmgo_db'"
+      'SELECT 1 FROM pg_database WHERE datname = \'cbmgo_db\''
     );
     
     if (dbExists.rows.length === 0) {
@@ -49,13 +49,13 @@ async function setupDatabase() {
     // Verificar se o usuário já existe
     console.log('🔍 Verificando usuário cbmgo_user...');
     const userExists = await adminClient.query(
-      "SELECT 1 FROM pg_roles WHERE rolname = 'cbmgo_user'"
+      'SELECT 1 FROM pg_roles WHERE rolname = \'cbmgo_user\''
     );
     
     if (userExists.rows.length === 0) {
       console.log('👤 Criando usuário cbmgo_user...');
       await adminClient.query(
-        "CREATE USER cbmgo_user WITH PASSWORD 'cbmgo123'"
+        'CREATE USER cbmgo_user WITH PASSWORD \'cbmgo123\''
       );
       console.log('✅ Usuário cbmgo_user criado!');
     } else {
