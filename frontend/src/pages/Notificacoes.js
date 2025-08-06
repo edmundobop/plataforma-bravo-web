@@ -290,7 +290,7 @@ const Notificacoes = () => {
 
   const handleDeleteReadNotifications = async () => {
     try {
-      await notificacoesService.deleteReadNotifications();
+      await notificacoesService.deleteReadNotificacoes();
       loadNotificacoes();
       loadEstatisticas();
       setSuccess('Notificações lidas excluídas com sucesso');
