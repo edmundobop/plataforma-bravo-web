@@ -166,7 +166,7 @@ const Notificacoes = () => {
     setSuccess('');
   };
 
-  const handleOpenDialog = (type, notification = null) => {
+  const handleOpenDialog = async (type, notification = null) => {
     setDialogType(type);
     setSelectedNotification(notification);
     
@@ -179,6 +179,15 @@ const Notificacoes = () => {
         usuario_id: '',
         broadcast: false,
       });
+    }
+    
+    // Marcar automaticamente como lida quando visualizar
+    if (type === 'view' && notification && !notification.lida) {
+      try {
+        await handleMarkAsRead(notification.id);
+      } catch (err) {
+        console.error('Erro ao marcar notificação como lida:', err);
+      }
     }
     
     setDialogOpen(true);
