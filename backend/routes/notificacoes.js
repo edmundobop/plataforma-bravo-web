@@ -151,10 +151,10 @@ router.put('/:id/lida', async (req, res) => {
 });
 
 // Marcar todas as notificações como lidas
-router.put('/marcar-todas-lidas', async (req, res) => {
+router.put('/todas/lidas', async (req, res) => {
   try {
     const result = await query(
-      'UPDATE notificacoes SET lida = true, data_leitura = CURRENT_TIMESTAMP WHERE usuario_id = $1 AND lida = false RETURNING COUNT(*)',
+      'UPDATE notificacoes SET lida = true, data_leitura = CURRENT_TIMESTAMP WHERE usuario_id = $1 AND lida = false',
       [req.user.id]
     );
 
@@ -269,7 +269,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // Deletar todas as notificações lidas
-router.delete('/lidas/todas', async (req, res) => {
+router.delete('/lidas', async (req, res) => {
   try {
     const result = await query(
       'DELETE FROM notificacoes WHERE usuario_id = $1 AND lida = true',
