@@ -700,14 +700,17 @@ const Frota = () => {
                   </FormControl>
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    required
-                    label="Nome da Viatura"
-                    value={formData.nome || ''}
-                    onChange={(e) => handleFormChange('nome', e.target.value)}
-                    placeholder="Ex: Viatura 01, Resgate Principal, etc."
-                  />
+                  <FormControl fullWidth required>
+                    <InputLabel>Unidade BM</InputLabel>
+                    <Select
+                      value={formData.unidade_bm || ''}
+                      onChange={(e) => handleFormChange('unidade_bm', e.target.value)}
+                      label="Unidade BM"
+                    >
+                      <MenuItem value="13 BBM Jataí">13 BBM Jataí</MenuItem>
+                      <MenuItem value="16 DBM Caiapônia">16 DBM Caiapônia</MenuItem>
+                    </Select>
+                  </FormControl>
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <TextField
