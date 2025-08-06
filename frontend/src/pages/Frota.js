@@ -338,8 +338,8 @@ const Frota = () => {
                       size="small"
                     />
                   </TableCell>
-                  <TableCell>{viatura.setor}</TableCell>
-                  <TableCell>{viatura.hodometro?.toLocaleString()} km</TableCell>
+                  <TableCell>{viatura.setor_responsavel}</TableCell>
+                  <TableCell>{viatura.km_atual?.toLocaleString()} km</TableCell>
                   <TableCell>
                     <IconButton
                       onClick={(e) => {
