@@ -49,6 +49,7 @@ import ChecklistCard from '../components/ChecklistCard';
 import ChecklistForm from '../components/ChecklistForm';
 import ChecklistTemplateManager from '../components/ChecklistTemplateManager';
 import checklistService from '../services/checklistService';
+import checklistTemplateService from '../services/checklistTemplateService';
 
 const Frota = () => {
   const [activeTab, setActiveTab] = useState(0);
@@ -224,11 +225,16 @@ const Frota = () => {
     try {
       setLoading(true);
       
+      // Verificar se checklistData existe
+      if (!checklistData) {
+        throw new Error('Dados do checklist não fornecidos');
+      }
+      
       if (checklistData.status === 'finalizado') {
          // Se o checklist está sendo finalizado, usar o endpoint de finalizar
          const assinaturaData = {
-           nome_completo: checklistData.assinatura.nome_completo,
-           senha: checklistData.assinatura.senha
+           nome_completo: checklistData.assinatura?.nome_completo,
+           senha: checklistData.assinatura?.senha
          };
          
          await checklistService.finalizarChecklist(selectedChecklist.id, assinaturaData);
@@ -274,7 +280,7 @@ const Frota = () => {
   const loadTemplates = useCallback(async () => {
     try {
       setTemplatesLoading(true);
-      const response = await checklistService.getTemplates();
+      const response = await checklistTemplateService.getTemplates();
       setTemplates(response.data || []);
     } catch (err) {
       console.error('Erro ao carregar modelos:', err);
@@ -303,11 +309,11 @@ const Frota = () => {
         loadViaturas();
         break;
       case 1:
-        loadChecklistsPendentes();
-        loadChecklists();
+        loadTemplates();
         break;
       case 2:
-        loadTemplates();
+        loadChecklistsPendentes();
+        loadChecklists();
         break;
       case 3:
         loadManutencoes();
@@ -315,7 +321,7 @@ const Frota = () => {
       default:
         break;
     }
-  }, [activeTab, loadViaturas, loadChecklistsPendentes, loadChecklists, loadManutencoes]);
+  }, [activeTab, loadViaturas, loadTemplates, loadChecklistsPendentes, loadChecklists, loadManutencoes]);
 
   useEffect(() => {
     loadData();
@@ -1164,8 +1170,8 @@ const Frota = () => {
         sx={{ position: 'fixed', bottom: 16, right: 16 }}
         onClick={() => {
           if (activeTab === 0) handleOpenDialog('viatura');
-          else if (activeTab === 1) handleOpenDialog('checklist');
-          else if (activeTab === 2) handleOpenDialog('modelo');
+          else if (activeTab === 1) handleOpenDialog('modelo');
+        else if (activeTab === 2) handleOpenDialog('checklist');
           else if (activeTab === 3) handleOpenDialog('manutencao');
         }}
       >
@@ -1178,7 +1184,7 @@ const Frota = () => {
         open={Boolean(anchorEl)}
         onClose={() => setAnchorEl(null)}
       >
-        {activeTab === 2 ? (
+        {activeTab === 1 ? (
           // Menu para modelos
           [
             <MenuItem key="edit" onClick={() => handleEditTemplate(selectedItem)}>
@@ -1194,7 +1200,13 @@ const Frota = () => {
           // Menu para outras abas
           [
             <MenuItem key="view" onClick={() => {
-              handleOpenDialog(activeTab === 0 ? 'viatura' : activeTab === 3 ? 'manutencao' : 'checklist', selectedItem);
+              if (activeTab === 2) {
+                // Aba de checklists - usar handleOpenDialog
+                handleOpenDialog('checklist', selectedItem);
+              } else {
+                // Outras abas - usar handleOpenDialog
+                handleOpenDialog(activeTab === 0 ? 'viatura' : activeTab === 3 ? 'manutencao' : 'checklist', selectedItem);
+              }
               setAnchorEl(null);
             }}>
               <ViewIcon sx={{ mr: 1 }} />
@@ -1452,8 +1464,9 @@ const Frota = () => {
                       label="Tipo do Checklist"
                     >
                       <MenuItem value="diario">Diário</MenuItem>
-                      <MenuItem value="saida">Saída</MenuItem>
-                      <MenuItem value="retorno">Retorno</MenuItem>
+                      <MenuItem value="pre_operacional">Pré-Operacional</MenuItem>
+                      <MenuItem value="pos_operacional">Pós-Operacional</MenuItem>
+                      <MenuItem value="manutencao">Manutenção</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>

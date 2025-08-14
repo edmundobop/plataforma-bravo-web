@@ -272,7 +272,90 @@ router.get('/checklists', async (req, res) => {
     params.push(limit, offset);
 
     const result = await query(queryText, params);
-    res.json(result.rows);
+    
+    // Parse JSON fields e construir estrutura completa de itens
+    const checklists = result.rows.map(checklist => {
+      checklist.itens = {};
+      
+      // Função auxiliar para processar dados JSONB aninhados
+      const processNestedJsonData = (jsonData, category) => {
+        if (!jsonData) return {};
+        
+        let parsedData;
+        if (typeof jsonData === 'string') {
+          try {
+            parsedData = JSON.parse(jsonData);
+          } catch (e) {
+            console.error(`Erro ao fazer parse do checklist_${category}:`, e);
+            return {};
+          }
+        } else {
+          parsedData = jsonData;
+        }
+        
+        // Se os dados estão em formato de array de strings JSON (problema identificado)
+        if (Array.isArray(parsedData)) {
+          const processedData = {};
+          parsedData.forEach(item => {
+            if (typeof item === 'string') {
+              try {
+                const itemData = JSON.parse(item);
+                Object.assign(processedData, itemData);
+              } catch (e) {
+                console.error(`Erro ao processar item do array ${category}:`, e);
+              }
+            } else if (typeof item === 'object' && item !== null) {
+              Object.assign(processedData, item);
+            }
+          });
+          return processedData;
+        }
+        
+        // Se já está organizado por categoria, usar diretamente
+        if (parsedData[category]) {
+          return parsedData[category];
+        }
+        
+        // Se não está organizado, retornar os dados diretamente
+        return parsedData;
+      };
+      
+      // Parse checklist_motorista
+      checklist.itens.motorista = processNestedJsonData(checklist.checklist_motorista, 'motorista');
+      
+      // Parse checklist_combatente
+      checklist.itens.combatente = processNestedJsonData(checklist.checklist_combatente, 'combatente');
+      
+      // Garantir que existe pelo menos a categoria motorista
+      if (!checklist.itens.motorista) {
+        checklist.itens.motorista = {};
+      }
+      
+      // Garantir que os valores de km_inicial e combustivel_inicial estejam no objeto itens
+      if (checklist.km_inicial !== null) {
+        checklist.itens.motorista.km_inicial = {
+          valor: checklist.km_inicial.toString(),
+          observacao: ''
+        };
+      }
+      
+      if (checklist.combustivel_inicial !== null) {
+        checklist.itens.motorista.combustivel_inicial = {
+          valor: checklist.combustivel_inicial.toString(),
+          observacao: ''
+        };
+      }
+      if (checklist.fotos && typeof checklist.fotos === 'string') {
+        try {
+          checklist.fotos = JSON.parse(checklist.fotos);
+        } catch (e) {
+          console.error('Erro ao fazer parse das fotos:', e);
+        }
+      }
+      return checklist;
+    });
+    
+    res.json(checklists);
   } catch (error) {
     console.error('Erro ao listar checklists:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
@@ -345,7 +428,89 @@ router.get('/checklists/pendentes', async (req, res) => {
       [dataChecklist]
     );
 
-    res.json(result.rows);
+    // Parse JSON fields e mesclar checklist_motorista e checklist_combatente em itens
+    const checklists = result.rows.map(checklist => {
+      // Inicializar estrutura de itens
+      checklist.itens = {};
+      
+      // Função auxiliar para processar dados JSONB aninhados
+      const processNestedJsonData = (jsonData, category) => {
+        if (!jsonData) return {};
+        
+        let parsedData;
+        if (typeof jsonData === 'string') {
+          try {
+            parsedData = JSON.parse(jsonData);
+          } catch (e) {
+            console.error(`Erro ao fazer parse do checklist_${category}:`, e);
+            return {};
+          }
+        } else {
+          parsedData = jsonData;
+        }
+        
+        // Se os dados estão em formato de array de strings JSON (problema identificado)
+        if (Array.isArray(parsedData)) {
+          const processedData = {};
+          parsedData.forEach(item => {
+            if (typeof item === 'string') {
+              try {
+                const itemData = JSON.parse(item);
+                Object.assign(processedData, itemData);
+              } catch (e) {
+                console.error(`Erro ao processar item do array ${category}:`, e);
+              }
+            } else if (typeof item === 'object' && item !== null) {
+              Object.assign(processedData, item);
+            }
+          });
+          return processedData;
+        }
+        
+        // Se já está organizado por categoria, usar diretamente
+        if (parsedData[category]) {
+          return parsedData[category];
+        }
+        
+        // Se não está organizado, retornar os dados diretamente
+        return parsedData;
+      };
+      
+      // Parse checklist_motorista
+      checklist.itens.motorista = processNestedJsonData(checklist.checklist_motorista, 'motorista');
+      
+      // Parse checklist_combatente
+      checklist.itens.combatente = processNestedJsonData(checklist.checklist_combatente, 'combatente');
+      
+      // Garantir que os valores de km_inicial e combustivel_inicial estejam no objeto itens
+      if (!checklist.itens.motorista) {
+        checklist.itens.motorista = {};
+      }
+      
+      if (checklist.km_inicial !== null && checklist.km_inicial !== undefined) {
+        checklist.itens.motorista.km_inicial = {
+          valor: checklist.km_inicial.toString(),
+          observacao: ''
+        };
+      }
+      
+      if (checklist.combustivel_inicial !== null && checklist.combustivel_inicial !== undefined) {
+        checklist.itens.motorista.combustivel_inicial = {
+          valor: checklist.combustivel_inicial.toString(),
+          observacao: ''
+        };
+      }
+      if (checklist.fotos && typeof checklist.fotos === 'string') {
+        try {
+          checklist.fotos = JSON.parse(checklist.fotos);
+        } catch (e) {
+          console.error('Erro ao fazer parse das fotos:', e);
+        }
+      }
+      return checklist;
+    });
+
+    res.json(checklists);
   } catch (error) {
     console.error('Erro ao buscar checklists pendentes:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
@@ -371,15 +536,83 @@ router.get('/checklists/:id', async (req, res) => {
 
     const checklist = result.rows[0];
     
-    // Parse JSON fields
-    if (checklist.checklist_motorista) {
-      checklist.checklist_motorista = JSON.parse(checklist.checklist_motorista);
+    // Parse JSON fields e construir estrutura completa de itens
+    checklist.itens = {};
+    
+    // Função auxiliar para processar dados JSONB aninhados
+    const processNestedJsonData = (jsonData, category) => {
+      if (!jsonData) return {};
+      
+      let parsedData;
+      if (typeof jsonData === 'string') {
+        try {
+          parsedData = JSON.parse(jsonData);
+        } catch (e) {
+          console.error(`Erro ao fazer parse do checklist_${category}:`, e);
+          return {};
+        }
+      } else {
+        parsedData = jsonData;
+      }
+      
+      // Se os dados estão em formato de array de strings JSON (problema identificado)
+      if (Array.isArray(parsedData)) {
+        const processedData = {};
+        parsedData.forEach(item => {
+          if (typeof item === 'string') {
+            try {
+              const itemData = JSON.parse(item);
+              Object.assign(processedData, itemData);
+            } catch (e) {
+              console.error(`Erro ao processar item do array ${category}:`, e);
+            }
+          } else if (typeof item === 'object' && item !== null) {
+            Object.assign(processedData, item);
+          }
+        });
+        return processedData;
+      }
+      
+      // Se já está organizado por categoria, usar diretamente
+      if (parsedData[category]) {
+        return parsedData[category];
+      }
+      
+      // Se não está organizado, retornar os dados diretamente
+      return parsedData;
+    };
+    
+    // Parse checklist_motorista
+    checklist.itens.motorista = processNestedJsonData(checklist.checklist_motorista, 'motorista');
+    
+    // Parse checklist_combatente
+    checklist.itens.combatente = processNestedJsonData(checklist.checklist_combatente, 'combatente');
+    
+    // Garantir que existe pelo menos a categoria motorista
+    if (!checklist.itens.motorista) {
+      checklist.itens.motorista = {};
     }
-    if (checklist.checklist_combatente) {
-      checklist.checklist_combatente = JSON.parse(checklist.checklist_combatente);
+    
+    // Garantir que os valores de km_inicial e combustivel_inicial estejam no objeto itens
+    if (checklist.km_inicial !== null) {
+      checklist.itens.motorista.km_inicial = {
+        valor: checklist.km_inicial.toString(),
+        observacao: ''
+      };
     }
-    if (checklist.fotos) {
-      checklist.fotos = JSON.parse(checklist.fotos);
+    
+    if (checklist.combustivel_inicial !== null) {
+      checklist.itens.motorista.combustivel_inicial = {
+        valor: checklist.combustivel_inicial.toString(),
+        observacao: ''
+      };
+    }
+    if (checklist.fotos && typeof checklist.fotos === 'string') {
+      try {
+        checklist.fotos = JSON.parse(checklist.fotos);
+      } catch (e) {
+        console.error('Erro ao fazer parse das fotos:', e);
+      }
     }
 
     res.json(checklist);
@@ -412,12 +645,44 @@ router.put('/checklists/:id', [
       checklist_motorista,
       checklist_combatente,
       observacoes_gerais,
+      observacoes,
       fotos,
       km_inicial,
       km_final,
       combustivel_inicial,
-      combustivel_final
+      combustivel_final,
+      itens
     } = req.body;
+
+    // Log de debug para ver os dados recebidos
+    console.log('=== DEBUG ATUALIZAÇÃO CHECKLIST ===');
+    console.log('ID do checklist:', id);
+    console.log('Usuário autenticado:', req.user ? req.user.id : 'NÃO AUTENTICADO');
+    console.log('Dados recebidos:', JSON.stringify(req.body, null, 2));
+    console.log('Itens recebidos:', JSON.stringify(itens, null, 2));
+    
+    // Verificar se o checklist existe antes de tentar atualizar
+    const checklistExists = await query('SELECT id FROM checklists_viatura WHERE id = $1', [id]);
+    console.log('Checklist existe?', checklistExists.rows.length > 0);
+    
+    if (checklistExists.rows.length === 0) {
+      console.log('❌ Checklist não encontrado para ID:', id);
+      return res.status(404).json({ error: 'Checklist não encontrado' });
+    }
+
+
+    // Extrair valores dos campos numéricos dos itens se existirem
+    let kmInicialFinal = km_inicial;
+    let combustivelInicialFinal = combustivel_inicial;
+    
+    if (itens && itens.motorista) {
+      if (itens.motorista.km_inicial && itens.motorista.km_inicial.valor) {
+        kmInicialFinal = parseFloat(itens.motorista.km_inicial.valor);
+      }
+      if (itens.motorista.combustivel_inicial && itens.motorista.combustivel_inicial.valor) {
+        combustivelInicialFinal = parseFloat(itens.motorista.combustivel_inicial.valor);
+      }
+    }
 
     const result = await query(
       `UPDATE checklists_viatura 
@@ -427,13 +692,13 @@ router.put('/checklists/:id', [
        WHERE id = $10
        RETURNING *`,
       [
-        checklist_motorista ? JSON.stringify(checklist_motorista) : null,
+        itens ? JSON.stringify(itens) : (checklist_motorista ? JSON.stringify(checklist_motorista) : null),
         checklist_combatente ? JSON.stringify(checklist_combatente) : null,
-        observacoes_gerais,
+        observacoes || observacoes_gerais,
         fotos ? JSON.stringify(fotos) : null,
-        km_inicial,
+        kmInicialFinal,
         km_final,
-        combustivel_inicial,
+        combustivelInicialFinal,
         combustivel_final,
         req.user.id,
         id
@@ -533,7 +798,7 @@ router.post('/checklists/:id/finalizar', [
 // Criar checklist (manter compatibilidade)
 router.post('/checklists', [
   body('viatura_id').isInt().withMessage('ID da viatura é obrigatório'),
-  body('tipo').isIn(['diario', 'saida', 'retorno']).withMessage('Tipo deve ser diario, saida ou retorno')
+  body('tipo').optional().isIn(['diario', 'saida', 'retorno', 'pre_operacional', 'pos_operacional', 'manutencao']).withMessage('Tipo inválido')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -541,14 +806,33 @@ router.post('/checklists', [
       return res.status(400).json({ errors: errors.array() });
     }
 
+    // Verificar se o usuário está autenticado
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ error: 'Usuário não autenticado' });
+    }
+
     const {
       viatura_id, tipo, data_checklist, km_inicial, km_final,
       combustivel_inicial, combustivel_final,
       checklist_motorista, checklist_combatente, observacoes_gerais,
-      template_id
+      template_id, itens, observacoes
     } = req.body;
 
     const dataFinal = data_checklist || new Date().toISOString().split('T')[0];
+    const tipoFinal = tipo || 'pre_operacional';
+
+    // Extrair valores dos campos numéricos dos itens se existirem
+    let kmInicialFinal = km_inicial;
+    let combustivelInicialFinal = combustivel_inicial;
+    
+    if (itens && itens.motorista) {
+      if (itens.motorista.km_inicial && itens.motorista.km_inicial.valor) {
+        kmInicialFinal = parseFloat(itens.motorista.km_inicial.valor);
+      }
+      if (itens.motorista.combustivel_inicial && itens.motorista.combustivel_inicial.valor) {
+        combustivelInicialFinal = parseFloat(itens.motorista.combustivel_inicial.valor);
+      }
+    }
 
     const result = await query(
       `INSERT INTO checklists_viatura 
@@ -558,11 +842,11 @@ router.post('/checklists', [
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING *`,
       [
-        viatura_id, req.user.id, tipo, dataFinal, km_inicial, km_final,
-        combustivel_inicial, combustivel_final,
-        checklist_motorista ? JSON.stringify(checklist_motorista) : null,
+        viatura_id, req.user.id, tipoFinal, dataFinal, kmInicialFinal, km_final,
+        combustivelInicialFinal, combustivel_final,
+        itens ? JSON.stringify(itens) : (checklist_motorista ? JSON.stringify(checklist_motorista) : null),
         checklist_combatente ? JSON.stringify(checklist_combatente) : null,
-        observacoes_gerais,
+        observacoes || observacoes_gerais,
         template_id || null
       ]
     );

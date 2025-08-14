@@ -52,7 +52,8 @@ const ChecklistForm = ({ open, onClose, checklist, onSave }) => {
   const tiposChecklist = [
     { value: 'pre_operacional', label: 'Pré-Operacional' },
     { value: 'pos_operacional', label: 'Pós-Operacional' },
-    { value: 'manutencao', label: 'Manutenção' }
+    { value: 'manutencao', label: 'Manutenção' },
+    { value: 'diario', label: 'Diário' }
   ];
 
   useEffect(() => {
@@ -60,14 +61,25 @@ const ChecklistForm = ({ open, onClose, checklist, onSave }) => {
       loadViaturas();
       if (checklist) {
         // Modo edição
+        // Mapear tipos do backend para o frontend
+        const mapTipoFromBackend = (tipo) => {
+          const tipoMap = {
+            'diario': 'diario',
+            'pre_operacional': 'pre_operacional',
+            'pos_operacional': 'pos_operacional',
+            'manutencao': 'manutencao'
+          };
+          return tipoMap[tipo] || 'pre_operacional';
+        };
+
         setFormData({
-          viatura_id: checklist.viatura_id || '',
-          template_id: checklist.template_id || '',
-          tipo: checklist.tipo || 'pre_operacional',
+          viatura_id: parseInt(checklist.viatura_id) || '',
+          template_id: parseInt(checklist.template_id) || '',
+          tipo: mapTipoFromBackend(checklist.tipo),
           observacoes: checklist.observacoes || '',
           itens: checklist.itens || {}
         });
-        setSelectedViatura(checklist.viatura_id || '');
+        setSelectedViatura(checklist.viatura_id ? String(checklist.viatura_id) : '');
         if (checklist.template_id) {
           loadTemplate(checklist.template_id);
         }
@@ -87,10 +99,11 @@ const ChecklistForm = ({ open, onClose, checklist, onSave }) => {
   const loadViaturas = async () => {
     try {
       const response = await frotaService.getViaturas();
-      setViaturas(response.data);
+      setViaturas(response.data.viaturas || []);
     } catch (error) {
       console.error('Erro ao carregar viaturas:', error);
       setError('Erro ao carregar viaturas');
+      setViaturas([]); // Garantir que seja sempre um array
     }
   };
 
@@ -103,8 +116,10 @@ const ChecklistForm = ({ open, onClose, checklist, onSave }) => {
       const defaultTemplate = response.data.templates?.find(t => t.padrao);
       if (defaultTemplate && !formData.template_id) {
         setSelectedTemplate(defaultTemplate);
-        setFormData(prev => ({ ...prev, template_id: defaultTemplate.id }));
-        initializeChecklistItems(defaultTemplate.configuracao);
+        setFormData(prev => ({ ...prev, template_id: parseInt(defaultTemplate.id) }));
+        // Passa os dados existentes do checklist se estiver em modo de edição
+        const existingItems = checklist?.itens || {};
+        initializeChecklistItems(defaultTemplate.configuracao, existingItems);
       }
     } catch (error) {
       console.error('Erro ao carregar templates:', error);
@@ -116,25 +131,68 @@ const ChecklistForm = ({ open, onClose, checklist, onSave }) => {
     try {
       const response = await checklistTemplateService.getTemplateById(templateId);
       setSelectedTemplate(response.data);
-      initializeChecklistItems(response.data.configuracao);
+      // Passa os dados existentes do checklist se estiver em modo de edição
+      const existingItems = checklist?.itens || {};
+      initializeChecklistItems(response.data.configuracao, existingItems);
     } catch (error) {
       console.error('Erro ao carregar template:', error);
       setError('Erro ao carregar template');
     }
   };
 
-  const initializeChecklistItems = (configuracao) => {
+  const initializeChecklistItems = (configuracao, existingItems = {}) => {
     const items = {};
     
     // Inicializa itens para cada categoria (motorista, combatente, socorrista, etc.)
     Object.keys(configuracao).forEach(categoria => {
       items[categoria] = {};
-      configuracao[categoria].forEach(item => {
-        items[categoria][item.id] = {
-          verificado: false,
-          conforme: null,
-          observacao: ''
-        };
+      const categoriaItems = Array.isArray(configuracao[categoria]) ? configuracao[categoria] : [];
+      
+      categoriaItems.forEach(item => {
+        // Tenta acessar dados existentes usando diferentes formatos de ID
+        const itemIdStr = String(item.id);
+        const itemIdNum = typeof item.id === 'string' ? parseInt(item.id) : item.id;
+        
+        // Busca o item existente em diferentes formatos (string, número, original)
+        let existingItem = existingItems[categoria]?.[item.id] || 
+                          existingItems[categoria]?.[itemIdStr] || 
+                          existingItems[categoria]?.[itemIdNum];
+        
+        // Se não encontrou, tenta buscar por nome similar (para migração)
+        if (!existingItem && typeof item.id === 'string') {
+          // Mapeia IDs descritivos para IDs numéricos antigos
+          const legacyIdMap = {
+            'documentacao_viatura': '1',
+            'nivel_oleo_motor': '3',
+            'nivel_agua_radiador': '4',
+            'funcionamento_farois': '5',
+            'funcionamento_setas': '6',
+            'funcionamento_giroflex': '7',
+            'funcionamento_sirene': '8',
+            'estado_pneus': '9',
+            'funcionamento_freios': '10'
+          };
+          
+          const legacyId = legacyIdMap[item.id];
+          if (legacyId) {
+            existingItem = existingItems[categoria]?.[legacyId];
+          }
+        }
+        
+        if (item.tipo === 'number') {
+          // Para campos numéricos, preserva valores existentes ou inicializa vazio
+          items[categoria][item.id] = {
+            valor: existingItem?.valor || '',
+            observacao: existingItem?.observacao || ''
+          };
+        } else {
+          // Para campos de checklist tradicionais, preserva valores existentes
+          items[categoria][item.id] = {
+            verificado: existingItem?.verificado || false,
+            conforme: existingItem?.conforme || null,
+            observacao: existingItem?.observacao || ''
+          };
+        }
       });
     });
     
@@ -158,7 +216,7 @@ const ChecklistForm = ({ open, onClose, checklist, onSave }) => {
 
   const handleViaturaChange = (viaturaId) => {
     setSelectedViatura(viaturaId);
-    setFormData(prev => ({ ...prev, viatura_id: viaturaId, template_id: '' }));
+    setFormData(prev => ({ ...prev, viatura_id: viaturaId ? parseInt(viaturaId) : '', template_id: '' }));
     setSelectedTemplate(null);
     setChecklistItems({});
   };
@@ -166,10 +224,12 @@ const ChecklistForm = ({ open, onClose, checklist, onSave }) => {
   const handleTemplateChange = (templateId) => {
     const template = templates.find(t => t.id === parseInt(templateId));
     setSelectedTemplate(template);
-    setFormData(prev => ({ ...prev, template_id: templateId }));
+    setFormData(prev => ({ ...prev, template_id: templateId ? parseInt(templateId) : '' }));
     
     if (template) {
-      initializeChecklistItems(template.configuracao);
+      // Passa os dados existentes do checklist se estiver em modo de edição
+      const existingItems = checklist?.itens || {};
+      initializeChecklistItems(template.configuracao, existingItems);
     }
   };
 
@@ -198,6 +258,8 @@ const ChecklistForm = ({ open, onClose, checklist, onSave }) => {
 
       const checklistData = {
         ...formData,
+        viatura_id: parseInt(formData.viatura_id),
+        template_id: parseInt(formData.template_id),
         itens: checklistItems,
         status: 'concluido'
       };
@@ -213,7 +275,7 @@ const ChecklistForm = ({ open, onClose, checklist, onSave }) => {
       }
 
       setTimeout(() => {
-        if (onSave) onSave();
+        if (onSave) onSave(checklistData);
         handleClose();
       }, 1500);
     } catch (error) {
@@ -245,48 +307,33 @@ const ChecklistForm = ({ open, onClose, checklist, onSave }) => {
           </Typography>
           
           <Grid container spacing={2}>
-            {selectedTemplate.configuracao[categoria].map(item => (
+            {(Array.isArray(selectedTemplate.configuracao[categoria]) ? selectedTemplate.configuracao[categoria] : []).map(item => (
               <Grid item xs={12} key={item.id}>
                 <Paper sx={{ p: 2, bgcolor: 'grey.50' }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={checklistItems[categoria]?.[item.id]?.verificado || false}
-                          onChange={(e) => handleItemChange(categoria, item.id, 'verificado', e.target.checked)}
-                        />
-                      }
-                      label={item.nome}
-                      sx={{ flexGrow: 1 }}
-                    />
-                    {item.obrigatorio && (
-                      <Chip label="Obrigatório" size="small" color="error" variant="outlined" />
-                    )}
-                  </Box>
-                  
-                  {checklistItems[categoria]?.[item.id]?.verificado && (
-                    <Box sx={{ ml: 4 }}>
-                      <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-                        <Button
-                          variant={checklistItems[categoria]?.[item.id]?.conforme === true ? 'contained' : 'outlined'}
-                          color="success"
-                          size="small"
-                          startIcon={<CheckIcon />}
-                          onClick={() => handleItemChange(categoria, item.id, 'conforme', true)}
-                        >
-                          Conforme
-                        </Button>
-                        <Button
-                          variant={checklistItems[categoria]?.[item.id]?.conforme === false ? 'contained' : 'outlined'}
-                          color="error"
-                          size="small"
-                          startIcon={<CancelIcon />}
-                          onClick={() => handleItemChange(categoria, item.id, 'conforme', false)}
-                        >
-                          Não Conforme
-                        </Button>
+                  {item.tipo === 'number' ? (
+                    // Campos numéricos (KM Inicial, Combustível)
+                    <Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                        <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
+                          {item.nome}
+                        </Typography>
+                        {item.obrigatorio && (
+                          <Chip label="Obrigatório" size="small" color="error" variant="outlined" />
+                        )}
                       </Box>
-                      
+                      <TextField
+                        fullWidth
+                        type="number"
+                        label={item.nome}
+                        value={checklistItems[categoria]?.[item.id]?.valor || ''}
+                        onChange={(e) => handleItemChange(categoria, item.id, 'valor', e.target.value)}
+                        inputProps={{ 
+                          min: 0,
+                          ...(item.id === 'combustivel_inicial' && { max: 100 })
+                        }}
+                        size="small"
+                        sx={{ mb: 1 }}
+                      />
                       <TextField
                         fullWidth
                         size="small"
@@ -296,6 +343,60 @@ const ChecklistForm = ({ open, onClose, checklist, onSave }) => {
                         multiline
                         rows={2}
                       />
+                    </Box>
+                  ) : (
+                    // Campos de checklist tradicionais
+                    <Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={checklistItems[categoria]?.[item.id]?.verificado || false}
+                              onChange={(e) => handleItemChange(categoria, item.id, 'verificado', e.target.checked)}
+                            />
+                          }
+                          label={item.nome}
+                          sx={{ flexGrow: 1 }}
+                        />
+                        {item.obrigatorio && (
+                          <Chip label="Obrigatório" size="small" color="error" variant="outlined" />
+                        )}
+                      </Box>
+                      
+                      {checklistItems[categoria]?.[item.id]?.verificado && (
+                        <Box sx={{ ml: 4 }}>
+                          <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                            <Button
+                              variant={checklistItems[categoria]?.[item.id]?.conforme === true ? 'contained' : 'outlined'}
+                              color="success"
+                              size="small"
+                              startIcon={<CheckIcon />}
+                              onClick={() => handleItemChange(categoria, item.id, 'conforme', true)}
+                            >
+                              Conforme
+                            </Button>
+                            <Button
+                              variant={checklistItems[categoria]?.[item.id]?.conforme === false ? 'contained' : 'outlined'}
+                              color="error"
+                              size="small"
+                              startIcon={<CancelIcon />}
+                              onClick={() => handleItemChange(categoria, item.id, 'conforme', false)}
+                            >
+                              Não Conforme
+                            </Button>
+                          </Box>
+                          
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Observações"
+                            value={checklistItems[categoria]?.[item.id]?.observacao || ''}
+                            onChange={(e) => handleItemChange(categoria, item.id, 'observacao', e.target.value)}
+                            multiline
+                            rows={2}
+                          />
+                        </Box>
+                      )}
                     </Box>
                   )}
                 </Paper>
@@ -334,12 +435,13 @@ const ChecklistForm = ({ open, onClose, checklist, onSave }) => {
             <FormControl fullWidth required>
               <InputLabel>Viatura</InputLabel>
               <Select
-                value={selectedViatura}
+                value={viaturas.length > 0 ? (selectedViatura || '') : ''}
                 onChange={(e) => handleViaturaChange(e.target.value)}
                 label="Viatura"
+                disabled={viaturas.length === 0}
               >
                 {viaturas.map((viatura) => (
-                  <MenuItem key={viatura.id} value={viatura.id}>
+                  <MenuItem key={viatura.id} value={String(viatura.id)}>
                     {viatura.prefixo} - {viatura.marca} {viatura.modelo}
                   </MenuItem>
                 ))}
@@ -369,12 +471,13 @@ const ChecklistForm = ({ open, onClose, checklist, onSave }) => {
               <FormControl fullWidth required>
                 <InputLabel>Template</InputLabel>
                 <Select
-                  value={formData.template_id}
+                  value={templates.length > 0 ? (formData.template_id || '') : ''}
                   onChange={(e) => handleTemplateChange(e.target.value)}
                   label="Template"
+                  disabled={templates.length === 0}
                 >
                   {templates.map((template) => (
-                    <MenuItem key={template.id} value={template.id}>
+                    <MenuItem key={template.id} value={String(template.id)}>
                       {template.nome}
                       {template.padrao && <Chip label="Padrão" size="small" sx={{ ml: 1 }} />}
                     </MenuItem>

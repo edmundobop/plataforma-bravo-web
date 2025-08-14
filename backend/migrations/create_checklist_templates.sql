@@ -30,8 +30,9 @@ INSERT INTO checklist_templates (nome, descricao, tipo_viatura, configuracao, pa
     'ABT',
     '{
         "motorista": [
+            {"id": "km_inicial", "nome": "KM Inicial", "obrigatorio": true, "tipo": "number"},
+            {"id": "combustivel_inicial", "nome": "Combustível Inicial (%)", "obrigatorio": true, "tipo": "number"},
             {"id": 1, "nome": "Documentação da viatura", "obrigatorio": true},
-            {"id": 2, "nome": "Nível de combustível", "obrigatorio": true},
             {"id": 3, "nome": "Nível de óleo do motor", "obrigatorio": true},
             {"id": 4, "nome": "Nível de água do radiador", "obrigatorio": true},
             {"id": 5, "nome": "Funcionamento dos faróis", "obrigatorio": true},
@@ -63,8 +64,9 @@ INSERT INTO checklist_templates (nome, descricao, tipo_viatura, configuracao, pa
     'ABTF',
     '{
         "motorista": [
+            {"id": "km_inicial", "nome": "KM Inicial", "obrigatorio": true, "tipo": "number"},
+            {"id": "combustivel_inicial", "nome": "Combustível Inicial (%)", "obrigatorio": true, "tipo": "number"},
             {"id": 1, "nome": "Documentação da viatura", "obrigatorio": true},
-            {"id": 2, "nome": "Nível de combustível", "obrigatorio": true},
             {"id": 3, "nome": "Nível de óleo do motor", "obrigatorio": true},
             {"id": 4, "nome": "Nível de água do radiador", "obrigatorio": true},
             {"id": 5, "nome": "Funcionamento dos faróis", "obrigatorio": true},
@@ -96,8 +98,9 @@ INSERT INTO checklist_templates (nome, descricao, tipo_viatura, configuracao, pa
     'UR',
     '{
         "motorista": [
+            {"id": "km_inicial", "nome": "KM Inicial", "obrigatorio": true, "tipo": "number"},
+            {"id": "combustivel_inicial", "nome": "Combustível Inicial (%)", "obrigatorio": true, "tipo": "number"},
             {"id": 1, "nome": "Documentação da viatura", "obrigatorio": true},
-            {"id": 2, "nome": "Nível de combustível", "obrigatorio": true},
             {"id": 3, "nome": "Nível de óleo do motor", "obrigatorio": true},
             {"id": 4, "nome": "Nível de água do radiador", "obrigatorio": true},
             {"id": 5, "nome": "Funcionamento dos faróis", "obrigatorio": true},
@@ -129,8 +132,9 @@ INSERT INTO checklist_templates (nome, descricao, tipo_viatura, configuracao, pa
     'AV',
     '{
         "motorista": [
+            {"id": "km_inicial", "nome": "KM Inicial", "obrigatorio": true, "tipo": "number"},
+            {"id": "combustivel_inicial", "nome": "Combustível Inicial (%)", "obrigatorio": true, "tipo": "number"},
             {"id": 1, "nome": "Documentação da viatura", "obrigatorio": true},
-            {"id": 2, "nome": "Nível de combustível", "obrigatorio": true},
             {"id": 3, "nome": "Nível de óleo do motor", "obrigatorio": true},
             {"id": 4, "nome": "Nível de água do radiador", "obrigatorio": true},
             {"id": 5, "nome": "Funcionamento dos faróis", "obrigatorio": true},
@@ -159,8 +163,9 @@ INSERT INTO checklist_templates (nome, descricao, tipo_viatura, configuracao, pa
     'ASA',
     '{
         "motorista": [
+            {"id": "km_inicial", "nome": "KM Inicial", "obrigatorio": true, "tipo": "number"},
+            {"id": "combustivel_inicial", "nome": "Combustível Inicial (%)", "obrigatorio": true, "tipo": "number"},
             {"id": 1, "nome": "Documentação da viatura", "obrigatorio": true},
-            {"id": 2, "nome": "Nível de combustível", "obrigatorio": true},
             {"id": 3, "nome": "Nível de óleo do motor", "obrigatorio": true},
             {"id": 4, "nome": "Nível de água do radiador", "obrigatorio": true},
             {"id": 5, "nome": "Funcionamento dos faróis", "obrigatorio": true},
@@ -192,8 +197,9 @@ INSERT INTO checklist_templates (nome, descricao, tipo_viatura, configuracao, pa
     'MOB',
     '{
         "motorista": [
+            {"id": "km_inicial", "nome": "KM Inicial", "obrigatorio": true, "tipo": "number"},
+            {"id": "combustivel_inicial", "nome": "Combustível Inicial (%)", "obrigatorio": true, "tipo": "number"},
             {"id": 1, "nome": "Documentação da viatura", "obrigatorio": true},
-            {"id": 2, "nome": "Nível de combustível", "obrigatorio": true},
             {"id": 3, "nome": "Nível de óleo do motor", "obrigatorio": true},
             {"id": 4, "nome": "Funcionamento dos faróis", "obrigatorio": true},
             {"id": 5, "nome": "Funcionamento das setas", "obrigatorio": true},

@@ -1,194 +1,228 @@
-# Análise dos Erros do Console Chrome - Status: RESOLVIDO
-
-## Erros Identificados e Status:
-
-### 1. Erro 403 (Forbidden) - /api/auth/verify
-**Status: NORMAL/ESPERADO**
-- Este erro ocorre quando o usuário não está logado
-- O frontend tenta verificar automaticamente a autenticação ao carregar
-- Sem token válido, a API retorna 403 corretamente
-- Comportamento esperado da aplicação
-
-### 2. Erro 400 (Bad Request) - socket.io
-**Status: NORMAL/ESPERADO**
-- Socket.io retorna 400 quando não há parâmetros corretos de conexão
-- Isso acontece quando o usuário não está autenticado
-- A conexão socket.io só é estabelecida após login bem-sucedido
-- Comportamento esperado da aplicação
-
-### 3. Erro do Manifest - logo192.png
-**Status: CORRIGIDO ✅**
-- Arquivo logo192.png foi convertido de SVG para PNG válido
-- Arquivo logo512.png foi criado para completar o manifest
-- Manifest.json agora funciona corretamente
-- Não há mais erros de download ou imagem inválida
-
-## Conclusão:
-Todos os erros foram analisados e estão em estado normal/resolvido:
-- Erros 403/400: Comportamento esperado quando usuário não logado
-- Erro do manifest: Completamente corrigido
-- Aplicação funcionando corretamente
-
-## Próximos Passos:
-Para testar se os erros 403/400 desaparecem:
-1. Faça login na aplicação com: admin@cbmgo.gov.br
-2. Os erros de autenticação devem desaparecer
-3. Socket.io deve conectar normalmente após login
-
-Data da análise: $(Get-Date -Format 'dd/MM/yyyy HH:mm')
-
-### 4. Erro do SignatureCanvas - Formulário de Checklist
-**Status: CORRIGIDO ✅**
-- Erro "Objects are not valid as a React child" no componente SignatureCanvas
-- Problema estava na renderização incorreta do IconComponent no Avatar
-- Corrigido usando React.createElement() ao invés de JSX direto
-- Formulário de checklist agora funciona corretamente
-
-### NOVOS ERROS - FORMULÁRIO CHECKLIST (CLIQUE EM "SALVAR")
-
-### 5. Erro 500 - Internal Server Error
-**Status: CORRIGIDO ✅**
-- PUT http://localhost:5000/api/frota/checklists/7 500 (Internal Server Error)
-- Problema estava na falta de verificação de autenticação do usuário na rota PUT
-- Corrigido adicionando verificação se req.user.id existe antes de usar na query
-- Rota agora retorna erro 401 se usuário não estiver autenticado
-
-### 6. Erro do React - Objects are not valid as a React child
-**Status: CORRIGIDO ✅**
-- Erro "Objects are not valid as a React child" no componente SignatureCanvas
-- Problema estava na função de validação que poderia retornar objetos inválidos
-- Corrigido adicionando tratamento de erro e filtragem de objetos na validação
-- Melhorada a conversão segura de valores para string na validação
-
-ERROS ANTERIORES (CORRIGIDOS):
-
-Uncaught Error: Objects are not valid as a React child (found: object with keys {$$typeof, type, key, props, _owner, _store}). If you meant to render a collection of children, use an array instead.
-    at throwOnInvalidObjectType (react-dom.development.js:13123:1)
-    at reconcileChildFibers (react-dom.development.js:14064:1)
-    at reconcileChildren (react-dom.development.js:19186:1)
-    at finishClassComponent (react-dom.development.js:19811:1)
-    at updateClassComponent (react-dom.development.js:19727:1)
-    at beginWork (react-dom.development.js:21650:1)
-    at HTMLUnknownElement.callCallback (react-dom.development.js:4164:1)
-    at Object.invokeGuardedCallbackDev (react-dom.development.js:4213:1)
-    at invokeGuardedCallback (react-dom.development.js:4277:1)
-    at beginWork$1 (react-dom.development.js:27490:1)
-throwOnInvalidObjectType @ react-dom.development.js:13123
-reconcileChildFibers @ react-dom.development.js:14064
-reconcileChildren @ react-dom.development.js:19186
-finishClassComponent @ react-dom.development.js:19811
-updateClassComponent @ react-dom.development.js:19727
-beginWork @ react-dom.development.js:21650
-callCallback @ react-dom.development.js:4164
-invokeGuardedCallbackDev @ react-dom.development.js:4213
-invokeGuardedCallback @ react-dom.development.js:4277
-beginWork$1 @ react-dom.development.js:27490
-performUnitOfWork @ react-dom.development.js:26596
-workLoopSync @ react-dom.development.js:26505
-renderRootSync @ react-dom.development.js:26473
-performSyncWorkOnRoot @ react-dom.development.js:26124
+NotificationContext.js:31 WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket&sid=We838fgK7CNtgL5BAAAU' failed: WebSocket is closed before the connection is established.
+doClose @ websocket.js:81
+close @ transport.js:55
+freezeTransport @ socket.js:628
+onerror @ socket.js:636
+onclose @ socket.js:644
+on @ index.js:56
+__webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
+_onClose @ socket.js:531
+close @ socket.js:448
+(anonymous) @ socket.js:469
+on @ index.js:56
+__webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
+_onDrain @ socket.js:314
+__webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
+(anonymous) @ polling.js:124
+__webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
+_onLoad @ polling-xhr.js:194
+xhr.onreadystatechange @ polling-xhr.js:129
+XMLHttpRequest.send
+_create @ polling-xhr.js:139
+Request @ polling-xhr.js:75
+request @ polling-xhr.js:253
+doWrite @ polling-xhr.js:37
+(anonymous) @ polling.js:122
+(anonymous) @ index.js:15
+encodePacket @ encodePacket.browser.js:31
+(anonymous) @ index.js:12
+encodePayload @ index.js:10
+write @ polling.js:121
+send @ transport.js:67
+flush @ socket.js:331
+_sendPacket @ socket.js:441
+write @ socket.js:394
+_packet @ manager.js:262
+packet @ socket.js:400
+_sendConnectPacket @ socket.js:424
+onopen @ socket.js:414
+__webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
+onopen @ manager.js:173
+(anonymous) @ manager.js:118
+__webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
+onOpen @ socket.js:227
+onOpen @ socket.js:569
+onHandshake @ socket.js:280
+onHandshake @ socket.js:680
+_onPacket @ socket.js:244
+__webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
+onPacket @ transport.js:99
+callback @ polling.js:79
+onData @ polling.js:82
+__webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
+_onLoad @ polling-xhr.js:193
+xhr.onreadystatechange @ polling-xhr.js:129
+XMLHttpRequest.send
+_create @ polling-xhr.js:139
+Request @ polling-xhr.js:75
+request @ polling-xhr.js:253
+doPoll @ polling-xhr.js:52
+_poll @ polling.js:59
+doOpen @ polling.js:19
+open @ transport.js:47
+_open @ socket.js:197
+SocketWithoutUpgrade @ socket.js:150
+SocketWithUpgrade @ socket.js:565
+Socket @ socket.js:725
+open @ manager.js:111
+Manager @ manager.js:38
+lookup @ index.js:29
+(anonymous) @ NotificationContext.js:31
+commitHookEffectListMount @ react-dom.development.js:23189
+commitPassiveMountOnFiber @ react-dom.development.js:24965
+commitPassiveMountEffects_complete @ react-dom.development.js:24930
+commitPassiveMountEffects_begin @ react-dom.development.js:24917
+commitPassiveMountEffects @ react-dom.development.js:24905
+flushPassiveEffectsImpl @ react-dom.development.js:27078
+flushPassiveEffects @ react-dom.development.js:27023
+performSyncWorkOnRoot @ react-dom.development.js:26115
 flushSyncCallbacks @ react-dom.development.js:12042
-(anonymous) @ react-dom.development.js:25690Understand this error
-function MyComponent() {
-  // Incorrect: Attempting to render the component object directly
-  const AnotherComponent = () => <div>Another Component</div>;
-  return (
-    <div>
-      {AnotherComponent}
-    </div>
-  );
-}
-The corrected code should use JSX syntax to render the component:
-function MyComponent() {
-  const AnotherComponent = () => <div>Another Component</div>;
-  return (
-    <div>
-      {/* Correct: Rendering the component using JSX */}
-      <AnotherComponent />
-    </div>
-  );
-}
-If you are trying to render a list of items, make sure you are mapping over an array and returning valid React elements for each item.
-
-Summary
-The error "Objects are not valid as a React child" means you are trying to render an object that is not a valid React element or renderable primitive directly in your JSX. Ensure you are using proper JSX syntax to render components (<ComponentName />) and returning arrays of valid React children when rendering collections.
-
-Data used to understand this message
-Console message
-Stacktrace
-Related code
-
-The above error occurred in the <SignatureCanvas> component:
-
-    at SignatureCanvas (http://localhost:3000/static/js/bundle.js:1400:86)
-    at div
-    at http://localhost:3000/static/js/bundle.js:3864:66
-    at Paper (http://localhost:3000/static/js/bundle.js:25026:88)
-    at div
-    at http://localhost:3000/static/js/bundle.js:3864:66
-    at Box (http://localhost:3000/static/js/bundle.js:39695:72)
-    at div
-    at http://localhost:3000/static/js/bundle.js:3864:66
-    at DialogContent (http://localhost:3000/static/js/bundle.js:13658:87)
-    at div
-    at http://localhost:3000/static/js/bundle.js:3864:66
-    at Paper (http://localhost:3000/static/js/bundle.js:25026:88)
-    at http://localhost:3000/static/js/bundle.js:3864:66
-    at div
-    at http://localhost:3000/static/js/bundle.js:3864:66
-    at Transition (http://localhost:3000/static/js/bundle.js:92410:30)
-    at Fade (http://localhost:3000/static/js/bundle.js:14887:77)
-    at FocusTrap (http://localhost:3000/static/js/bundle.js:34606:5)
-    at div
-    at http://localhost:3000/static/js/bundle.js:3864:66
-    at Portal (http://localhost:3000/static/js/bundle.js:26456:5)
-    at Modal (http://localhost:3000/static/js/bundle.js:22598:88)
-    at http://localhost:3000/static/js/bundle.js:3864:66
-    at Dialog (http://localhost:3000/static/js/bundle.js:13141:88)
-    at ChecklistForm (http://localhost:3000/static/js/bundle.js:105375:3)
-    at div
-    at http://localhost:3000/static/js/bundle.js:3864:66
-    at Box (http://localhost:3000/static/js/bundle.js:39695:72)
-    at Frota (http://localhost:3000/static/js/bundle.js:112396:84)
-    at RenderedRoute (http://localhost:3000/static/js/bundle.js:91289:5)
-    at Outlet (http://localhost:3000/static/js/bundle.js:91936:26)
-    at div
-    at http://localhost:3000/static/js/bundle.js:3864:66
-    at Box (http://localhost:3000/static/js/bundle.js:39695:72)
-    at main
-    at http://localhost:3000/static/js/bundle.js:3864:66
-    at Box (http://localhost:3000/static/js/bundle.js:39695:72)
-    at div
-    at http://localhost:3000/static/js/bundle.js:3864:66
-    at Box (http://localhost:3000/static/js/bundle.js:39695:72)
-    at Layout (http://localhost:3000/static/js/bundle.js:106394:75)
-    at ProtectedRoute (http://localhost:3000/static/js/bundle.js:106994:3)
-    at RenderedRoute (http://localhost:3000/static/js/bundle.js:91289:5)
-    at Routes (http://localhost:3000/static/js/bundle.js:92023:5)
-    at Router (http://localhost:3000/static/js/bundle.js:91957:15)
-    at BrowserRouter (http://localhost:3000/static/js/bundle.js:89858:5)
-    at NotificationProvider (http://localhost:3000/static/js/bundle.js:107500:3)
-    at AuthProvider (http://localhost:3000/static/js/bundle.js:107274:3)
-    at DefaultPropsProvider (http://localhost:3000/static/js/bundle.js:38757:3)
-    at RtlProvider (http://localhost:3000/static/js/bundle.js:38927:7)
-    at ThemeProvider (http://localhost:3000/static/js/bundle.js:37572:5)
-    at ThemeProvider (http://localhost:3000/static/js/bundle.js:39221:5)
-    at ThemeProvider (http://localhost:3000/static/js/bundle.js:35996:14)
-    at App
-
-Consider adding an error boundary to your tree to customize error handling behavior.
-Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
-overrideMethod @ hook.js:608
-logCapturedError @ react-dom.development.js:18704
-update.callback @ react-dom.development.js:18737
-callCallback @ react-dom.development.js:15036
-commitUpdateQueue @ react-dom.development.js:15057
-commitLayoutEffectOnFiber @ react-dom.development.js:23430
-commitLayoutMountEffects_complete @ react-dom.development.js:24727
-commitLayoutEffects_begin @ react-dom.development.js:24713
-commitLayoutEffects @ react-dom.development.js:24651
-commitRootImpl @ react-dom.development.js:26862
+commitRootImpl @ react-dom.development.js:26998
 commitRoot @ react-dom.development.js:26721
-performSyncWorkOnRoot @ react-dom.development.js:26156
+finishConcurrentRender @ react-dom.development.js:26020
+performConcurrentWorkOnRoot @ react-dom.development.js:25848
+workLoop @ scheduler.development.js:266
+flushWork @ scheduler.development.js:239
+performWorkUntilDeadline @ scheduler.development.js:533
+NotificationContext.js:31 WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket&sid=h9WerLNhBl_C_MWHAAAV' failed: WebSocket is closed before the connection is established.
+doClose @ websocket.js:81
+close @ transport.js:55
+freezeTransport @ socket.js:628
+onerror @ socket.js:636
+onclose @ socket.js:644
+on @ index.js:56
+__webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
+_onClose @ socket.js:531
+close @ socket.js:448
+(anonymous) @ socket.js:469
+on @ index.js:56
+__webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
+_onDrain @ socket.js:314
+__webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
+(anonymous) @ polling.js:124
+__webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
+_onLoad @ polling-xhr.js:194
+xhr.onreadystatechange @ polling-xhr.js:129
+XMLHttpRequest.send
+_create @ polling-xhr.js:139
+Request @ polling-xhr.js:75
+request @ polling-xhr.js:253
+doWrite @ polling-xhr.js:37
+(anonymous) @ polling.js:122
+(anonymous) @ index.js:15
+encodePacket @ encodePacket.browser.js:31
+(anonymous) @ index.js:12
+encodePayload @ index.js:10
+write @ polling.js:121
+send @ transport.js:67
+flush @ socket.js:331
+_sendPacket @ socket.js:441
+write @ socket.js:394
+_packet @ manager.js:262
+packet @ socket.js:400
+_sendConnectPacket @ socket.js:424
+onopen @ socket.js:414
+__webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
+onopen @ manager.js:173
+(anonymous) @ manager.js:118
+__webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
+onOpen @ socket.js:227
+onOpen @ socket.js:569
+onHandshake @ socket.js:280
+onHandshake @ socket.js:680
+_onPacket @ socket.js:244
+__webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
+onPacket @ transport.js:99
+callback @ polling.js:79
+onData @ polling.js:82
+__webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
+_onLoad @ polling-xhr.js:193
+xhr.onreadystatechange @ polling-xhr.js:129
+XMLHttpRequest.send
+_create @ polling-xhr.js:139
+Request @ polling-xhr.js:75
+request @ polling-xhr.js:253
+doPoll @ polling-xhr.js:52
+_poll @ polling.js:59
+doOpen @ polling.js:19
+open @ transport.js:47
+_open @ socket.js:197
+SocketWithoutUpgrade @ socket.js:150
+SocketWithUpgrade @ socket.js:565
+Socket @ socket.js:725
+open @ manager.js:111
+Manager @ manager.js:38
+lookup @ index.js:25
+(anonymous) @ NotificationContext.js:31
+commitHookEffectListMount @ react-dom.development.js:23189
+commitPassiveMountOnFiber @ react-dom.development.js:24965
+commitPassiveMountEffects_complete @ react-dom.development.js:24930
+commitPassiveMountEffects_begin @ react-dom.development.js:24917
+commitPassiveMountEffects @ react-dom.development.js:24905
+flushPassiveEffectsImpl @ react-dom.development.js:27078
+flushPassiveEffects @ react-dom.development.js:27023
+performSyncWorkOnRoot @ react-dom.development.js:26115
 flushSyncCallbacks @ react-dom.development.js:12042
-(anonymous) @ react-dom.development.js:25690Understand this error
+commitRootImpl @ react-dom.development.js:26998
+commitRoot @ react-dom.development.js:26721
+finishConcurrentRender @ react-dom.development.js:26020
+performConcurrentWorkOnRoot @ react-dom.development.js:25848
+workLoop @ scheduler.development.js:266
+flushWork @ scheduler.development.js:239
+performWorkUntilDeadline @ scheduler.development.js:533
+frota:1 Error while trying to use the following icon from the Manifest: http://localhost:3000/logo192.png (Download error or resource isn't a valid image)
+ChecklistForm.js:144 🔧 initializeChecklistItems chamado
+ChecklistForm.js:145 📋 Configuracao: {motorista: Array(7), combatente: Array(0)}
+ChecklistForm.js:146 💾 ExistingItems: {motorista: {…}}
+ChecklistForm.js:152 🏷️ Processando categoria: motorista
+ChecklistForm.js:161 🔍 Item km_inicial (KM Inicial):
+ChecklistForm.js:162    - itemIdStr: km_inicial
+ChecklistForm.js:163    - existingItem: {valor: '6000', observacao: ''}
+ChecklistForm.js:164    - categoria existente: {km_inicial: {…}, combustivel_inicial: {…}}
+ChecklistForm.js:181    - resultado: {valor: '6000', observacao: ''}
+ChecklistForm.js:161 🔍 Item combustivel_inicial (Combustível Inicial (%)):
+ChecklistForm.js:162    - itemIdStr: combustivel_inicial
+ChecklistForm.js:163    - existingItem: {valor: '79.00', observacao: ''}
+ChecklistForm.js:164    - categoria existente: {km_inicial: {…}, combustivel_inicial: {…}}
+ChecklistForm.js:181    - resultado: {valor: '79.00', observacao: ''}
+ChecklistForm.js:161 🔍 Item 1 (Documentação da viatura):
+ChecklistForm.js:162    - itemIdStr: 1
+ChecklistForm.js:163    - existingItem: undefined
+ChecklistForm.js:164    - categoria existente: {km_inicial: {…}, combustivel_inicial: {…}}
+ChecklistForm.js:181    - resultado: {verificado: false, conforme: null, observacao: ''}
+ChecklistForm.js:161 🔍 Item 2 (Nível de combustível):
+ChecklistForm.js:162    - itemIdStr: 2
+ChecklistForm.js:163    - existingItem: undefined
+ChecklistForm.js:164    - categoria existente: {km_inicial: {…}, combustivel_inicial: {…}}
+ChecklistForm.js:181    - resultado: {verificado: false, conforme: null, observacao: ''}
+ChecklistForm.js:161 🔍 Item 3 (Nível de óleo do motor):
+ChecklistForm.js:162    - itemIdStr: 3
+ChecklistForm.js:163    - existingItem: undefined
+ChecklistForm.js:164    - categoria existente: {km_inicial: {…}, combustivel_inicial: {…}}
+ChecklistForm.js:181    - resultado: {verificado: false, conforme: null, observacao: ''}
+ChecklistForm.js:161 🔍 Item 4 (Funcionamento dos faróis):
+ChecklistForm.js:162    - itemIdStr: 4
+ChecklistForm.js:163    - existingItem: undefined
+ChecklistForm.js:164    - categoria existente: {km_inicial: {…}, combustivel_inicial: {…}}
+ChecklistForm.js:181    - resultado: {verificado: false, conforme: null, observacao: ''}
+ChecklistForm.js:161 🔍 Item 5 (Estado dos pneus):
+ChecklistForm.js:162    - itemIdStr: 5
+ChecklistForm.js:163    - existingItem: undefined
+ChecklistForm.js:164    - categoria existente: {km_inicial: {…}, combustivel_inicial: {…}}
+ChecklistForm.js:181    - resultado: {verificado: false, conforme: null, observacao: ''}
+ChecklistForm.js:152 🏷️ Processando categoria: combatente
+ChecklistForm.js:185 ✅ Items finais: {motorista: {…}, combatente: {…}}
+ChecklistForm.js:238 🔄 handleSubmit chamado
+ChecklistForm.js:239 📋 Checklist existente: {id: 25, viatura_id: 1, usuario_id: 1, tipo: 'diario', km_inicial: 6000, …}
+ChecklistForm.js:240 📝 FormData: {viatura_id: 1, template_id: 29, tipo: 'diario', observacoes: '', itens: {…}}
+ChecklistForm.js:241 📊 ChecklistItems: {motorista: {…}, combatente: {…}}
+ChecklistForm.js:259 📤 Dados a serem enviados: {viatura_id: 1, template_id: 29, tipo: 'diario', observacoes: '', itens: {…}, …}
+ChecklistForm.js:263 🔄 Atualizando checklist ID: 25
+checklistService.js:27 🌐 checklistService.updateChecklist chamado
+checklistService.js:28 🆔 ID: 25
+checklistService.js:29 📦 Data: {viatura_id: 1, template_id: 29, tipo: 'diario', observacoes: '', itens: {…}, …}
+checklistService.js:30 🔗 URL: /frota/checklists/25
+checklistService.js:27 🌐 checklistService.updateChecklist chamado
+checklistService.js:28 🆔 ID: 25
+checklistService.js:29 📦 Data: {viatura_id: 1, template_id: 29, tipo: 'diario', observacoes: '', itens: {…}, …}
+checklistService.js:30 🔗 URL: /frota/checklists/25

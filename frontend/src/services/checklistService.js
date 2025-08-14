@@ -17,6 +17,11 @@ const checklistService = {
     return api.get(`/frota/checklists/${id}`);
   },
 
+  // Criar checklist
+  createChecklist: (data) => {
+    return api.post('/frota/checklists', data);
+  },
+
   // Atualizar checklist
   updateChecklist: (id, data) => {
     return api.put(`/frota/checklists/${id}`, data);

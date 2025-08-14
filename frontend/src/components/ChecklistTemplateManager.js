@@ -19,9 +19,9 @@ import {
   IconButton,
   Chip,
   Alert,
-  CircularProgress,
   Switch,
-  FormControlLabel
+  FormControlLabel,
+  CircularProgress
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -31,6 +31,7 @@ import {
   StarBorder as StarBorderIcon
 } from '@mui/icons-material';
 import checklistTemplateService from '../services/checklistTemplateService';
+import TemplateFormBuilder from './TemplateFormBuilder';
 
 const ChecklistTemplateManager = ({ open, onClose, onSave, viaturas = [], template: templateProp = null }) => {
   const [templates, setTemplates] = useState([]);
@@ -39,14 +40,6 @@ const ChecklistTemplateManager = ({ open, onClose, onSave, viaturas = [], templa
   const [success, setSuccess] = useState('');
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [showForm, setShowForm] = useState(false);
-  
-  // Estados do formulário
-  const [formData, setFormData] = useState({
-    nome: '',
-    descricao: '',
-    tipo_viatura: '',
-    padrao: false
-  });
 
   const tiposViatura = [
     { value: 'ABT', label: 'Auto Bomba Tanque' },
@@ -62,12 +55,6 @@ const ChecklistTemplateManager = ({ open, onClose, onSave, viaturas = [], templa
       loadTemplates();
       if (templateProp) {
         setEditingTemplate(templateProp);
-        setFormData({
-          nome: templateProp.nome || '',
-          descricao: templateProp.descricao || '',
-          tipo_viatura: templateProp.tipo_viatura || '',
-          padrao: templateProp.padrao || false
-        });
         setShowForm(true);
       } else {
         resetForm();
@@ -89,52 +76,18 @@ const ChecklistTemplateManager = ({ open, onClose, onSave, viaturas = [], templa
   };
 
   const resetForm = () => {
-    setFormData({
-      nome: '',
-      descricao: '',
-      tipo_viatura: '',
-      padrao: false
-    });
     setEditingTemplate(null);
     setShowForm(false);
     setError('');
     setSuccess('');
   };
 
-  const handleInputChange = (field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
-  };
 
-  const handleSubmit = async () => {
+
+  const handleSaveTemplate = async (templateData) => {
     try {
       setLoading(true);
       setError('');
-      
-      if (!formData.nome || !formData.tipo_viatura) {
-        setError('Nome e tipo de viatura são obrigatórios');
-        return;
-      }
-
-      const templateData = {
-        ...formData,
-        configuracao: {
-          motorista: [
-            { id: 1, nome: 'Documentação da viatura', obrigatorio: true },
-            { id: 2, nome: 'Nível de combustível', obrigatorio: true },
-            { id: 3, nome: 'Nível de óleo do motor', obrigatorio: true },
-            { id: 4, nome: 'Funcionamento dos faróis', obrigatorio: true },
-            { id: 5, nome: 'Estado dos pneus', obrigatorio: true }
-          ],
-          socorrista: [
-            { id: 1, nome: 'Kit de primeiros socorros', obrigatorio: true },
-            { id: 2, nome: 'Equipamentos de proteção individual', obrigatorio: true },
-            { id: 3, nome: 'Sistema de comunicação', obrigatorio: true }
-          ]
-        }
-      };
 
       if (editingTemplate) {
         await checklistTemplateService.updateTemplate(editingTemplate.id, templateData);
@@ -157,12 +110,6 @@ const ChecklistTemplateManager = ({ open, onClose, onSave, viaturas = [], templa
 
   const handleEdit = (template) => {
     setEditingTemplate(template);
-    setFormData({
-      nome: template.nome,
-      descricao: template.descricao || '',
-      tipo_viatura: template.tipo_viatura,
-      padrao: template.padrao
-    });
     setShowForm(true);
   };
 
@@ -303,77 +250,12 @@ const ChecklistTemplateManager = ({ open, onClose, onSave, viaturas = [], templa
   );
 
   const renderForm = () => (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h6">
-          {editingTemplate ? 'Editar Modelo' : 'Novo Modelo'}
-        </Typography>
-        <Button onClick={() => setShowForm(false)}>Voltar</Button>
-      </Box>
-
-      <Grid container spacing={3}>
-        <Grid item xs={12}>
-          <TextField
-            fullWidth
-            label="Nome do Modelo"
-            value={formData.nome}
-            onChange={(e) => handleInputChange('nome', e.target.value)}
-            required
-          />
-        </Grid>
-        
-        <Grid item xs={12}>
-          <TextField
-            fullWidth
-            label="Descrição"
-            value={formData.descricao}
-            onChange={(e) => handleInputChange('descricao', e.target.value)}
-            multiline
-            rows={3}
-          />
-        </Grid>
-        
-        <Grid item xs={12} sm={6}>
-          <FormControl fullWidth required>
-            <InputLabel>Tipo de Viatura</InputLabel>
-            <Select
-              value={formData.tipo_viatura}
-              onChange={(e) => handleInputChange('tipo_viatura', e.target.value)}
-              label="Tipo de Viatura"
-            >
-              {tiposViatura.map((tipo) => (
-                <MenuItem key={tipo.value} value={tipo.value}>
-                  {tipo.label}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Grid>
-        
-        <Grid item xs={12} sm={6}>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={formData.padrao}
-                onChange={(e) => handleInputChange('padrao', e.target.checked)}
-              />
-            }
-            label="Definir como padrão"
-          />
-        </Grid>
-      </Grid>
-
-      <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
-        <Button
-          variant="contained"
-          onClick={handleSubmit}
-          disabled={loading || !formData.nome || !formData.tipo_viatura}
-        >
-          {loading ? <CircularProgress size={20} /> : (editingTemplate ? 'Atualizar' : 'Criar')}
-        </Button>
-        <Button onClick={() => setShowForm(false)}>Cancelar</Button>
-      </Box>
-    </Box>
+    <TemplateFormBuilder
+      template={editingTemplate}
+      onSave={handleSaveTemplate}
+      onCancel={() => setShowForm(false)}
+      loading={loading}
+    />
   );
 
   return (

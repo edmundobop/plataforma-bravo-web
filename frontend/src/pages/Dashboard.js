@@ -311,12 +311,12 @@ const Dashboard = () => {
                         }
                         secondary={
                           <Box>
-                            <div style={{ fontSize: '0.875rem', color: 'rgba(0, 0, 0, 0.6)' }}>
+                            <Typography component="span" variant="body2" color="textSecondary" display="block">
                               Por: {atividade.usuario}
-                            </div>
-                            <div style={{ fontSize: '0.75rem', color: 'rgba(0, 0, 0, 0.6)' }}>
+                            </Typography>
+                            <Typography component="span" variant="caption" color="textSecondary" display="block">
                               {formatDate(atividade.data)}
-                            </div>
+                            </Typography>
                           </Box>
                         }
                       />
