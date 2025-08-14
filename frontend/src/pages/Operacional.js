@@ -324,11 +324,15 @@ const Operacional = () => {
   };
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('pt-BR');
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return isNaN(date.getTime()) ? '-' : date.toLocaleDateString('pt-BR');
   };
 
   const formatDateTime = (dateString) => {
-    return new Date(dateString).toLocaleString('pt-BR');
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return isNaN(date.getTime()) ? '-' : date.toLocaleString('pt-BR');
   };
 
   const renderEscalasTab = () => (

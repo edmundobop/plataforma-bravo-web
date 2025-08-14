@@ -29,5 +29,8 @@
   "license": "MIT",
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "react-signature-canvas": "^1.1.0-alpha.2"
   }
 }

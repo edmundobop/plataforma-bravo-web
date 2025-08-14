@@ -325,33 +325,33 @@ const Notificacoes = () => {
   const getTypeIcon = (tipo) => {
     switch (tipo) {
       case 'success':
-        return <SuccessIcon color="success" />;
+        return { Component: SuccessIcon, color: 'success' };
       case 'warning':
-        return <WarningIcon color="warning" />;
+        return { Component: WarningIcon, color: 'warning' };
       case 'error':
-        return <ErrorIcon color="error" />;
+        return { Component: ErrorIcon, color: 'error' };
       case 'info':
       default:
-        return <InfoIcon color="info" />;
+        return { Component: InfoIcon, color: 'info' };
     }
   };
 
   const getModuleIcon = (modulo) => {
     switch (modulo) {
       case 'frota':
-        return <CarIcon />;
+        return CarIcon;
       case 'almoxarifado':
-        return <InventoryIcon />;
+        return InventoryIcon;
       case 'emprestimos':
-        return <BuildIcon />;
+        return BuildIcon;
       case 'operacional':
-        return <AssignmentIcon />;
+        return AssignmentIcon;
       case 'usuarios':
-        return <PersonIcon />;
+        return PersonIcon;
       case 'dashboard':
-        return <DashboardIcon />;
+        return DashboardIcon;
       default:
-        return <NotificationsIcon />;
+        return NotificationsIcon;
     }
   };
 
@@ -370,11 +370,15 @@ const Notificacoes = () => {
   };
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('pt-BR');
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return isNaN(date.getTime()) ? '-' : date.toLocaleDateString('pt-BR');
   };
 
   const formatDateTime = (dateString) => {
-    return new Date(dateString).toLocaleString('pt-BR');
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return isNaN(date.getTime()) ? '-' : date.toLocaleString('pt-BR');
   };
 
   const renderNotificacoesTab = () => (
@@ -494,7 +498,11 @@ const Notificacoes = () => {
                       invisible={notificacao.lida}
                     >
                       <Avatar sx={{ bgcolor: `${getTypeColor(notificacao.tipo)}.main` }}>
-                        {getTypeIcon(notificacao.tipo)}
+                        {(() => {
+                          const typeIcon = getTypeIcon(notificacao.tipo);
+                          const IconComponent = typeIcon.Component;
+                          return <IconComponent color={typeIcon.color} />;
+                        })()}
                       </Avatar>
                     </Badge>
                   </ListItemAvatar>
@@ -509,7 +517,10 @@ const Notificacoes = () => {
                         </Typography>
                         {notificacao.modulo && (
                           <Chip
-                            icon={getModuleIcon(notificacao.modulo)}
+                            icon={(() => {
+                              const IconComponent = getModuleIcon(notificacao.modulo);
+                              return IconComponent ? <IconComponent /> : null;
+                            })()}
                             label={notificacao.modulo}
                             size="small"
                             variant="outlined"
@@ -688,7 +699,11 @@ const Notificacoes = () => {
                   <ListItem key={item.tipo}>
                     <ListItemAvatar>
                       <Avatar sx={{ bgcolor: `${getTypeColor(item.tipo)}.main`, width: 32, height: 32 }}>
-                        {getTypeIcon(item.tipo)}
+                        {(() => {
+                          const typeIcon = getTypeIcon(item.tipo);
+                          const IconComponent = typeIcon.Component;
+                          return <IconComponent color={typeIcon.color} />;
+                        })()}
                       </Avatar>
                     </ListItemAvatar>
                     <ListItemText
@@ -714,7 +729,10 @@ const Notificacoes = () => {
                   <ListItem key={item.modulo}>
                     <ListItemAvatar>
                       <Avatar sx={{ bgcolor: theme.palette.secondary.main, width: 32, height: 32 }}>
-                        {getModuleIcon(item.modulo)}
+                        {(() => {
+                          const IconComponent = getModuleIcon(item.modulo);
+                          return IconComponent ? <IconComponent /> : null;
+                        })()}
                       </Avatar>
                     </ListItemAvatar>
                     <ListItemText

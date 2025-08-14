@@ -6,7 +6,24 @@ const { authenticateToken, authorizeRoles } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Aplicar autenticação em todas as rotas
+// Rota pública para autocomplete de usuários (sem autenticação)
+router.get('/autocomplete', async (req, res) => {
+  try {
+    const result = await query(
+      'SELECT id, nome, posto_graduacao FROM usuarios WHERE ativo = true ORDER BY nome'
+    );
+
+    res.json({ 
+      success: true,
+      usuarios: result.rows 
+    });
+  } catch (error) {
+    console.error('Erro ao buscar usuários para autocomplete:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Aplicar autenticação em todas as outras rotas
 router.use(authenticateToken);
 
 // Listar usuários (apenas admin e gestores)
