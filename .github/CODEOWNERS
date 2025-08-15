@@ -1,0 +1,26 @@
+# Proprietários globais do código
+* @edmundobop
+
+# Arquivos específicos
+/frontend/ @edmundobop
+/backend/ @edmundobop
+/docs/ @edmundobop
+/.github/ @edmundobop
+
+# Arquivos críticos (só você como owner)
+/package.json @edmundobop
+/backend/config/ @edmundobop
+/.env.example @edmundobop
+/README.md @edmundobop
+/FLUXO_VERSIONAMENTO.md @edmundobop
+/DIAGRAMA_COLABORACAO.md @edmundobop
+/CONFIGURACAO_AUTOMATICA.md @edmundobop
+
+# Arquivos de configuração Git
+/.gitignore @edmundobop
+/.github/ @edmundobop
+
+# Todas as pastas principais
+/frontend/components/ @edmundobop
+/backend/routes/ @edmundobop
+/frontend/src/pages/ @edmundobop

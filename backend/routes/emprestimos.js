@@ -226,7 +226,7 @@ router.get('/', async (req, res) => {
     }
 
     if (vencidos === 'true') {
-      queryText += ` AND e.data_prevista_devolucao < CURRENT_DATE AND e.status = 'ativo'`;
+      queryText += ' AND e.data_prevista_devolucao < CURRENT_DATE AND e.status = \'ativo\'';
     }
 
     queryText += `

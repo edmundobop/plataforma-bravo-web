@@ -27,6 +27,7 @@ const createTables = async () => {
     await query(`
       CREATE TABLE IF NOT EXISTS viaturas (
         id SERIAL PRIMARY KEY,
+        tipo VARCHAR(10) NOT NULL CHECK (tipo IN ('ABT', 'ABTF', 'UR', 'AV', 'ASA', 'MOB')),
         prefixo VARCHAR(20) UNIQUE NOT NULL,
         modelo VARCHAR(100) NOT NULL,
         marca VARCHAR(50) NOT NULL,
@@ -43,21 +44,79 @@ const createTables = async () => {
       )
     `);
 
+    // Adicionar colunas tipo, unidade_bm e foto se a tabela já existir, e remover coluna nome se existir
+    await query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='viaturas' AND column_name='tipo') THEN
+          ALTER TABLE viaturas ADD COLUMN tipo VARCHAR(10) CHECK (tipo IN ('ABT', 'ABTF', 'UR', 'AV', 'ASA', 'MOB'));
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='viaturas' AND column_name='nome') THEN
+          ALTER TABLE viaturas DROP COLUMN nome;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='viaturas' AND column_name='unidade_bm') THEN
+          ALTER TABLE viaturas ADD COLUMN unidade_bm VARCHAR(100);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='viaturas' AND column_name='foto') THEN
+          ALTER TABLE viaturas ADD COLUMN foto TEXT;
+        END IF;
+      END $$;
+    `);
+
     await query(`
       CREATE TABLE IF NOT EXISTS checklists_viatura (
         id SERIAL PRIMARY KEY,
         viatura_id INTEGER REFERENCES viaturas(id),
         usuario_id INTEGER REFERENCES usuarios(id),
-        tipo VARCHAR(50) NOT NULL, -- 'saida' ou 'retorno'
+        tipo VARCHAR(50) NOT NULL, -- 'diario', 'saida', 'retorno'
+        data_checklist DATE NOT NULL,
         km_inicial INTEGER,
         km_final INTEGER,
         combustivel_inicial DECIMAL(5,2),
         combustivel_final DECIMAL(5,2),
-        itens_verificados JSONB,
-        observacoes TEXT,
+        checklist_motorista JSONB, -- Itens do checklist do motorista
+        checklist_combatente JSONB, -- Itens do checklist do combatente/socorrista
+        observacoes_gerais TEXT,
+        fotos JSONB, -- Array de URLs das fotos
+        assinatura_digital TEXT, -- Base64 da assinatura
+        usuario_assinatura VARCHAR(255), -- Nome do usuário que assinou
         status VARCHAR(50) DEFAULT 'pendente',
-        data_checklist TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        data_finalizacao TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(viatura_id, data_checklist, tipo)
       )
+    `);
+
+    // Adicionar colunas se a tabela já existir
+    await query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='checklists_viatura' AND column_name='checklist_motorista') THEN
+          ALTER TABLE checklists_viatura ADD COLUMN checklist_motorista JSONB;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='checklists_viatura' AND column_name='checklist_combatente') THEN
+          ALTER TABLE checklists_viatura ADD COLUMN checklist_combatente JSONB;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='checklists_viatura' AND column_name='fotos') THEN
+          ALTER TABLE checklists_viatura ADD COLUMN fotos JSONB;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='checklists_viatura' AND column_name='assinatura_digital') THEN
+          ALTER TABLE checklists_viatura ADD COLUMN assinatura_digital TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='checklists_viatura' AND column_name='usuario_assinatura') THEN
+          ALTER TABLE checklists_viatura ADD COLUMN usuario_assinatura VARCHAR(255);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='checklists_viatura' AND column_name='data_finalizacao') THEN
+          ALTER TABLE checklists_viatura ADD COLUMN data_finalizacao TIMESTAMP;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='checklists_viatura' AND column_name='observacoes_gerais') THEN
+          ALTER TABLE checklists_viatura ADD COLUMN observacoes_gerais TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='checklists_viatura' AND column_name='template_id') THEN
+          ALTER TABLE checklists_viatura ADD COLUMN template_id INTEGER REFERENCES checklist_templates(id);
+        END IF;
+      END $$;
     `);
 
     await query(`

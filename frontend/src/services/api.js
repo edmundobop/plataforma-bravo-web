@@ -58,6 +58,7 @@ export const authService = {
 // Serviços de usuários
 export const userService = {
   getUsers: (params) => api.get('/usuarios', { params }),
+  getUsersForAutocomplete: () => api.get('/usuarios/autocomplete'),
   getUserById: (id) => api.get(`/usuarios/${id}`),
   createUser: (userData) => api.post('/usuarios', userData),
   updateUser: (id, userData) => api.put(`/usuarios/${id}`, userData),
@@ -88,10 +89,13 @@ export const frotaService = {
   getViaturas: (params) => api.get('/frota/viaturas', { params }),
   getViaturaById: (id) => api.get(`/frota/viaturas/${id}`),
   createViatura: (viaturaData) => api.post('/frota/viaturas', viaturaData),
+  updateViatura: (id, viaturaData) => api.put(`/frota/viaturas/${id}`, viaturaData),
   
   // Checklists
   getChecklists: (params) => api.get('/frota/checklists', { params }),
   createChecklist: (checklistData) => api.post('/frota/checklists', checklistData),
+  deleteChecklist: (id) => api.delete(`/frota/checklists/${id}`),
+  deleteAllChecklists: () => api.delete('/frota/checklists'),
   
   // Manutenções
   getManutencoes: (params) => api.get('/frota/manutencoes', { params }),
@@ -156,6 +160,9 @@ export const operacionalService = {
   aprovarExtra: (id, aprovado, observacoes) => 
     api.put(`/operacional/extras/${id}/aprovar`, { aprovado, observacoes }),
   
+  // Usuários
+  getUsuarios: (params) => api.get('/usuarios', { params }),
+  
   // Relatórios
   getRelatorioOperacional: () => api.get('/operacional/relatorio'),
 };
@@ -165,6 +172,7 @@ export const notificacoesService = {
   getNotificacoes: (params) => api.get('/notificacoes', { params }),
   getNotificacaoById: (id) => api.get(`/notificacoes/${id}`),
   markAsRead: (id) => api.put(`/notificacoes/${id}/lida`),
+  markAsUnread: (id) => api.put(`/notificacoes/${id}/nao-lida`),
   markAllAsRead: () => api.put('/notificacoes/todas/lidas'),
   deleteNotificacao: (id) => api.delete(`/notificacoes/${id}`),
   deleteReadNotificacoes: () => api.delete('/notificacoes/lidas'),
