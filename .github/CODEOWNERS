@@ -2,8 +2,8 @@
 * @edmundobop
 
 # Arquivos específicos
-/frontend/ @edmundobop @malthusrs
-/backend/ @edmundobop @malthusrs
+/frontend/ @edmundobop
+/backend/ @edmundobop
 /docs/ @edmundobop
 /.github/ @edmundobop
 
@@ -20,7 +20,7 @@
 /.gitignore @edmundobop
 /.github/ @edmundobop
 
-# Colaboração ativa com Malthus
-/frontend/components/ @edmundobop @malthusrs
-/backend/routes/ @edmundobop @malthusrs
-/frontend/src/pages/ @edmundobop @malthusrs
+# Todas as pastas principais
+/frontend/components/ @edmundobop
+/backend/routes/ @edmundobop
+/frontend/src/pages/ @edmundobop
