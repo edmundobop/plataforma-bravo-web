@@ -52,7 +52,6 @@ jobs:
       run: |
         cd frontend
         npm ci
-      continue-on-error: true
     
     - name: ⚙️ Setup Test Environment
       run: |
@@ -103,20 +102,15 @@ jobs:
         flags: backend
         name: backend-coverage
     
-    - name: Install frontend dependencies
-      run: |
-        cd frontend
-        npm ci
-    
-    - name: Build frontend
+    - name: 🏗️ Build Frontend
       run: |
         cd frontend
         npm run build
     
-    - name: Run frontend tests
+    - name: 🧪 Run Frontend Tests
       run: |
         cd frontend
-        npm test -- --coverage --watchAll=false
+        CI=true npm test -- --coverage --watchAll=false
 
   lint:
     runs-on: ubuntu-latest
