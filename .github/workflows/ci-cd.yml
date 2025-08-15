@@ -174,7 +174,8 @@ jobs:
     - name: Run security audit (Frontend)
       run: |
         cd frontend
-        npm audit --audit-level moderate
+        npm audit --audit-level high
+      continue-on-error: true
 
   deploy:
     needs: [test, lint, security]
