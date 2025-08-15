@@ -1,4 +1,6 @@
 # Proprietários globais do código
+# Apenas edmundobop como revisor obrigatório
+# malthusrs é colaborador mas não revisor obrigatório
 * @edmundobop
 
 # Arquivos específicos
@@ -7,7 +9,7 @@
 /docs/ @edmundobop
 /.github/ @edmundobop
 
-# Arquivos críticos (só você como owner)
+# Arquivos críticos (só edmundobop como owner)
 /package.json @edmundobop
 /backend/config/ @edmundobop
 /.env.example @edmundobop
