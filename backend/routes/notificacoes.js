@@ -150,11 +150,43 @@ router.put('/:id/lida', async (req, res) => {
   }
 });
 
+// Marcar notificação como não lida
+router.put('/:id/nao-lida', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await query(
+      'UPDATE notificacoes SET lida = false, data_leitura = NULL WHERE id = $1 AND usuario_id = $2 RETURNING *',
+      [id, req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Notificação não encontrada' });
+    }
+
+    // Emitir evento via Socket.io
+    if (req.io) {
+      req.io.to(`user_${req.user.id}`).emit('notificacao_nao_lida', {
+        id: parseInt(id),
+        usuario_id: req.user.id
+      });
+    }
+
+    res.json({
+      message: 'Notificação marcada como não lida',
+      notificacao: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Erro ao marcar notificação como não lida:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 // Marcar todas as notificações como lidas
-router.put('/marcar-todas-lidas', async (req, res) => {
+router.put('/todas/lidas', async (req, res) => {
   try {
     const result = await query(
-      'UPDATE notificacoes SET lida = true, data_leitura = CURRENT_TIMESTAMP WHERE usuario_id = $1 AND lida = false RETURNING COUNT(*)',
+      'UPDATE notificacoes SET lida = true, data_leitura = CURRENT_TIMESTAMP WHERE usuario_id = $1 AND lida = false',
       [req.user.id]
     );
 
@@ -247,6 +279,24 @@ router.post('/', authorizeRoles('admin', 'gestor'), [
   }
 });
 
+// Deletar todas as notificações lidas
+router.delete('/lidas', async (req, res) => {
+  try {
+    const result = await query(
+      'DELETE FROM notificacoes WHERE usuario_id = $1 AND lida = true',
+      [req.user.id]
+    );
+
+    res.json({
+      message: 'Todas as notificações lidas foram deletadas',
+      deletadas: result.rowCount
+    });
+  } catch (error) {
+    console.error('Erro ao deletar notificações lidas:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 // Deletar notificação
 router.delete('/:id', async (req, res) => {
   try {
@@ -268,25 +318,44 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// Deletar todas as notificações lidas
-router.delete('/lidas/todas', async (req, res) => {
+// Estatísticas de notificações
+router.get('/estatisticas', async (req, res) => {
   try {
-    const result = await query(
-      'DELETE FROM notificacoes WHERE usuario_id = $1 AND lida = true',
-      [req.user.id]
-    );
+    const result = await query(`
+      SELECT 
+        COUNT(*) as total,
+        COUNT(CASE WHEN lida = false THEN 1 END) as nao_lidas,
+        COUNT(CASE WHEN tipo = 'info' THEN 1 END) as info,
+        COUNT(CASE WHEN tipo = 'success' THEN 1 END) as success,
+        COUNT(CASE WHEN tipo = 'warning' THEN 1 END) as warning,
+        COUNT(CASE WHEN tipo = 'error' THEN 1 END) as error,
+        COUNT(CASE WHEN modulo = 'frota' THEN 1 END) as frota,
+        COUNT(CASE WHEN modulo = 'almoxarifado' THEN 1 END) as almoxarifado,
+        COUNT(CASE WHEN modulo = 'emprestimos' THEN 1 END) as emprestimos,
+        COUNT(CASE WHEN modulo = 'operacional' THEN 1 END) as operacional
+      FROM notificacoes 
+      WHERE usuario_id = $1
+    `, [req.user.id]);
+
+    // Notificações recentes (últimos 7 dias)
+    const recentesResult = await query(`
+      SELECT DATE(created_at) as data, COUNT(*) as quantidade
+      FROM notificacoes 
+      WHERE usuario_id = $1 AND created_at >= CURRENT_DATE - INTERVAL '7 days'
+      GROUP BY DATE(created_at)
+      ORDER BY data DESC
+    `, [req.user.id]);
 
     res.json({
-      message: 'Todas as notificações lidas foram deletadas',
-      deletadas: result.rowCount
+      resumo: result.rows[0],
+      ultimos_7_dias: recentesResult.rows
     });
   } catch (error) {
-    console.error('Erro ao deletar notificações lidas:', error);
+    console.error('Erro ao buscar estatísticas:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
 
-// Estatísticas de notificações
 router.get('/stats/resumo', async (req, res) => {
   try {
     const result = await query(`

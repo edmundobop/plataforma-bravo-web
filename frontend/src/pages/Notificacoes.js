@@ -131,7 +131,20 @@ const Notificacoes = () => {
   const loadNotificacoes = async () => {
     try {
       setNotificacoesLoading(true);
-      const response = await notificacoesService.getNotificacoes(filters);
+      
+      // Mapear o filtro de status para o formato esperado pelo backend
+      const params = { ...filters };
+      if (filters.status === 'lida') {
+        params.lida = 'true';
+        delete params.status;
+      } else if (filters.status === 'nao_lida') {
+        params.lida = 'false';
+        delete params.status;
+      } else {
+        delete params.status;
+      }
+      
+      const response = await notificacoesService.getNotificacoes(params);
       setNotificacoes(response.data.notificacoes || []);
       setPagination(response.data.pagination || {});
     } catch (err) {
@@ -166,7 +179,7 @@ const Notificacoes = () => {
     setSuccess('');
   };
 
-  const handleOpenDialog = (type, notification = null) => {
+  const handleOpenDialog = async (type, notification = null) => {
     setDialogType(type);
     setSelectedNotification(notification);
     
@@ -179,6 +192,15 @@ const Notificacoes = () => {
         usuario_id: '',
         broadcast: false,
       });
+    }
+    
+    // Marcar automaticamente como lida quando visualizar
+    if (type === 'view' && notification && !notification.lida) {
+      try {
+        await handleMarkAsRead(notification.id);
+      } catch (err) {
+        console.error('Erro ao marcar notificação como lida:', err);
+      }
     }
     
     setDialogOpen(true);
@@ -251,6 +273,18 @@ const Notificacoes = () => {
     }
   };
 
+  const handleMarkAsUnread = async (notificationId) => {
+    try {
+      await notificacoesService.markAsUnread(notificationId);
+      loadNotificacoes();
+      loadEstatisticas();
+      setSuccess('Notificação marcada como não lida');
+    } catch (err) {
+      console.error('Erro ao marcar como não lida:', err);
+      setError('Erro ao marcar notificação como não lida');
+    }
+  };
+
   const handleMarkAllAsRead = async () => {
     try {
       await notificacoesService.markAllAsRead();
@@ -278,7 +312,7 @@ const Notificacoes = () => {
 
   const handleDeleteReadNotifications = async () => {
     try {
-      await notificacoesService.deleteReadNotifications();
+      await notificacoesService.deleteReadNotificacoes();
       loadNotificacoes();
       loadEstatisticas();
       setSuccess('Notificações lidas excluídas com sucesso');
@@ -291,33 +325,33 @@ const Notificacoes = () => {
   const getTypeIcon = (tipo) => {
     switch (tipo) {
       case 'success':
-        return <SuccessIcon color="success" />;
+        return { Component: SuccessIcon, color: 'success' };
       case 'warning':
-        return <WarningIcon color="warning" />;
+        return { Component: WarningIcon, color: 'warning' };
       case 'error':
-        return <ErrorIcon color="error" />;
+        return { Component: ErrorIcon, color: 'error' };
       case 'info':
       default:
-        return <InfoIcon color="info" />;
+        return { Component: InfoIcon, color: 'info' };
     }
   };
 
   const getModuleIcon = (modulo) => {
     switch (modulo) {
       case 'frota':
-        return <CarIcon />;
+        return CarIcon;
       case 'almoxarifado':
-        return <InventoryIcon />;
+        return InventoryIcon;
       case 'emprestimos':
-        return <BuildIcon />;
+        return BuildIcon;
       case 'operacional':
-        return <AssignmentIcon />;
+        return AssignmentIcon;
       case 'usuarios':
-        return <PersonIcon />;
+        return PersonIcon;
       case 'dashboard':
-        return <DashboardIcon />;
+        return DashboardIcon;
       default:
-        return <NotificationsIcon />;
+        return NotificationsIcon;
     }
   };
 
@@ -336,11 +370,15 @@ const Notificacoes = () => {
   };
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('pt-BR');
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return isNaN(date.getTime()) ? '-' : date.toLocaleDateString('pt-BR');
   };
 
   const formatDateTime = (dateString) => {
-    return new Date(dateString).toLocaleString('pt-BR');
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return isNaN(date.getTime()) ? '-' : date.toLocaleString('pt-BR');
   };
 
   const renderNotificacoesTab = () => (
@@ -443,11 +481,14 @@ const Notificacoes = () => {
             notificacoes.map((notificacao, index) => (
               <React.Fragment key={notificacao.id}>
                 <ListItem
+                  button
+                  onClick={() => handleOpenDialog('view', notificacao)}
                   sx={{
                     bgcolor: notificacao.lida ? 'transparent' : 'action.hover',
                     '&:hover': {
                       bgcolor: 'action.selected',
                     },
+                    cursor: 'pointer',
                   }}
                 >
                   <ListItemAvatar>
@@ -457,7 +498,11 @@ const Notificacoes = () => {
                       invisible={notificacao.lida}
                     >
                       <Avatar sx={{ bgcolor: `${getTypeColor(notificacao.tipo)}.main` }}>
-                        {getTypeIcon(notificacao.tipo)}
+                        {(() => {
+                          const typeIcon = getTypeIcon(notificacao.tipo);
+                          const IconComponent = typeIcon.Component;
+                          return <IconComponent color={typeIcon.color} />;
+                        })()}
                       </Avatar>
                     </Badge>
                   </ListItemAvatar>
@@ -472,7 +517,10 @@ const Notificacoes = () => {
                         </Typography>
                         {notificacao.modulo && (
                           <Chip
-                            icon={getModuleIcon(notificacao.modulo)}
+                            icon={(() => {
+                              const IconComponent = getModuleIcon(notificacao.modulo);
+                              return IconComponent ? <IconComponent /> : null;
+                            })()}
                             label={notificacao.modulo}
                             size="small"
                             variant="outlined"
@@ -651,7 +699,11 @@ const Notificacoes = () => {
                   <ListItem key={item.tipo}>
                     <ListItemAvatar>
                       <Avatar sx={{ bgcolor: `${getTypeColor(item.tipo)}.main`, width: 32, height: 32 }}>
-                        {getTypeIcon(item.tipo)}
+                        {(() => {
+                          const typeIcon = getTypeIcon(item.tipo);
+                          const IconComponent = typeIcon.Component;
+                          return <IconComponent color={typeIcon.color} />;
+                        })()}
                       </Avatar>
                     </ListItemAvatar>
                     <ListItemText
@@ -677,7 +729,10 @@ const Notificacoes = () => {
                   <ListItem key={item.modulo}>
                     <ListItemAvatar>
                       <Avatar sx={{ bgcolor: theme.palette.secondary.main, width: 32, height: 32 }}>
-                        {getModuleIcon(item.modulo)}
+                        {(() => {
+                          const IconComponent = getModuleIcon(item.modulo);
+                          return IconComponent ? <IconComponent /> : null;
+                        })()}
                       </Avatar>
                     </ListItemAvatar>
                     <ListItemText
@@ -767,13 +822,21 @@ const Notificacoes = () => {
           <ViewIcon sx={{ mr: 1 }} />
           Visualizar
         </MenuItem>
-        {!selectedNotification?.lida && (
+        {!selectedNotification?.lida ? (
           <MenuItem onClick={() => {
             handleMarkAsRead(selectedNotification.id);
             setAnchorEl(null);
           }}>
             <MarkReadIcon sx={{ mr: 1 }} />
             Marcar como Lida
+          </MenuItem>
+        ) : (
+          <MenuItem onClick={() => {
+            handleMarkAsUnread(selectedNotification.id);
+            setAnchorEl(null);
+          }}>
+            <MarkUnreadIcon sx={{ mr: 1 }} />
+            Marcar como Não Lida
           </MenuItem>
         )}
         <MenuItem 

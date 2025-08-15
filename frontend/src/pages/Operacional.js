@@ -60,7 +60,7 @@ import {
   Group as GroupIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
-import { operacionalService } from '../services/api';
+import { operacionalService, userService } from '../services/api';
 
 const Operacional = () => {
   const theme = useTheme();
@@ -198,7 +198,7 @@ const Operacional = () => {
   const loadExtras = async () => {
     try {
       setExtrasLoading(true);
-      const response = await operacionalService.getExtras(extrasFilters);
+      const response = await operacionalService.getServicosExtra(extrasFilters);
       setExtras(response.data.extras || []);
       setExtrasPagination(response.data.pagination || {});
     } catch (err) {
@@ -212,7 +212,7 @@ const Operacional = () => {
   const loadUsuarios = async () => {
     try {
       setUsuariosLoading(true);
-      const response = await operacionalService.getUsuarios(usuariosFilters);
+      const response = await userService.getUsuarios(usuariosFilters);
       setUsuarios(response.data.usuarios || []);
       setUsuariosPagination(response.data.pagination || {});
     } catch (err) {
@@ -324,11 +324,15 @@ const Operacional = () => {
   };
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('pt-BR');
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return isNaN(date.getTime()) ? '-' : date.toLocaleDateString('pt-BR');
   };
 
   const formatDateTime = (dateString) => {
-    return new Date(dateString).toLocaleString('pt-BR');
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return isNaN(date.getTime()) ? '-' : date.toLocaleString('pt-BR');
   };
 
   const renderEscalasTab = () => (

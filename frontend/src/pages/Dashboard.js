@@ -62,11 +62,11 @@ const Dashboard = () => {
   const getAlertIcon = (tipo) => {
     switch (tipo) {
       case 'error':
-        return <ErrorIcon color="error" />;
+        return { Component: ErrorIcon, color: 'error' };
       case 'warning':
-        return <WarningIcon color="warning" />;
+        return { Component: WarningIcon, color: 'warning' };
       default:
-        return <InfoIcon color="info" />;
+        return { Component: InfoIcon, color: 'info' };
     }
   };
 
@@ -242,29 +242,32 @@ const Dashboard = () => {
               
               {alertas && alertas.length > 0 ? (
                 <List>
-                  {alertas.map((alerta, index) => (
-                    <ListItem key={index} sx={{ px: 0 }}>
-                      <ListItemIcon>
-                        {getAlertIcon(alerta.tipo)}
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={
-                          <Box display="flex" alignItems="center" gap={1}>
-                            <Typography variant="subtitle2">
-                              {alerta.titulo}
-                            </Typography>
-                            <Chip 
-                              label={alerta.modulo} 
-                              size="small" 
-                              color={getAlertColor(alerta.tipo)}
-                              variant="outlined"
-                            />
-                          </Box>
-                        }
-                        secondary={alerta.mensagem}
-                      />
-                    </ListItem>
-                  ))}
+                  {alertas.map((alerta, index) => {
+                    const { Component: IconComponent, color } = getAlertIcon(alerta.tipo);
+                    return (
+                      <ListItem key={index} sx={{ px: 0 }}>
+                        <ListItemIcon>
+                          {IconComponent ? <IconComponent color={color} /> : null}
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>
+                                {alerta.titulo}
+                              </span>
+                              <Chip 
+                                label={alerta.modulo} 
+                                size="small" 
+                                color={getAlertColor(alerta.tipo)}
+                                variant="outlined"
+                              />
+                            </div>
+                          }
+                          secondary={alerta.mensagem}
+                        />
+                      </ListItem>
+                    );
+                  })}
                 </List>
               ) : (
                 <Box display="flex" alignItems="center" justifyContent="center" py={4}>
@@ -296,9 +299,9 @@ const Dashboard = () => {
                       <ListItemText
                         primary={
                           <Box display="flex" alignItems="center" gap={1}>
-                            <Typography variant="subtitle2">
+                            <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>
                               {atividade.descricao}
-                            </Typography>
+                            </span>
                             <Chip 
                               label={atividade.tipo} 
                               size="small" 
@@ -308,10 +311,10 @@ const Dashboard = () => {
                         }
                         secondary={
                           <Box>
-                            <Typography variant="body2" color="textSecondary">
+                            <Typography component="span" variant="body2" color="textSecondary" display="block">
                               Por: {atividade.usuario}
                             </Typography>
-                            <Typography variant="caption" color="textSecondary">
+                            <Typography component="span" variant="caption" color="textSecondary" display="block">
                               {formatDate(atividade.data)}
                             </Typography>
                           </Box>

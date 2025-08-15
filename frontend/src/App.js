@@ -100,7 +100,10 @@ function App() {
       <CssBaseline />
       <AuthProvider>
         <NotificationProvider>
-          <Router>
+          <Router future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true
+          }}>
             <Routes>
               {/* Rota de login */}
               <Route path="/login" element={<Login />} />
