@@ -160,6 +160,9 @@ export const operacionalService = {
   aprovarExtra: (id, aprovado, observacoes) => 
     api.put(`/operacional/extras/${id}/aprovar`, { aprovado, observacoes }),
   
+  // Usuários
+  getUsuarios: (params) => api.get('/usuarios', { params }),
+  
   // Relatórios
   getRelatorioOperacional: () => api.get('/operacional/relatorio'),
 };

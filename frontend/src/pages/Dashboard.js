@@ -251,7 +251,7 @@ const Dashboard = () => {
                         </ListItemIcon>
                         <ListItemText
                           primary={
-                            <Box display="flex" alignItems="center" gap={1}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>
                                 {alerta.titulo}
                               </span>
@@ -261,7 +261,7 @@ const Dashboard = () => {
                                 color={getAlertColor(alerta.tipo)}
                                 variant="outlined"
                               />
-                            </Box>
+                            </div>
                           }
                           secondary={alerta.mensagem}
                         />

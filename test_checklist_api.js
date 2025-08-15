@@ -6,8 +6,8 @@ async function testChecklistAPI() {
   try {
     // Login
     const loginResponse = await axios.post('http://localhost:5000/api/auth/login', {
-      email: process.env.DB_USER + '@bombeiros.gov.br',
-      senha: process.env.DB_PASSWORD
+      email: 'admin@cbmgo.gov.br',
+      senha: 'admin123'
     });
     
     const token = loginResponse.data.token;

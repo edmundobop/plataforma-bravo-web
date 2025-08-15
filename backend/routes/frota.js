@@ -536,6 +536,14 @@ router.get('/checklists/:id', async (req, res) => {
 
     const checklist = result.rows[0];
     
+    // Log de debug para ver os dados brutos do banco
+    console.log('=== DEBUG CARREGAMENTO CHECKLIST ===');
+    console.log('ID do checklist:', id);
+    console.log('checklist_motorista (bruto):', checklist.checklist_motorista);
+    console.log('checklist_combatente (bruto):', checklist.checklist_combatente);
+    console.log('km_inicial:', checklist.km_inicial);
+    console.log('combustivel_inicial:', checklist.combustivel_inicial);
+    
     // Parse JSON fields e construir estrutura completa de itens
     checklist.itens = {};
     
@@ -584,9 +592,11 @@ router.get('/checklists/:id', async (req, res) => {
     
     // Parse checklist_motorista
     checklist.itens.motorista = processNestedJsonData(checklist.checklist_motorista, 'motorista');
+    console.log('Dados processados motorista:', JSON.stringify(checklist.itens.motorista, null, 2));
     
     // Parse checklist_combatente
     checklist.itens.combatente = processNestedJsonData(checklist.checklist_combatente, 'combatente');
+    console.log('Dados processados combatente:', JSON.stringify(checklist.itens.combatente, null, 2));
     
     // Garantir que existe pelo menos a categoria motorista
     if (!checklist.itens.motorista) {
@@ -615,6 +625,9 @@ router.get('/checklists/:id', async (req, res) => {
       }
     }
 
+    console.log('Dados finais enviados para o frontend:', JSON.stringify(checklist.itens, null, 2));
+    console.log('=== FIM DEBUG CARREGAMENTO ===');
+    
     res.json(checklist);
   } catch (error) {
     console.error('Erro ao buscar checklist:', error);
@@ -692,8 +705,8 @@ router.put('/checklists/:id', [
        WHERE id = $10
        RETURNING *`,
       [
-        itens ? JSON.stringify(itens) : (checklist_motorista ? JSON.stringify(checklist_motorista) : null),
-        checklist_combatente ? JSON.stringify(checklist_combatente) : null,
+        itens?.motorista ? JSON.stringify(itens.motorista) : (checklist_motorista ? JSON.stringify(checklist_motorista) : null),
+        itens?.combatente ? JSON.stringify(itens.combatente) : (checklist_combatente ? JSON.stringify(checklist_combatente) : null),
         observacoes || observacoes_gerais,
         fotos ? JSON.stringify(fotos) : null,
         kmInicialFinal,
@@ -844,8 +857,8 @@ router.post('/checklists', [
       [
         viatura_id, req.user.id, tipoFinal, dataFinal, kmInicialFinal, km_final,
         combustivelInicialFinal, combustivel_final,
-        itens ? JSON.stringify(itens) : (checklist_motorista ? JSON.stringify(checklist_motorista) : null),
-        checklist_combatente ? JSON.stringify(checklist_combatente) : null,
+        itens?.motorista ? JSON.stringify(itens.motorista) : (checklist_motorista ? JSON.stringify(checklist_motorista) : null),
+        itens?.combatente ? JSON.stringify(itens.combatente) : (checklist_combatente ? JSON.stringify(checklist_combatente) : null),
         observacoes || observacoes_gerais,
         template_id || null
       ]

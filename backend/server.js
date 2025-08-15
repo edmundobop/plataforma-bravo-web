@@ -37,6 +37,12 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, {
 }));
 
 // Socket.io para notificações em tempo real
+io.use((socket, next) => {
+  // Permitir conexão sem autenticação por enquanto
+  // TODO: Implementar autenticação JWT para Socket.io
+  next();
+});
+
 io.on('connection', (socket) => {
   console.log('Cliente conectado:', socket.id);
   

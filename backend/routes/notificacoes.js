@@ -319,6 +319,43 @@ router.delete('/:id', async (req, res) => {
 });
 
 // Estatísticas de notificações
+router.get('/estatisticas', async (req, res) => {
+  try {
+    const result = await query(`
+      SELECT 
+        COUNT(*) as total,
+        COUNT(CASE WHEN lida = false THEN 1 END) as nao_lidas,
+        COUNT(CASE WHEN tipo = 'info' THEN 1 END) as info,
+        COUNT(CASE WHEN tipo = 'success' THEN 1 END) as success,
+        COUNT(CASE WHEN tipo = 'warning' THEN 1 END) as warning,
+        COUNT(CASE WHEN tipo = 'error' THEN 1 END) as error,
+        COUNT(CASE WHEN modulo = 'frota' THEN 1 END) as frota,
+        COUNT(CASE WHEN modulo = 'almoxarifado' THEN 1 END) as almoxarifado,
+        COUNT(CASE WHEN modulo = 'emprestimos' THEN 1 END) as emprestimos,
+        COUNT(CASE WHEN modulo = 'operacional' THEN 1 END) as operacional
+      FROM notificacoes 
+      WHERE usuario_id = $1
+    `, [req.user.id]);
+
+    // Notificações recentes (últimos 7 dias)
+    const recentesResult = await query(`
+      SELECT DATE(created_at) as data, COUNT(*) as quantidade
+      FROM notificacoes 
+      WHERE usuario_id = $1 AND created_at >= CURRENT_DATE - INTERVAL '7 days'
+      GROUP BY DATE(created_at)
+      ORDER BY data DESC
+    `, [req.user.id]);
+
+    res.json({
+      resumo: result.rows[0],
+      ultimos_7_dias: recentesResult.rows
+    });
+  } catch (error) {
+    console.error('Erro ao buscar estatísticas:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 router.get('/stats/resumo', async (req, res) => {
   try {
     const result = await query(`

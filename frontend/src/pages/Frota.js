@@ -357,50 +357,11 @@ const Frota = () => {
     setSelectedItem(null);
   };
 
-  const handleSaveTemplate = async (templateData) => {
-    try {
-      setLoading(true);
-      
-      // Encontrar a viatura selecionada para obter o tipo
-      const viaturaSelecionada = viaturas.find(v => v.id === parseInt(templateData.veiculo_id));
-      if (!viaturaSelecionada) {
-        throw new Error('Viatura não encontrada');
-      }
-      
-      // Transformar os dados para o formato esperado pelo backend
-      const backendData = {
-        nome: templateData.nome,
-        descricao: templateData.descricao || '',
-        tipo_viatura: viaturaSelecionada.tipo,
-        configuracao: {
-          veiculo_id: templateData.veiculo_id,
-          km_inicial: templateData.km_inicial,
-          combustivel_inicial: templateData.combustivel_inicial,
-          motorista: templateData.motorista,
-          combatente: templateData.combatente
-        }
-      };
-      
-      if (selectedItem && selectedItem.id) {
-        // Editando modelo existente
-        await checklistService.updateTemplate(selectedItem.id, backendData);
-      } else {
-        // Criando novo modelo
-        await checklistService.createTemplate(backendData);
-      }
-      
-      // Fechar o gerenciador de modelos
-      setTemplateManagerOpen(false);
-      setSelectedItem(null);
-      
-      // Recarregar modelos
-      await loadTemplates();
-    } catch (error) {
-      console.error('Erro ao salvar modelo:', error);
-      setError('Erro ao salvar modelo: ' + (error.response?.data?.message || error.message));
-    } finally {
-      setLoading(false);
-    }
+  const handleTemplateManagerSave = async () => {
+    // Fechar o gerenciador de modelos e recarregar a lista
+    setTemplateManagerOpen(false);
+    setSelectedItem(null);
+    await loadTemplates();
   };
 
   const handleEditTemplate = (template) => {
@@ -1547,7 +1508,7 @@ const Frota = () => {
       <ChecklistTemplateManager
         open={templateManagerOpen}
         onClose={handleCloseTemplateManager}
-        onSave={handleSaveTemplate}
+        onSave={handleTemplateManagerSave}
         viaturas={viaturas}
         template={selectedItem}
       />

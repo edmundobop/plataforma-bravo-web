@@ -1,4 +1,4 @@
-NotificationContext.js:31 WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket&sid=We838fgK7CNtgL5BAAAU' failed: WebSocket is closed before the connection is established.
+NotificationContext.js:31 WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket&sid=nUvFkZD3Py6nB_txAAAZ' failed: WebSocket is closed before the connection is established.
 doClose @ websocket.js:81
 close @ transport.js:55
 freezeTransport @ socket.js:628
@@ -84,7 +84,7 @@ performConcurrentWorkOnRoot @ react-dom.development.js:25848
 workLoop @ scheduler.development.js:266
 flushWork @ scheduler.development.js:239
 performWorkUntilDeadline @ scheduler.development.js:533
-NotificationContext.js:31 WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket&sid=h9WerLNhBl_C_MWHAAAV' failed: WebSocket is closed before the connection is established.
+NotificationContext.js:31 WebSocket connection to 'ws://localhost:5000/socket.io/?EIO=4&transport=websocket&sid=hFtulJZ59Rx146moAAAa' failed: WebSocket is closed before the connection is established.
 doClose @ websocket.js:81
 close @ transport.js:55
 freezeTransport @ socket.js:628
@@ -94,47 +94,88 @@ on @ index.js:56
 __webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
 _onClose @ socket.js:531
 close @ socket.js:448
-(anonymous) @ socket.js:469
-on @ index.js:56
+close @ socket.js:477
+onclose @ manager.js:305
+_close @ manager.js:283
+_destroy @ manager.js:251
+destroy @ socket.js:632
+onpacket @ socket.js:505
 __webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
-_onDrain @ socket.js:314
+(anonymous) @ manager.js:209
+Promise.then
+(anonymous) @ globals.js:4
+ondecoded @ manager.js:208
 __webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
-(anonymous) @ polling.js:124
+add @ index.js:146
+ondata @ manager.js:195
 __webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
-_onLoad @ polling-xhr.js:194
+_onPacket @ socket.js:259
+__webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
+onPacket @ transport.js:99
+callback @ polling.js:79
+onData @ polling.js:82
+__webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
+_onLoad @ polling-xhr.js:193
 xhr.onreadystatechange @ polling-xhr.js:129
 XMLHttpRequest.send
 _create @ polling-xhr.js:139
 Request @ polling-xhr.js:75
 request @ polling-xhr.js:253
-doWrite @ polling-xhr.js:37
-(anonymous) @ polling.js:122
-(anonymous) @ index.js:15
-encodePacket @ encodePacket.browser.js:31
-(anonymous) @ index.js:12
-encodePayload @ index.js:10
-write @ polling.js:121
-send @ transport.js:67
-flush @ socket.js:331
-_sendPacket @ socket.js:441
-write @ socket.js:394
-_packet @ manager.js:262
-packet @ socket.js:400
-_sendConnectPacket @ socket.js:424
-onopen @ socket.js:414
+doPoll @ polling-xhr.js:52
+_poll @ polling.js:59
+onData @ polling.js:89
 __webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
-onopen @ manager.js:173
-(anonymous) @ manager.js:118
+_onLoad @ polling-xhr.js:193
+xhr.onreadystatechange @ polling-xhr.js:129
+XMLHttpRequest.send
+_create @ polling-xhr.js:139
+Request @ polling-xhr.js:75
+request @ polling-xhr.js:253
+doPoll @ polling-xhr.js:52
+_poll @ polling.js:59
+doOpen @ polling.js:19
+open @ transport.js:47
+_open @ socket.js:197
+SocketWithoutUpgrade @ socket.js:150
+SocketWithUpgrade @ socket.js:565
+Socket @ socket.js:725
+open @ manager.js:111
+Manager @ manager.js:38
+lookup @ index.js:25
+(anonymous) @ NotificationContext.js:31
+commitHookEffectListMount @ react-dom.development.js:23189
+commitPassiveMountOnFiber @ react-dom.development.js:24965
+commitPassiveMountEffects_complete @ react-dom.development.js:24930
+commitPassiveMountEffects_begin @ react-dom.development.js:24917
+commitPassiveMountEffects @ react-dom.development.js:24905
+flushPassiveEffectsImpl @ react-dom.development.js:27078
+flushPassiveEffects @ react-dom.development.js:27023
+performSyncWorkOnRoot @ react-dom.development.js:26115
+flushSyncCallbacks @ react-dom.development.js:12042
+commitRootImpl @ react-dom.development.js:26998
+commitRoot @ react-dom.development.js:26721
+finishConcurrentRender @ react-dom.development.js:26020
+performConcurrentWorkOnRoot @ react-dom.development.js:25848
+workLoop @ scheduler.development.js:266
+flushWork @ scheduler.development.js:239
+performWorkUntilDeadline @ scheduler.development.js:533
+NotificationContext.js:31  GET http://localhost:5000/socket.io/?EIO=4&transport=polling&t=2q0u852o&sid=hFtulJZ59Rx146moAAAa 400 (Bad Request)
+_create @ polling-xhr.js:139
+Request @ polling-xhr.js:75
+request @ polling-xhr.js:253
+doPoll @ polling-xhr.js:52
+_poll @ polling.js:59
+onData @ polling.js:89
 __webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
-onOpen @ socket.js:227
-onOpen @ socket.js:569
-onHandshake @ socket.js:280
-onHandshake @ socket.js:680
-_onPacket @ socket.js:244
-__webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
-onPacket @ transport.js:99
-callback @ polling.js:79
-onData @ polling.js:82
+_onLoad @ polling-xhr.js:193
+xhr.onreadystatechange @ polling-xhr.js:129
+XMLHttpRequest.send
+_create @ polling-xhr.js:139
+Request @ polling-xhr.js:75
+request @ polling-xhr.js:253
+doPoll @ polling-xhr.js:52
+_poll @ polling.js:59
+onData @ polling.js:89
 __webpack_modules__../node_modules/@socket.io/component-emitter/lib/esm/index.js.Emitter.emit @ index.js:136
 _onLoad @ polling-xhr.js:193
 xhr.onreadystatechange @ polling-xhr.js:129
@@ -171,58 +212,6 @@ workLoop @ scheduler.development.js:266
 flushWork @ scheduler.development.js:239
 performWorkUntilDeadline @ scheduler.development.js:533
 frota:1 Error while trying to use the following icon from the Manifest: http://localhost:3000/logo192.png (Download error or resource isn't a valid image)
-ChecklistForm.js:144 🔧 initializeChecklistItems chamado
-ChecklistForm.js:145 📋 Configuracao: {motorista: Array(7), combatente: Array(0)}
-ChecklistForm.js:146 💾 ExistingItems: {motorista: {…}}
-ChecklistForm.js:152 🏷️ Processando categoria: motorista
-ChecklistForm.js:161 🔍 Item km_inicial (KM Inicial):
-ChecklistForm.js:162    - itemIdStr: km_inicial
-ChecklistForm.js:163    - existingItem: {valor: '6000', observacao: ''}
-ChecklistForm.js:164    - categoria existente: {km_inicial: {…}, combustivel_inicial: {…}}
-ChecklistForm.js:181    - resultado: {valor: '6000', observacao: ''}
-ChecklistForm.js:161 🔍 Item combustivel_inicial (Combustível Inicial (%)):
-ChecklistForm.js:162    - itemIdStr: combustivel_inicial
-ChecklistForm.js:163    - existingItem: {valor: '79.00', observacao: ''}
-ChecklistForm.js:164    - categoria existente: {km_inicial: {…}, combustivel_inicial: {…}}
-ChecklistForm.js:181    - resultado: {valor: '79.00', observacao: ''}
-ChecklistForm.js:161 🔍 Item 1 (Documentação da viatura):
-ChecklistForm.js:162    - itemIdStr: 1
-ChecklistForm.js:163    - existingItem: undefined
-ChecklistForm.js:164    - categoria existente: {km_inicial: {…}, combustivel_inicial: {…}}
-ChecklistForm.js:181    - resultado: {verificado: false, conforme: null, observacao: ''}
-ChecklistForm.js:161 🔍 Item 2 (Nível de combustível):
-ChecklistForm.js:162    - itemIdStr: 2
-ChecklistForm.js:163    - existingItem: undefined
-ChecklistForm.js:164    - categoria existente: {km_inicial: {…}, combustivel_inicial: {…}}
-ChecklistForm.js:181    - resultado: {verificado: false, conforme: null, observacao: ''}
-ChecklistForm.js:161 🔍 Item 3 (Nível de óleo do motor):
-ChecklistForm.js:162    - itemIdStr: 3
-ChecklistForm.js:163    - existingItem: undefined
-ChecklistForm.js:164    - categoria existente: {km_inicial: {…}, combustivel_inicial: {…}}
-ChecklistForm.js:181    - resultado: {verificado: false, conforme: null, observacao: ''}
-ChecklistForm.js:161 🔍 Item 4 (Funcionamento dos faróis):
-ChecklistForm.js:162    - itemIdStr: 4
-ChecklistForm.js:163    - existingItem: undefined
-ChecklistForm.js:164    - categoria existente: {km_inicial: {…}, combustivel_inicial: {…}}
-ChecklistForm.js:181    - resultado: {verificado: false, conforme: null, observacao: ''}
-ChecklistForm.js:161 🔍 Item 5 (Estado dos pneus):
-ChecklistForm.js:162    - itemIdStr: 5
-ChecklistForm.js:163    - existingItem: undefined
-ChecklistForm.js:164    - categoria existente: {km_inicial: {…}, combustivel_inicial: {…}}
-ChecklistForm.js:181    - resultado: {verificado: false, conforme: null, observacao: ''}
-ChecklistForm.js:152 🏷️ Processando categoria: combatente
-ChecklistForm.js:185 ✅ Items finais: {motorista: {…}, combatente: {…}}
-ChecklistForm.js:238 🔄 handleSubmit chamado
-ChecklistForm.js:239 📋 Checklist existente: {id: 25, viatura_id: 1, usuario_id: 1, tipo: 'diario', km_inicial: 6000, …}
-ChecklistForm.js:240 📝 FormData: {viatura_id: 1, template_id: 29, tipo: 'diario', observacoes: '', itens: {…}}
-ChecklistForm.js:241 📊 ChecklistItems: {motorista: {…}, combatente: {…}}
-ChecklistForm.js:259 📤 Dados a serem enviados: {viatura_id: 1, template_id: 29, tipo: 'diario', observacoes: '', itens: {…}, …}
-ChecklistForm.js:263 🔄 Atualizando checklist ID: 25
-checklistService.js:27 🌐 checklistService.updateChecklist chamado
-checklistService.js:28 🆔 ID: 25
-checklistService.js:29 📦 Data: {viatura_id: 1, template_id: 29, tipo: 'diario', observacoes: '', itens: {…}, …}
-checklistService.js:30 🔗 URL: /frota/checklists/25
-checklistService.js:27 🌐 checklistService.updateChecklist chamado
-checklistService.js:28 🆔 ID: 25
-checklistService.js:29 📦 Data: {viatura_id: 1, template_id: 29, tipo: 'diario', observacoes: '', itens: {…}, …}
-checklistService.js:30 🔗 URL: /frota/checklists/25
+frota:1 Blocked aria-hidden on an element because its descendant retained focus. The focus must not be hidden from assistive technology users. Avoid using aria-hidden on a focused element or its ancestor. Consider using the inert attribute instead, which will also prevent focus. For more details, see the aria-hidden section of the WAI-ARIA specification at https://w3c.github.io/aria/#aria-hidden.
+Element with focus: <button.MuiButtonBase-root MuiButton-root MuiButton-contained MuiButton-containedPrimary MuiButton-sizeMedium MuiButton-containedSizeMedium MuiButton-colorPrimary MuiButton-fullWidth MuiButton-root MuiButton-contained MuiButton-containedPrimary MuiButton-sizeMedium MuiButton-containedSizeMedium MuiButton-colorPrimary MuiButton-fullWidth css-12u9vjz-MuiButtonBase-root-MuiButton-root>
+Ancestor with aria-hidden: <div#root> <div id=​"root" aria-hidden=​"true">​…​</div>​

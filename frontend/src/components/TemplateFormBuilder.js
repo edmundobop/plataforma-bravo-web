@@ -65,10 +65,7 @@ const TemplateFormBuilder = ({ template, onSave, onCancel, loading = false }) =>
 
   const tiposCampo = [
     { value: 'text', label: 'Texto' },
-    { value: 'number', label: 'Número' },
-    { value: 'select', label: 'Lista de Opções' },
-    { value: 'checkbox', label: 'Checkbox' },
-    { value: 'textarea', label: 'Texto Longo' }
+    { value: 'number', label: 'Número' }
   ];
 
   // Campos obrigatórios que não podem ser removidos
@@ -177,7 +174,7 @@ const TemplateFormBuilder = ({ template, onSave, onCancel, loading = false }) =>
       ...formData,
       configuracao
     };
-
+    
     onSave(templateData);
   };
 
