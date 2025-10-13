@@ -174,16 +174,16 @@ git merge release/v1.1.0
 
 ## 🛡️ Regras de Proteção
 
-### 🔒 **Branch MAIN**
-- ❌ Push direto bloqueado
-- ✅ Apenas via Pull Request
-- 👥 Require review approval
-- 🧪 Status checks obrigatórios
+### 🔒 Branch MAIN (flexível, sem PR obrigatório)
+- ✅ Push direto permitido para quem tem permissão
+- 🔁 PRs recomendados para mudanças maiores (você aprova quando houver PR)
+- 🚫 Force-push bloqueado; deleção da branch bloqueada
+- 🏷️ Backup automático a cada push (tags `backup/main/...`)
 
-### 🔄 **Branch DEVELOP**
-- ✅ Push direto permitido
-- 🔍 Review recomendado
-- 🧪 Testes automáticos
+### 🔄 Branch DEVELOP
+- ✅ Push direto permitido para você e Malthus
+- 🔍 PRs opcionais para revisões pontuais
+- 🧹 Rebase/merge frequente para manter integridade
 
 ## 📊 Monitoramento
 
