@@ -2,7 +2,7 @@ name: 🚀 CI/CD Simplificado
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     # Executa em push para main, ou em PRs rotulados com 'run-tests'
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-tests'))
+    if: (github.event_name == 'push' && github.ref_name == 'main') || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-tests'))
     continue-on-error: true
     
     services:
@@ -137,7 +137,7 @@ jobs:
   security:
     runs-on: ubuntu-latest
     # Executa em push para main, ou em PRs rotulados com 'run-tests'
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-tests'))
+    if: (github.event_name == 'push' && github.ref_name == 'main') || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-tests'))
     continue-on-error: true
     
     steps:

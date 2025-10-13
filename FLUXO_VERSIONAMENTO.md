@@ -22,6 +22,12 @@
               (Release)
 ```
 
+## 🔐 Governança de Aprovação
+
+- PRs para `main` exigem aprovação do Code Owner: `@edmundobop`.
+- Você e o Malthus podem trabalhar livremente em `develop` (push direto permitido).
+- Releases chegam em `main` via PR (você aprova). Hotfix crítico: preferir PR; uso de push direto apenas em emergência, com backup automático de `main` ativo.
+
 ## 🌳 Estrutura de Branches
 
 ### 1. **MAIN** (Produção)
