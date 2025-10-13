@@ -17,6 +17,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Configurar identidade Git para criação de tags
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
       - name: Criar e enviar tag para o commit anterior
         if: ${{ github.event.before != '0000000000000000000000000000000000000000' }}
         run: |
