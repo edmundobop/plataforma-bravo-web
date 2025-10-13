@@ -1,0 +1,42 @@
+name: 🔒 Backup antes de push na main
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  backup:
+    name: Criar tag de backup do HEAD anterior
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Criar e enviar tag para o commit anterior
+        if: ${{ github.event.before != '0000000000000000000000000000000000000000' }}
+        run: |
+          BEFORE="${{ github.event.before }}"
+          SHORT=$(echo "$BEFORE" | cut -c1-7)
+          TS=$(date -u +'%Y%m%d-%H%M%S')
+          TAG="backup/main/${TS}-${SHORT}"
+          git tag -a "$TAG" "$BEFORE" -m "Backup do HEAD anterior da main antes do push para ${{ github.sha }}"
+          git push origin "$TAG"
+
+      - name: Limpar tags antigas (manter últimas 20)
+        env:
+          KEEP: 20
+        run: |
+          git fetch --tags
+          mapfile -t TAGS < <(git tag --list 'backup/main/*' --sort=-creatordate)
+          COUNT=${#TAGS[@]}
+          if [ "$COUNT" -gt "$KEEP" ]; then
+            for ((i=KEEP;i<COUNT;i++)); do
+              git push --delete origin "${TAGS[$i]}" || true
+              git tag -d "${TAGS[$i]}" || true
+            done
+          fi
