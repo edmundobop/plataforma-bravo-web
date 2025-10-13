@@ -24,16 +24,16 @@
 
 ## 🔐 Governança de Aprovação
 
-- PRs para `main` exigem aprovação do Code Owner: `@edmundobop`.
-- Você e o Malthus podem trabalhar livremente em `develop` (push direto permitido).
-- Releases chegam em `main` via PR (você aprova). Hotfix crítico: preferir PR; uso de push direto apenas em emergência, com backup automático de `main` ativo.
+- `main`: PR é opcional. Push direto permitido para quem tem permissão (você e Malthus). PRs são recomendados para mudanças maiores; quando houver PR, você mesmo aprova.
+- `develop`: push direto permitido para você e Malthus; PRs opcionais para revisões pontuais.
+- Hotfix: pode ser direto na `main` em urgência; preferir PR quando possível. Backup automático da `main` ativo a cada push.
 
 ## 🌳 Estrutura de Branches
 
 ### 1. **MAIN** (Produção)
 - ✅ Código estável e testado
 - 🚀 Versões em produção
-- 🔒 **PROTEGIDA** - Apenas via Pull Request
+- 🔒 **PROTEGIDA (flexível)** - Push direto permitido para autorizados; PR opcional
 
 ### 2. **DEVELOP** (Integração)
 - 🔄 Integração de todas as features
@@ -207,6 +207,35 @@ git branch -d feature/branch-name
 # Sincronizar com remoto
 git fetch --prune
 ```
+
+## 🧯 Backup e Restauração da Main
+
+### 📦 Como o backup funciona
+- A cada push na `main`, é criada automaticamente uma tag anotada no commit anterior com o padrão: `backup/main/<YYYYMMDD-HHMMSS>-<sha7>`.
+- Mantemos apenas as últimas 20 tags de backup (limpeza automática).
+
+### 🔎 Localizar backups recentes
+```bash
+git fetch --tags
+git tag -l 'backup/main/*' --sort=-creatordate | head -n 10    # Git Bash/macOS
+# ou no PowerShell
+# git tag -l 'backup/main/*' --sort=-creatordate | Select-Object -First 10
+```
+
+### ♻️ Restaurar com segurança (via PR)
+```bash
+# 1) Crie uma branch a partir da tag de backup escolhida
+git fetch --tags
+git checkout -b restore/main-<timestamp> <tag-de-backup>
+
+# 2) Teste localmente e valide
+
+# 3) Abra um PR de restore para main
+#    Título: "restore: voltar main para <tag>"
+#    Após o merge, a main volta para o estado do backup, sem reescrever histórico
+```
+
+Obs.: Evite resetar a `main` (rewrite); prefira PR de restauração. Em emergência extrema, coordene antes e garanta que o backup existe.
 
 ## 🆘 Resolução de Conflitos
 

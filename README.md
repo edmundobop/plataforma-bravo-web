@@ -248,6 +248,13 @@ Os logs da aplicação são armazenados em:
 ## 🤝 Contribuição
 
 1. Fork o projeto
+2. Leia as diretrizes de versionamento e governança em `FLUXO_VERSIONAMENTO.md`
+3. Para um guia rápido (especialmente para o Malthus), consulte `GUIA_CONTROLE_VERSOES.txt`
+
+Observações importantes:
+- PR para `main` é opcional; push direto permitido para autorizados (recomendado usar PR para mudanças grandes).
+- `develop` aceita push direto para você e Malthus.
+- A `main` possui backup automático a cada push (tags `backup/main/...`). Veja como restaurar em `FLUXO_VERSIONAMENTO.md`.
 2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
 3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
 4. Push para a branch (`git push origin feature/AmazingFeature`)

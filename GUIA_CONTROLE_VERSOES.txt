@@ -41,8 +41,8 @@
 
 🔒 PROTEÇÃO DE BRANCHES
 -----------------------
-• main: Protegida (require PR + review)
-• develop: Protegida (require PR)
+• main: Protegida (sem PR obrigatório). Push direto permitido para autorizados; PR recomendado para mudanças grandes. Force-push e deleção bloqueados. Backup automático a cada push (tags `backup/main/...`).
+• develop: Push direto permitido para você e Malthus. PRs opcionais para revisões.
 • feature/operacional-malthus: Push direto permitido
 
 🔄 PROCESSO DE INTEGRAÇÃO
@@ -53,8 +53,8 @@
    git merge develop
 
 2. Resolver conflitos se houver
-3. Criar Pull Request para develop
-4. Após aprovação → merge para develop
+3. (Opcional) Criar Pull Request para develop
+4. Alternativamente, push direto para develop quando apropriado
 
 💻 COMANDOS ESSENCIAIS
 ----------------------
@@ -87,8 +87,26 @@ build/
 ✅ Sempre pull antes de começar
 ✅ Usar git stash antes de trocar branch
 ✅ Commits descritivos e frequentes
-❌ Nunca fazer push direto na main
-❌ Nunca trabalhar direto na develop
+✅ Push direto na develop permitido (você e Malthus)
+✅ Push direto na main permitido para autorizados; prefira PR para mudanças grandes
+❌ Não faça force-push na main
+
+🧯 BACKUP AUTOMÁTICO DA MAIN
+----------------------------
+• A cada push na main, é criada uma tag: backup/main/<YYYYMMDD-HHMMSS>-<sha7>
+• Mantemos apenas as últimas 20
+
+Como ver as últimas tags (qualquer shell):
+  git fetch --tags
+  git tag -l "backup/main/*" --sort=-creatordate | head -n 10
+No PowerShell:
+  git tag -l "backup/main/*" --sort=-creatordate | Select-Object -First 10
+
+Como restaurar com segurança (via PR):
+  1) git fetch --tags
+  2) git checkout -b restore/main-<timestamp> <tag-de-backup>
+  3) Validar localmente
+  4) Abrir PR "restore: voltar main para <tag>" e fazer merge
 
 📱 PARA COMPARTILHAR NO WHATSAPP:
 ---------------------------------
