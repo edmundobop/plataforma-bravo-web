@@ -1,0 +1,14 @@
+# Proprietário global do código (apenas você)
+* @edmundobop
+
+# Áreas críticas (apenas você como owner)
+/package.json @edmundobop
+/backend/config/ @edmundobop
+/.env.example @edmundobop
+/README.md @edmundobop
+/FLUXO_VERSIONAMENTO.md @edmundobop
+/DIAGRAMA_COLABORACAO.md @edmundobop
+/CONFIGURACAO_AUTOMATICA.md @edmundobop
+/docs/ @edmundobop
+/.github/ @edmundobop
+/.gitignore @edmundobop

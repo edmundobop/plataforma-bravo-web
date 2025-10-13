@@ -1,0 +1,102 @@
+🚀 GUIA DE CONTROLE DE VERSÕES - PLATAFORMA BRAVO
+================================================================
+
+📋 CONFIGURAÇÃO INICIAL
+-----------------------
+1. Criar branch de desenvolvimento:
+   git checkout -b develop
+   git push -u origin develop
+
+2. Criar branch para Malthus (módulo operacional):
+   git checkout -b feature/operacional-malthus
+   git push -u origin feature/operacional-malthus
+
+🌳 ESTRUTURA DE BRANCHES
+------------------------
+• main → Código em produção (estável)
+• develop → Branch principal de desenvolvimento
+• feature/operacional-malthus → Branch específica do Malthus
+• hotfix/ → Correções urgentes
+
+⚡ WORKFLOW DIÁRIO PARA MALTHUS
+-------------------------------
+1. Sempre começar atualizando:
+   git checkout feature/operacional-malthus
+   git pull origin develop
+
+2. Fazer commits frequentes:
+   git add .
+   git commit -m "feat(operacional): descrição da mudança"
+
+3. Push regular (2x por dia):
+   git push origin feature/operacional-malthus
+
+📝 CONVENÇÃO DE COMMITS
+-----------------------
+• feat(operacional): Nova funcionalidade
+• fix(operacional): Correção de bug
+• refactor(operacional): Refatoração
+• style(operacional): Mudanças de estilo
+• docs(operacional): Documentação
+
+🔒 PROTEÇÃO DE BRANCHES
+-----------------------
+• main: Protegida (require PR + review)
+• develop: Protegida (require PR)
+• feature/operacional-malthus: Push direto permitido
+
+🔄 PROCESSO DE INTEGRAÇÃO
+-------------------------
+1. Merge da develop na feature:
+   git checkout feature/operacional-malthus
+   git pull origin develop
+   git merge develop
+
+2. Resolver conflitos se houver
+3. Criar Pull Request para develop
+4. Após aprovação → merge para develop
+
+💻 COMANDOS ESSENCIAIS
+----------------------
+git status          → Ver status
+git diff            → Ver diferenças
+git log --oneline   → Histórico
+git stash           → Salvar trabalho temporário
+git stash pop       → Recuperar trabalho
+git reset --soft HEAD~1 → Desfazer último commit
+
+📁 ARQUIVOS IGNORADOS (.gitignore)
+----------------------------------
+node_modules/
+.env
+.env.local
+dist/
+build/
+*.log
+.DS_Store
+
+🛠️ FERRAMENTAS RECOMENDADAS
+----------------------------
+• VS Code + GitLens extension
+• GitHub Desktop (interface gráfica)
+• Sourcetree (alternativa gráfica)
+
+⚠️ REGRAS IMPORTANTES
+---------------------
+✅ Fazer push pelo menos 2x por dia
+✅ Sempre pull antes de começar
+✅ Usar git stash antes de trocar branch
+✅ Commits descritivos e frequentes
+❌ Nunca fazer push direto na main
+❌ Nunca trabalhar direto na develop
+
+📱 PARA COMPARTILHAR NO WHATSAPP:
+---------------------------------
+Este guia está salvo em: GUIA_CONTROLE_VERSOES.txt
+Pode ser copiado e colado no WhatsApp em partes ou
+enviado como arquivo de texto.
+
+================================================================
+Plataforma Bravo v2 - Controle de Versões
+Data: $(Get-Date -Format 'dd/MM/yyyy')
+================================================================
