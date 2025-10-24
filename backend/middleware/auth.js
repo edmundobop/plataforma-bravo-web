@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { query } = require('../config/database');
+const { getUsuariosUnidadeColumn, columnExists } = require('../utils/schema');
 
 // =====================================================
 // MIDDLEWARE DE AUTENTICAÇÃO - ESTRUTURA UNIFICADA
@@ -33,11 +34,43 @@ const authenticateToken = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
-    // Buscar dados completos do usuário com nova estrutura
+    // Detectar coluna de unidade em usuarios
+    const unidadeCol = await getUsuariosUnidadeColumn();
+
+    // Construir SELECT e JOIN dinamicamente para compatibilidade com esquemas
+    const { tableExists } = require('../utils/schema');
+    const unidadeSelect = unidadeCol ? `u.${unidadeCol} as unidade_id` : `NULL as unidade_id`;
+    const hasUnidadesTable = await tableExists('unidades');
+    const hasSetoresTable = await tableExists('setores');
+    const hasFuncoesTable = await tableExists('funcoes');
+    const hasSetorIdCol = await columnExists('usuarios', 'setor_id');
+    const hasSetorTextCol = await columnExists('usuarios', 'setor');
+    const hasFuncaoIdCol = await columnExists('usuarios', 'funcao_id');
+    const hasFuncoesTextCol = await columnExists('usuarios', 'funcoes');
+    const hasUnSigla = hasUnidadesTable && await columnExists('unidades', 'sigla');
+    const hasUnTipo = hasUnidadesTable && await columnExists('unidades', 'tipo');
+    const hasSetorSigla = hasSetoresTable && await columnExists('setores', 'sigla');
+    const hasPerfilPermissoes = await columnExists('perfis', 'permissoes');
+    const unidadeCampos = (unidadeCol && hasUnidadesTable)
+      ? `un.nome as unidade_nome, ${hasUnSigla ? 'un.sigla' : 'NULL'} as unidade_sigla, ${hasUnTipo ? 'un.tipo' : 'NULL'} as unidade_tipo,`
+      : `NULL as unidade_nome, NULL as unidade_sigla, NULL as unidade_tipo,`;
+    const setorCampos = hasSetoresTable
+      ? `s.nome as setor_nome, ${hasSetorSigla ? 's.sigla' : 'NULL'} as setor_sigla,`
+      : (hasSetorTextCol
+         ? `u.setor as setor_nome, NULL as setor_sigla,`
+         : `NULL as setor_nome, NULL as setor_sigla,`);
+    const funcaoCampo = hasFuncoesTable
+      ? `f.nome as funcao_nome`
+      : `NULL as funcao_nome`;
+    const funcoesCampo = hasFuncoesTextCol ? 'u.funcoes' : 'NULL';
+    const unidadeJoin = (unidadeCol && hasUnidadesTable) ? `LEFT JOIN unidades un ON u.${unidadeCol} = un.id` : '';
+    const setorJoin = hasSetoresTable ? `LEFT JOIN setores s ON u.setor_id = s.id` : '';
+    const funcaoJoin = hasFuncoesTable ? `LEFT JOIN funcoes f ON u.funcao_id = f.id` : '';
+
     const result = await query(`
       SELECT 
         u.id,
-        u.nome,
+        u.nome_completo,
         u.email,
         u.cpf,
         u.telefone,
@@ -47,31 +80,32 @@ const authenticateToken = async (req, res, next) => {
         u.matricula,
         u.ativo,
         u.ultimo_login,
-        u.unidade_id,
-        u.unidade_lotacao_id,
-
-        -- Informações do perfil (nível calculado)
+        ${unidadeSelect},
+        ${hasSetorIdCol ? 'u.setor_id' : 'NULL'} as setor_id,
+        ${hasFuncaoIdCol ? 'u.funcao_id' : 'NULL'} as funcao_id,
+        ${funcoesCampo} as funcoes,
+        
+        -- Informações do perfil
         p.id as perfil_id,
         p.nome as perfil_nome,
         p.descricao as perfil_descricao,
-        CASE 
-          WHEN p.nome = 'Administrador' THEN 1
-          WHEN p.nome = 'Comandante' THEN 2
-          WHEN p.nome = 'Chefe' THEN 3
-          WHEN p.nome = 'Auxiliares' THEN 4
-          WHEN p.nome = 'Operador' THEN 5
-          ELSE 5
-        END AS nivel_hierarquia,
-        p.permissoes,
+        NULL as nivel_hierarquia,
+        ${hasPerfilPermissoes ? 'p.permissoes' : 'NULL'} as permissoes,
         
         -- Informações da unidade
-        un.nome as unidade_nome,
-        un.sigla as unidade_sigla,
-        un.tipo as unidade_tipo
+        ${unidadeCampos}
+        
+        -- Informações do setor
+        ${setorCampos}
+        
+        -- Informações da função
+        ${funcaoCampo}
         
       FROM usuarios u
       LEFT JOIN perfis p ON u.perfil_id = p.id
-      LEFT JOIN unidades un ON COALESCE(u.unidade_lotacao_id, u.unidade_id) = un.id
+      ${unidadeJoin}
+      ${setorJoin}
+      ${funcaoJoin}
       WHERE u.id = $1 AND u.ativo = true
     `, [decoded.userId]);
 
@@ -91,21 +125,36 @@ const authenticateToken = async (req, res, next) => {
     );
     
     // Compatibilidade com código legado
-    // Compatibilidade com código legado
-    user.nome = user.nome; // valor já vem de u.nome
+    user.nome = user.nome_completo; // Para compatibilidade
     user.papel = user.perfil_nome;  // Para compatibilidade
+    user.setor = user.setor_nome;   // Para compatibilidade
     
     // Estruturar informações organizacionais
     user.organizacao = {
-      unidade: (user.unidade_lotacao_id || user.unidade_id) ? {
-        id: user.unidade_lotacao_id || user.unidade_id,
+      unidade: user.unidade_id ? {
+        id: user.unidade_id,
         nome: user.unidade_nome,
         sigla: user.unidade_sigla,
         tipo: user.unidade_tipo
       } : null,
-      setor: null,
-      funcao: null
+      setor: user.setor_id ? {
+        id: user.setor_id,
+        nome: user.setor_nome,
+        sigla: user.setor_sigla
+      } : null,
+      funcao: user.funcao_id ? {
+        id: user.funcao_id,
+        nome: user.funcao_nome
+      } : null
     };
+
+    // Incluir funcoes (array) se existir coluna JSONB
+    if (hasFuncoesTextCol) {
+      user.organizacao.funcoes = user.funcoes || [];
+      if (!user.organizacao.funcao && Array.isArray(user.funcoes) && user.funcoes.length > 0) {
+        user.organizacao.funcao = { id: null, nome: user.funcoes[0] };
+      }
+    }
     
     // Estruturar informações do perfil
     user.perfil = {
@@ -163,12 +212,14 @@ const authorizeRoles = (...roles) => {
       'gestor': 'Chefe' // Gestor = Chefe
     };
     
+    // Aceitar roles como varargs ou como um array único
+    const inputRoles = (roles.length === 1 && Array.isArray(roles[0])) ? roles[0] : roles;
     // Mapear roles antigos para novos
-    const mappedRoles = roles.map(role => roleMapping[role] || role);
+    const mappedRoles = inputRoles.map(role => roleMapping[role] || role);
     
     // Verificar se o perfil do usuário está permitido
     // Administrador sempre tem acesso (nível hierárquico 1)
-    const isAllowed = mappedRoles.includes(userRole) || 
+    const isAllowed = mappedRoles.includes(userRole) ||
                      (userRole === 'Administrador' && req.user.nivel_hierarquia === 1);
     
     if (!isAllowed) {
@@ -293,7 +344,7 @@ const authorizeUnit = (...units) => {
       });
     }
 
-    const userUnit = req.user.unidade_lotacao_id || req.user.unidade_id;
+    const userUnit = req.user.unidade_id;
     
     if (!units.includes(userUnit)) {
       return res.status(403).json({ 
@@ -319,7 +370,7 @@ const optionalAuth = async (req, res, next) => {
       const result = await query(`
         SELECT 
           u.id,
-          u.nome,
+          u.nome_completo,
           u.email,
           u.tipo,
           u.posto_graduacao,
@@ -327,25 +378,21 @@ const optionalAuth = async (req, res, next) => {
           u.matricula,
           u.ativo,
           p.nome as perfil_nome,
-          CASE 
-            WHEN p.nome = 'Administrador' THEN 1
-            WHEN p.nome = 'Comandante' THEN 2
-            WHEN p.nome = 'Chefe' THEN 3
-            WHEN p.nome = 'Auxiliares' THEN 4
-            WHEN p.nome = 'Operador' THEN 5
-            ELSE 5
-          END AS nivel_hierarquia
+          p.nivel_hierarquia,
+          s.nome as setor_nome
         FROM usuarios u
         LEFT JOIN perfis p ON u.perfil_id = p.id
+        LEFT JOIN setores s ON u.setor_id = s.id
         WHERE u.id = $1 AND u.ativo = true
       `, [decoded.userId]);
 
       if (result.rows.length > 0) {
         const user = result.rows[0];
         // Compatibilidade com código legado
-        user.nome = user.nome;
+        user.nome = user.nome_completo;
         user.papel = user.perfil_nome;
-
+        user.setor = user.setor_nome;
+        
         req.user = user;
       }
     }

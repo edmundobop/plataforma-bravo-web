@@ -2,13 +2,11 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { query } = require('../config/database');
 const { authenticateToken, authorizeRoles } = require('../middleware/auth');
-const { optionalTenant } = require('../middleware/tenant');
 
 const router = express.Router();
 
 // Aplicar autenticação em todas as rotas
 router.use(authenticateToken);
-router.use(optionalTenant);
 
 // Listar notificações do usuário
 router.get('/', async (req, res) => {
@@ -42,13 +40,6 @@ router.get('/', async (req, res) => {
       params.push(modulo);
     }
 
-    // Filtro de unidade (tenant)
-    if (req.unidade?.id) {
-      paramCount++;
-      queryText += ` AND (unidade_id = $${paramCount} OR unidade_id IS NULL)`;
-      params.push(req.unidade.id);
-    }
-
     queryText += `
       ORDER BY created_at DESC
       LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
@@ -80,24 +71,14 @@ router.get('/', async (req, res) => {
       countParams.push(modulo);
     }
 
-    // Filtro de unidade na contagem
-    if (req.unidade?.id) {
-      countParamCount++;
-      countQuery += ` AND (unidade_id = $${countParamCount} OR unidade_id IS NULL)`;
-      countParams.push(req.unidade.id);
-    }
-
     const countResult = await query(countQuery, countParams);
     const total = parseInt(countResult.rows[0].count);
 
-    // Contar não lidas (respeitando filtro de unidade/tenant quando aplicável)
-    let naoLidasQuery = 'SELECT COUNT(*) FROM notificacoes WHERE usuario_id = $1 AND lida = false';
-    const naoLidasParams = [req.user.id];
-    if (req.unidade?.id) {
-      naoLidasQuery += ' AND (unidade_id = $2 OR unidade_id IS NULL)';
-      naoLidasParams.push(req.unidade.id);
-    }
-    const naoLidasResult = await query(naoLidasQuery, naoLidasParams);
+    // Contar não lidas
+    const naoLidasResult = await query(
+      'SELECT COUNT(*) FROM notificacoes WHERE usuario_id = $1 AND lida = false',
+      [req.user.id]
+    );
     const naoLidas = parseInt(naoLidasResult.rows[0].count);
 
     res.json({
@@ -252,10 +233,10 @@ router.post('/', authorizeRoles('Administrador', 'Chefe'), [
       const notificacoes = [];
       for (const usuario of usuariosResult.rows) {
         const result = await query(
-          `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id, unidade_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+          `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id)
+           VALUES ($1, $2, $3, $4, $5, $6)
            RETURNING *`,
-          [usuario.id, titulo, mensagem, tipo, modulo, referencia_id, req.unidade?.id || null]
+          [usuario.id, titulo, mensagem, tipo, modulo, referencia_id]
         );
         notificacoes.push(result.rows[0]);
 
@@ -276,10 +257,10 @@ router.post('/', authorizeRoles('Administrador', 'Chefe'), [
       }
 
       const result = await query(
-        `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id, unidade_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING *`,
-        [usuario_id, titulo, mensagem, tipo, modulo, referencia_id, req.unidade?.id || null]
+        [usuario_id, titulo, mensagem, tipo, modulo, referencia_id]
       );
 
       // Emitir via Socket.io
@@ -354,18 +335,16 @@ router.get('/estatisticas', async (req, res) => {
         COUNT(CASE WHEN modulo = 'operacional' THEN 1 END) as operacional
       FROM notificacoes 
       WHERE usuario_id = $1
-      ${req.unidade?.id ? 'AND (unidade_id = $2 OR unidade_id IS NULL)' : ''}
-    `, req.unidade?.id ? [parseInt(req.user.id), req.unidade.id] : [parseInt(req.user.id)]);
+    `, [parseInt(req.user.id)]);
 
     // Notificações recentes (últimos 7 dias)
     const recentesResult = await query(`
       SELECT DATE(created_at) as data, COUNT(*) as quantidade
       FROM notificacoes 
       WHERE usuario_id = $1 AND created_at >= CURRENT_DATE - INTERVAL '7 days'
-      ${req.unidade?.id ? 'AND (unidade_id = $2 OR unidade_id IS NULL)' : ''}
       GROUP BY DATE(created_at)
       ORDER BY data DESC
-    `, req.unidade?.id ? [parseInt(req.user.id), req.unidade.id] : [parseInt(req.user.id)]);
+    `, [parseInt(req.user.id)]);
 
     res.json({
       resumo: result.rows[0],
@@ -393,18 +372,16 @@ router.get('/stats/resumo', async (req, res) => {
         COUNT(CASE WHEN modulo = 'operacional' THEN 1 END) as operacional
       FROM notificacoes 
       WHERE usuario_id = $1
-      ${req.unidade?.id ? 'AND (unidade_id = $2 OR unidade_id IS NULL)' : ''}
-    `, req.unidade?.id ? [req.user.id, req.unidade.id] : [req.user.id]);
+    `, [req.user.id]);
 
     // Notificações recentes (últimos 7 dias)
     const recentesResult = await query(`
       SELECT DATE(created_at) as data, COUNT(*) as quantidade
       FROM notificacoes 
       WHERE usuario_id = $1 AND created_at >= CURRENT_DATE - INTERVAL '7 days'
-      ${req.unidade?.id ? 'AND (unidade_id = $2 OR unidade_id IS NULL)' : ''}
       GROUP BY DATE(created_at)
       ORDER BY data DESC
-    `, req.unidade?.id ? [req.user.id, req.unidade.id] : [req.user.id]);
+    `, [req.user.id]);
 
     res.json({
       resumo: result.rows[0],

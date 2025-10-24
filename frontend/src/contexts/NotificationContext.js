@@ -3,7 +3,6 @@ import { io } from 'socket.io-client';
 import { Snackbar, Alert } from '@mui/material';
 import { useAuth } from './AuthContext';
 import api from '../services/api';
-import { useTenant } from './TenantContext';
 
 const NotificationContext = createContext();
 
@@ -17,7 +16,6 @@ export const useNotifications = () => {
 
 export const NotificationProvider = ({ children }) => {
   const { user, isAuthenticated } = useAuth();
-  const { currentUnit } = useTenant();
   const [socket, setSocket] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -100,24 +98,6 @@ export const NotificationProvider = ({ children }) => {
       };
     }
   }, [isAuthenticated, user]);
-
-  // Carregar notificações ao autenticar (mesmo sem Socket)
-  useEffect(() => {
-    if (isAuthenticated) {
-      loadNotifications();
-    } else {
-      // Reset quando deslogar
-      setNotifications([]);
-      setUnreadCount(0);
-    }
-  }, [isAuthenticated]);
-
-  // Recarregar notificações ao trocar unidade
-  useEffect(() => {
-    if (isAuthenticated && currentUnit) {
-      loadNotifications();
-    }
-  }, [currentUnit, isAuthenticated]);
 
   // Marcar notificação como lida
   const markAsRead = async (notificationId) => {

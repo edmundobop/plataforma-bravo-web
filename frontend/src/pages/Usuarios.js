@@ -64,10 +64,12 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { usuariosService } from '../services/api';
+import { useTenant } from '../contexts/TenantContext';
 
 const Usuarios = () => {
   const theme = useTheme();
   const { user, hasRole } = useAuth();
+  const { availableUnits } = useTenant();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -102,7 +104,7 @@ const Usuarios = () => {
     matricula: '',
     senha: '',
     confirmar_senha: '',
-    papel: 'operador',
+    papel: 'Operador',
     setor: '',
     telefone: '',
     ativo: true,
@@ -112,10 +114,14 @@ const Usuarios = () => {
   
   // Estados para setores
   const [setores, setSetores] = useState([]);
-
+  
+  // Estados para unidades
+  const [unidades, setUnidades] = useState([]);
+  
   useEffect(() => {
     loadUsuarios();
     loadSetores();
+    loadUnidades();
   }, []);
 
   useEffect(() => {
@@ -145,9 +151,54 @@ const Usuarios = () => {
     }
   };
 
-  const handleOpenDialog = (type, usuario = null) => {
+  const loadUnidades = async () => {
+    try {
+      let unidadesLista = [];
+      console.log('🔍 [DEBUG] Carregando unidades. hasRole:', hasRole(['Administrador', 'Comandante']));
+      
+      // Carregar todas as unidades apenas para perfis com privilégio
+      if (hasRole(['Administrador', 'Comandante'])) {
+        try {
+          const respAll = await usuariosService.getTodasUnidades();
+          unidadesLista = respAll.data?.units || [];
+          console.log('🔍 [DEBUG] Unidades carregadas via getTodasUnidades:', unidadesLista);
+        } catch (e) {
+          console.log('🔍 [DEBUG] Falha ao carregar todas unidades, tentando unidades do usuário:', e.message);
+          const respUser = await usuariosService.getUnidades();
+          unidadesLista = respUser.data?.unidades || respUser.data?.units || [];
+          console.log('🔍 [DEBUG] Unidades carregadas via getUnidades (fallback):', unidadesLista);
+        }
+      } else {
+        const respUser = await usuariosService.getUnidades();
+        unidadesLista = respUser.data?.unidades || respUser.data?.units || [];
+        console.log('🔍 [DEBUG] Unidades carregadas via getUnidades (não-admin):', unidadesLista);
+      }
+      const normalized = (unidadesLista || []).map(u => ({ id: String(u.id), nome: u.nome }));
+      console.log('🔍 [DEBUG] Unidades normalizadas:', normalized);
+      if ((!normalized || normalized.length === 0) && Array.isArray(availableUnits) && availableUnits.length > 0) {
+        const fallbackUnits = availableUnits.map(u => ({ id: String(u.id), nome: u.nome }));
+        console.log('🔍 [DEBUG] Aplicando fallback de TenantContext.availableUnits:', fallbackUnits);
+        setUnidades(fallbackUnits);
+      } else {
+        setUnidades(normalized);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar unidades:', err);
+      if (Array.isArray(availableUnits) && availableUnits.length > 0) {
+        const fallbackUnits = availableUnits.map(u => ({ id: String(u.id), nome: u.nome }));
+        console.log('🔍 [DEBUG] Erro ao carregar unidades, usando fallback TenantContext.availableUnits:', fallbackUnits);
+        setUnidades(fallbackUnits);
+      }
+    }
+  };
+
+  const handleOpenDialog = async (type, usuario = null) => {
+    console.log('🔍 [DEBUG] handleOpenDialog chamado:', { type, usuario, unidadesDisponiveis: unidades.length });
+    
     setDialogType(type);
     setSelectedUser(usuario);
+    setError('');
+    setSuccess('');
     
     if (type === 'create') {
       setFormData({
@@ -156,23 +207,62 @@ const Usuarios = () => {
         matricula: '',
         senha: '',
         confirmar_senha: '',
-        papel: 'operador',
+        papel: 'Operador',
         setor: '',
         telefone: '',
         ativo: true,
+        unidades_ids: [],
+        unidade_lotacao_id: '',
       });
-    } else if (type === 'edit' && usuario) {
-      setFormData({
-        nome: usuario.nome || '',
-        email: usuario.email || '',
-        matricula: usuario.matricula || '',
-        senha: '',
-        confirmar_senha: '',
-        papel: usuario.papel || 'operador',
-        setor: usuario.setor || '',
-        telefone: usuario.telefone || '',
-        ativo: usuario.ativo !== false,
-      });
+    } else if ((type === 'edit' || type === 'view') && usuario) {
+      try {
+        console.log('🔍 [DEBUG] Carregando detalhes do usuário:', usuario.id);
+        const resp = await usuariosService.getUsuarioById(usuario.id);
+        const u = resp.data || resp;
+        console.log('🔍 [DEBUG] Dados do usuário carregados:', u);
+        
+        const unidadesIds = Array.isArray(u.unidades_ids) ? u.unidades_ids.map(String) : [];
+        const lotacaoId = u.unidade_lotacao_id != null ? String(u.unidade_lotacao_id) : '';
+        console.log('🔍 [DEBUG] Unidades processadas:', { unidadesIds, lotacaoId });
+        
+        // Garantir que a lotação conste em unidades_ids para renderização
+        const unidadesIdsComLotacao = lotacaoId && !unidadesIds.includes(lotacaoId)
+          ? [...unidadesIds, lotacaoId]
+          : unidadesIds;
+        
+        const formDataToSet = {
+          nome: u.nome_completo || usuario.nome || '',
+          email: u.email || usuario.email || '',
+          matricula: u.matricula || usuario.matricula || '',
+          senha: '',
+          confirmar_senha: '',
+          papel: u.perfil_nome || usuario.papel || 'Operador',
+          setor: u.setor_nome || usuario.setor || '',
+          telefone: u.telefone || usuario.telefone || '',
+          ativo: u.ativo !== false,
+          unidades_ids: unidadesIdsComLotacao,
+          unidade_lotacao_id: lotacaoId,
+        };
+        
+        console.log('🔍 [DEBUG] FormData a ser definido:', formDataToSet);
+        setFormData(formDataToSet);
+      } catch (e) {
+        console.error('🔍 [DEBUG] Falha ao carregar detalhes do usuário:', e);
+        // Fallback: preencher com dados já carregados na lista
+        setFormData({
+          nome: usuario.nome || '',
+          email: usuario.email || '',
+          matricula: usuario.matricula || '',
+          senha: '',
+          confirmar_senha: '',
+          papel: usuario.papel || 'Operador',
+          setor: usuario.setor || '',
+          telefone: usuario.telefone || '',
+          ativo: usuario.ativo !== false,
+          unidades_ids: [],
+          unidade_lotacao_id: '',
+        });
+      }
     } else if (type === 'password' && usuario) {
       setFormData({
         senha: '',
@@ -193,7 +283,7 @@ const Usuarios = () => {
       matricula: '',
       senha: '',
       confirmar_senha: '',
-      papel: 'operador',
+      papel: 'Operador',
       setor: '',
       telefone: '',
       ativo: true,
@@ -257,8 +347,18 @@ const Usuarios = () => {
           delete updateData.senha;
           delete updateData.confirmar_senha;
         }
+        // Mapear unidade de lotação para unidade_id no backend
+        if (updateData.unidade_lotacao_id) {
+          updateData.unidade_id = parseInt(updateData.unidade_lotacao_id);
+        }
         await usuariosService.updateUsuario(selectedUser.id, updateData);
         setSuccess('Usuário atualizado com sucesso!');
+        if (hasRole(['Administrador', 'Comandante', 'Chefe'])) {
+          loadUsuarios();
+        }
+        setTimeout(() => {
+          handleCloseDialog();
+        }, 1500);
       } else if (dialogType === 'password') {
         await usuariosService.changePassword(selectedUser.id, {
           nova_senha: formData.senha,
@@ -283,7 +383,9 @@ const Usuarios = () => {
       setLoading(true);
       await usuariosService.deactivateUsuario(usuarioId);
       setSuccess('Usuário desativado com sucesso!');
-      loadUsuarios();
+      if (hasRole(['Administrador', 'Comandante', 'Chefe'])) {
+        loadUsuarios();
+      }
     } catch (err) {
       console.error('Erro ao desativar usuário:', err);
       setError('Erro ao desativar usuário');
@@ -306,11 +408,11 @@ const Usuarios = () => {
 
   const getRoleColor = (papel) => {
     switch (papel) {
-      case 'admin':
+      case 'Administrador':
         return 'error';
-      case 'gestor':
+      case 'Chefe':
         return 'warning';
-      case 'operador':
+      case 'Operador':
         return 'primary';
       default:
         return 'default';
@@ -319,11 +421,11 @@ const Usuarios = () => {
 
   const getRoleLabel = (papel) => {
     switch (papel) {
-      case 'admin':
+      case 'Administrador':
         return 'Administrador';
-      case 'gestor':
-        return 'Gestor';
-      case 'operador':
+      case 'Chefe':
+        return 'Chefe';
+      case 'Operador':
         return 'Operador';
       default:
         return papel;
@@ -393,9 +495,9 @@ const Usuarios = () => {
                   onChange={(e) => handleFilterChange('status', e.target.value)}
                   label="Status"
                 >
-                  <MenuItem value="">Todos</MenuItem>
-                  <MenuItem value="ativo">Ativo</MenuItem>
-                  <MenuItem value="inativo">Inativo</MenuItem>
+                  <MenuItem key="todos-status" value="">Todos</MenuItem>
+                  <MenuItem key="ativo" value="ativo">Ativo</MenuItem>
+                  <MenuItem key="inativo" value="inativo">Inativo</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -407,10 +509,10 @@ const Usuarios = () => {
                   onChange={(e) => handleFilterChange('papel', e.target.value)}
                   label="Papel"
                 >
-                  <MenuItem value="">Todos</MenuItem>
-                  <MenuItem value="admin">Administrador</MenuItem>
-                  <MenuItem value="gestor">Gestor</MenuItem>
-                  <MenuItem value="operador">Operador</MenuItem>
+                  <MenuItem key="todos-papel" value="">Todos</MenuItem>
+                  <MenuItem key="administrador" value="Administrador">Administrador</MenuItem>
+                  <MenuItem key="chefe" value="Chefe">Chefe</MenuItem>
+                  <MenuItem key="operador" value="Operador">Operador</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -422,7 +524,7 @@ const Usuarios = () => {
                   onChange={(e) => handleFilterChange('setor', e.target.value)}
                   label="Setor"
                 >
-                  <MenuItem value="">Todos</MenuItem>
+                  <MenuItem key="todos-setor" value="">Todos</MenuItem>
                   {setores.map((setor) => (
                     <MenuItem key={setor.value} value={setor.value}>
                       {setor.label}
@@ -565,7 +667,7 @@ const Usuarios = () => {
       </Paper>
 
       {/* FAB para adicionar usuário */}
-      {hasRole(['admin']) && (
+      {hasRole(['Administrador']) && (
         <Fab
           color="primary"
           sx={{ position: 'fixed', bottom: 16, right: 16 }}
@@ -581,15 +683,15 @@ const Usuarios = () => {
         open={Boolean(anchorEl)}
         onClose={() => setAnchorEl(null)}
       >
-        <MenuItem onClick={() => {
+        <MenuItem key="view" onClick={() => {
           handleOpenDialog('view', selectedUser);
           setAnchorEl(null);
         }}>
           <ViewIcon sx={{ mr: 1 }} />
           Visualizar
         </MenuItem>
-        {hasRole(['admin', 'gestor']) && (
-          <MenuItem onClick={() => {
+        {hasRole(['Administrador', 'Chefe']) && (
+          <MenuItem key="edit" onClick={() => {
             handleOpenDialog('edit', selectedUser);
             setAnchorEl(null);
           }}>
@@ -597,8 +699,8 @@ const Usuarios = () => {
             Editar
           </MenuItem>
         )}
-        {hasRole(['admin']) && (
-          <MenuItem onClick={() => {
+        {hasRole(['Administrador']) && (
+          <MenuItem key="password" onClick={() => {
             handleOpenDialog('password', selectedUser);
             setAnchorEl(null);
           }}>
@@ -606,8 +708,9 @@ const Usuarios = () => {
             Alterar Senha
           </MenuItem>
         )}
-        {hasRole(['admin']) && selectedUser?.ativo && selectedUser?.id !== user?.id && (
+        {hasRole(['Administrador']) && selectedUser?.ativo && selectedUser?.id !== user?.id && (
           <MenuItem 
+            key="deactivate"
             onClick={() => {
               handleDesativarUsuario(selectedUser.id);
               setAnchorEl(null);
@@ -717,6 +820,35 @@ const Usuarios = () => {
                     secondary={setores.find(s => s.value === selectedUser.setor)?.label || selectedUser.setor}
                   />
                 </ListItem>
+                <ListItem>
+                  <ListItemAvatar>
+                    <Avatar sx={{ bgcolor: theme.palette.info.main }}>
+                      <WorkIcon />
+                    </Avatar>
+                  </ListItemAvatar>
+                  <ListItemText
+                    primary="Unidade de Lotação"
+                    secondary={selectedUser?.unidade_nome || (unidades.find(u => u.id === (formData.unidade_lotacao_id || ''))?.nome) || '-'}
+                  />
+                </ListItem>
+                <ListItem>
+                  <ListItemAvatar>
+                    <Avatar sx={{ bgcolor: theme.palette.primary.main }}>
+                      <BadgeIcon />
+                    </Avatar>
+                  </ListItemAvatar>
+                  <ListItemText
+                    primary="Unidades CBMGO"
+                    secondary={(formData.unidades_ids && formData.unidades_ids.length > 0) ?
+                      formData.unidades_ids
+                        .map(id => {
+                          const unit = unidades.find(u => u.id === id);
+                          return unit ? unit.nome : id;
+                        })
+                        .join(', ')
+                      : '-'}
+                  />
+                </ListItem>
               </List>
             </Box>
           ) : (
@@ -767,11 +899,11 @@ const Usuarios = () => {
                         value={formData.papel}
                         onChange={(e) => handleFormChange('papel', e.target.value)}
                         label="Papel *"
-                        disabled={dialogType === 'view' || !hasRole(['admin'])}
+                        disabled={dialogType === 'view' || !hasRole(['Administrador'])}
                       >
-                        <MenuItem value="operador">Operador</MenuItem>
-                        <MenuItem value="gestor">Gestor</MenuItem>
-                        <MenuItem value="admin">Administrador</MenuItem>
+                        <MenuItem key="operador-papel" value="Operador">Operador</MenuItem>
+                        <MenuItem key="chefe-papel" value="Chefe">Chefe</MenuItem>
+                <MenuItem key="administrador-papel" value="Administrador">Administrador</MenuItem>
                       </Select>
                     </FormControl>
                   </Grid>
@@ -792,6 +924,62 @@ const Usuarios = () => {
                       </Select>
                     </FormControl>
                   </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Unidades CBMGO</InputLabel>
+                      <Select
+                        multiple
+                        value={formData.unidades_ids || []}
+                        onChange={(e) => handleFormChange('unidades_ids', e.target.value)}
+                        label="Unidades CBMGO"
+                        disabled={dialogType === 'view'}
+                        renderValue={(selected) => {
+                          const ids = Array.isArray(selected) ? selected.map(String) : [];
+                          const nomes = (unidades || [])
+                            .filter(u => ids.includes(String(u.id)))
+                            .map(u => u.nome);
+                          return nomes.join(', ');
+                        }}
+                      >
+                        {(() => {
+                          console.log('🔍 [DEBUG] Renderizando Unidades CBMGO:', { 
+                            unidades: unidades.length, 
+                            formDataUnidadesIds: formData.unidades_ids,
+                            unidadesData: unidades 
+                          });
+                          return unidades.map((u) => (
+                            <MenuItem key={u.id} value={String(u.id)}>
+                              {u.nome}
+                            </MenuItem>
+                          ));
+                        })()}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Unidade de Lotação</InputLabel>
+                      <Select
+                        value={formData.unidade_lotacao_id || ''}
+                        onChange={(e) => handleFormChange('unidade_lotacao_id', e.target.value)}
+                        label="Unidade de Lotação"
+                        disabled={dialogType === 'view'}
+                      >
+                        {(() => {
+                          console.log('🔍 [DEBUG] Renderizando Unidade de Lotação:', { 
+                            unidades: unidades.length, 
+                            formDataLotacaoId: formData.unidade_lotacao_id,
+                            unidadesData: unidades 
+                          });
+                          return unidades.map((u) => (
+                            <MenuItem key={u.id} value={String(u.id)}>
+                              {u.nome}
+                            </MenuItem>
+                          ));
+                        })()}
+                      </Select>
+                    </FormControl>
+                  </Grid>
                   {dialogType === 'edit' && (
                     <Grid item xs={12}>
                       <FormControlLabel
@@ -799,7 +987,7 @@ const Usuarios = () => {
                           <Switch
                             checked={formData.ativo}
                             onChange={(e) => handleFormChange('ativo', e.target.checked)}
-                            disabled={!hasRole(['admin'])}
+                            disabled={!hasRole(['Administrador'])}
                           />
                         }
                         label="Usuário ativo"

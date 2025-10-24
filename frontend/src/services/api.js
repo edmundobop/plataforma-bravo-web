@@ -2,20 +2,37 @@ import axios from 'axios';
 
 // Configuração base da API
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',
+  baseURL: '/api',
   timeout: 30000, // 30 segundos
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Interceptor para adicionar token de autenticação
+// Evitar redirecionamento infinito em 401
+const unauthorizedRedirectState = { lastRedirectTs: 0 };
+const redirectToLoginOnce = () => {
+  const now = Date.now();
+  if (window.location.pathname !== '/login' && now - unauthorizedRedirectState.lastRedirectTs > 5000) {
+    unauthorizedRedirectState.lastRedirectTs = now;
+    window.location.href = '/login';
+  }
+};
+
+// Interceptor para adicionar token de autenticação e cabeçalho X-Tenant-ID
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    // Adicionar cabeçalho X-Tenant-ID se disponível
+    const currentUnitId = localStorage.getItem('currentUnitId');
+    if (currentUnitId) {
+      config.headers['X-Tenant-ID'] = currentUnitId;
+    }
+    
     return config;
   },
   (error) => {
@@ -31,13 +48,18 @@ api.interceptors.response.use(
   (error) => {
     // Se o token expirou ou é inválido
     if (error.response?.status === 401) {
-      // Remover token inválido
-      localStorage.removeItem('token');
-      delete api.defaults.headers.common['Authorization'];
+      // Verificar se é um erro de autenticação do checklist (não redirecionar)
+      const isChecklistAuth = (error.config?.url?.includes('/checklist/viaturas/') && 
+                              error.config?.url?.includes('/finalizar')) ||
+                              error.config?.url?.includes('/checklist/validar-credenciais');
       
-      // Redirecionar para login se não estiver na página de login
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
+      if (!isChecklistAuth) {
+        // Remover token inválido
+        localStorage.removeItem('token');
+        delete api.defaults.headers.common['Authorization'];
+        
+        // Redirecionar para login se não estiver na página de login
+        redirectToLoginOnce();
       }
     }
     
@@ -56,9 +78,18 @@ export const authService = {
 };
 
 // Serviços de usuários
+// Instância separada para rotas públicas (sem interceptor de auth)
+const publicApi = axios.create({
+  baseURL: '/api',
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
 export const userService = {
   getUsers: (params) => api.get('/usuarios', { params }),
-  getUsersForAutocomplete: () => api.get('/usuarios/autocomplete'),
+  getUsersForAutocomplete: () => publicApi.get('/usuarios/autocomplete'),
   getUserById: (id) => api.get(`/usuarios/${id}`),
   createUser: (userData) => api.post('/usuarios', userData),
   updateUser: (id, userData) => api.put(`/usuarios/${id}`, userData),
@@ -81,6 +112,30 @@ export const usuariosService = {
   getPerfil: () => api.get('/usuarios/me/perfil'),
   getSetores: () => api.get('/usuarios/config/setores'),
   toggleStatus: (id) => api.put(`/usuarios/${id}/toggle-status`),
+  
+  // Funções adicionais para solicitações e perfis
+  getSolicitacoesPendentes: (params = {}) => {
+    return api.get('/usuarios/solicitacoes-pendentes', { params });
+  },
+  
+  getPerfis: () => {
+    return api.get('/usuarios/perfis');
+  },
+  
+  // Buscar unidades disponíveis
+  getUnidades: () => {
+    return api.get('/usuarios/config/unidades');
+  },
+  
+  // Buscar todas as unidades (admin)
+  getTodasUnidades: () => {
+    return api.get('/tenant/all-units');
+  },
+  
+  // Buscar funções disponíveis
+  getFuncoes: () => {
+    return api.get('/usuarios/data/funcoes');
+  },
 };
 
 // Serviços de frota
@@ -90,17 +145,14 @@ export const frotaService = {
   getViaturaById: (id) => api.get(`/frota/viaturas/${id}`),
   createViatura: (viaturaData) => api.post('/frota/viaturas', viaturaData),
   updateViatura: (id, viaturaData) => api.put(`/frota/viaturas/${id}`, viaturaData),
+  deleteViatura: (id) => api.delete(`/frota/viaturas/${id}`),
   
-  // Checklists
-  getChecklists: (params) => api.get('/frota/checklists', { params }),
-  createChecklist: (checklistData) => api.post('/frota/checklists', checklistData),
-  deleteChecklist: (id) => api.delete(`/frota/checklists/${id}`),
-  deleteAllChecklists: () => api.delete('/frota/checklists'),
   
   // Manutenções
   getManutencoes: (params) => api.get('/frota/manutencoes', { params }),
   createManutencao: (manutencaoData) => api.post('/frota/manutencoes', manutencaoData),
   updateManutencao: (id, status) => api.put(`/frota/manutencoes/${id}`, { status }),
+  deleteManutencao: (id) => api.delete(`/frota/manutencoes/${id}`),
 };
 
 // Serviços de almoxarifado
@@ -187,7 +239,19 @@ export const dashboardService = {
   getDashboardAlmoxarifado: () => api.get('/dashboard/almoxarifado'),
   getDashboardEmprestimos: () => api.get('/dashboard/emprestimos'),
   getDashboardOperacional: () => api.get('/dashboard/operacional'),
-  getMetricas: (periodo) => api.get('/dashboard/metricas', { params: { periodo } }),
+  getMetricas: (periodo = 30) => api.get(`/dashboard/metricas?periodo=${periodo}`)
+};
+
+// Serviço de Checklist
+export const checklistService = {
+  getChecklists: (params) => api.get('/checklist/viaturas', { params }).then(res => res.data),
+  getChecklist: (id) => api.get(`/checklist/viaturas/${id}`).then(res => res.data),
+  createChecklist: (data) => api.post('/checklist/viaturas', data).then(res => res.data),
+  updateChecklist: (id, data) => api.put(`/checklist/viaturas/${id}`, data).then(res => res.data),
+  deleteChecklist: (id) => api.delete(`/checklist/viaturas/${id}`).then(res => res.data),
+  finalizarChecklist: (id, authData) => api.post(`/checklist/viaturas/${id}/finalizar`, authData).then(res => res.data),
+  validarCredenciais: (authData) => api.post('/checklist/validar-credenciais', authData).then(res => res.data),
+  searchUsuarios: (query) => api.get('/checklist/usuarios/search', { params: { q: query } }).then(res => res.data),
 };
 
 // Utilitários para upload de arquivos
@@ -197,6 +261,48 @@ export const uploadService = {
     formData.append('file', file);
     
     return api.post('/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress: (progressEvent) => {
+        if (onProgress) {
+          const percentCompleted = Math.round(
+            (progressEvent.loaded * 100) / progressEvent.total
+          );
+          onProgress(percentCompleted);
+        }
+      },
+    });
+  },
+  
+  // Upload de foto única
+  uploadFoto: (file, onProgress) => {
+    const formData = new FormData();
+    formData.append('foto', file);
+    
+    return api.post('/upload/foto', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress: (progressEvent) => {
+        if (onProgress) {
+          const percentCompleted = Math.round(
+            (progressEvent.loaded * 100) / progressEvent.total
+          );
+          onProgress(percentCompleted);
+        }
+      },
+    });
+  },
+  
+  // Upload de múltiplas fotos
+  uploadFotos: (files, onProgress) => {
+    const formData = new FormData();
+    files.forEach(file => {
+      formData.append('fotos', file);
+    });
+    
+    return api.post('/upload/fotos', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -238,6 +344,44 @@ export const formatters = {
   number: (value) => {
     return new Intl.NumberFormat('pt-BR').format(value);
   },
+};
+
+// Adicionar ao final do arquivo, antes da exportação
+export const templateService = {
+  // Listar templates
+  getTemplates: async (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) params.append(key, value);
+    });
+    
+    const response = await api.get(`/templates?${params}`);
+    return response.data;
+  },
+
+  // Buscar template por ID
+  getTemplate: async (id) => {
+    const response = await api.get(`/templates/${id}`);
+    return response.data;
+  },
+
+  // Criar template
+  createTemplate: async (templateData) => {
+    const response = await api.post('/templates', templateData);
+    return response.data;
+  },
+
+  // Atualizar template
+  updateTemplate: async (id, templateData) => {
+    const response = await api.put(`/templates/${id}`, templateData);
+    return response.data;
+  },
+
+  // Excluir template
+  deleteTemplate: async (id) => {
+    const response = await api.delete(`/templates/${id}`);
+    return response.data;
+  }
 };
 
 export default api;

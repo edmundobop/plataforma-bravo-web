@@ -119,7 +119,7 @@ const Notificacoes = () => {
   useEffect(() => {
     loadNotificacoes();
     loadEstatisticas();
-    if (hasRole(['admin', 'gestor'])) {
+    if (hasRole(['Administrador', 'Chefe'])) {
       loadUsuarios();
     }
   }, []);
@@ -395,9 +395,9 @@ const Notificacoes = () => {
                   onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value, page: 1 }))}
                   label="Status"
                 >
-                  <MenuItem value="">Todas</MenuItem>
-                  <MenuItem value="nao_lida">Não Lidas</MenuItem>
-                  <MenuItem value="lida">Lidas</MenuItem>
+                  <MenuItem key="todas" value="">Todas</MenuItem>
+                  <MenuItem key="nao_lida" value="nao_lida">Não Lidas</MenuItem>
+                  <MenuItem key="lida" value="lida">Lidas</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -409,11 +409,11 @@ const Notificacoes = () => {
                   onChange={(e) => setFilters(prev => ({ ...prev, tipo: e.target.value, page: 1 }))}
                   label="Tipo"
                 >
-                  <MenuItem value="">Todos</MenuItem>
-                  <MenuItem value="info">Informação</MenuItem>
-                  <MenuItem value="success">Sucesso</MenuItem>
-                  <MenuItem value="warning">Aviso</MenuItem>
-                  <MenuItem value="error">Erro</MenuItem>
+                  <MenuItem key="todos-tipo" value="">Todos</MenuItem>
+                  <MenuItem key="info" value="info">Informação</MenuItem>
+                  <MenuItem key="success" value="success">Sucesso</MenuItem>
+                  <MenuItem key="warning" value="warning">Aviso</MenuItem>
+                  <MenuItem key="error" value="error">Erro</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -425,13 +425,13 @@ const Notificacoes = () => {
                   onChange={(e) => setFilters(prev => ({ ...prev, modulo: e.target.value, page: 1 }))}
                   label="Módulo"
                 >
-                  <MenuItem value="">Todos</MenuItem>
-                  <MenuItem value="frota">Frota</MenuItem>
-                  <MenuItem value="almoxarifado">Almoxarifado</MenuItem>
-                  <MenuItem value="emprestimos">Cautelas</MenuItem>
-                  <MenuItem value="operacional">Operacional</MenuItem>
-                  <MenuItem value="usuarios">Usuários</MenuItem>
-                  <MenuItem value="dashboard">Dashboard</MenuItem>
+                  <MenuItem key="todos-modulo" value="">Todos</MenuItem>
+                  <MenuItem key="frota" value="frota">Frota</MenuItem>
+                  <MenuItem key="almoxarifado" value="almoxarifado">Almoxarifado</MenuItem>
+                  <MenuItem key="emprestimos" value="emprestimos">Cautelas</MenuItem>
+                  <MenuItem key="operacional" value="operacional">Operacional</MenuItem>
+                  <MenuItem key="usuarios" value="usuarios">Usuários</MenuItem>
+                  <MenuItem key="dashboard" value="dashboard">Dashboard</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -799,7 +799,7 @@ const Notificacoes = () => {
       {activeTab === 1 && renderEstatisticasTab()}
 
       {/* FAB para criar notificação */}
-      {hasRole(['admin', 'gestor']) && (
+      {hasRole(['Administrador', 'Chefe']) && (
         <Fab
           color="primary"
           sx={{ position: 'fixed', bottom: 16, right: 16 }}
@@ -815,7 +815,7 @@ const Notificacoes = () => {
         open={Boolean(anchorEl)}
         onClose={() => setAnchorEl(null)}
       >
-        <MenuItem onClick={() => {
+        <MenuItem key="view" onClick={() => {
           handleOpenDialog('view', selectedNotification);
           setAnchorEl(null);
         }}>
@@ -823,7 +823,7 @@ const Notificacoes = () => {
           Visualizar
         </MenuItem>
         {!selectedNotification?.lida ? (
-          <MenuItem onClick={() => {
+          <MenuItem key="mark-read" onClick={() => {
             handleMarkAsRead(selectedNotification.id);
             setAnchorEl(null);
           }}>
@@ -831,7 +831,7 @@ const Notificacoes = () => {
             Marcar como Lida
           </MenuItem>
         ) : (
-          <MenuItem onClick={() => {
+          <MenuItem key="mark-unread" onClick={() => {
             handleMarkAsUnread(selectedNotification.id);
             setAnchorEl(null);
           }}>
@@ -840,6 +840,7 @@ const Notificacoes = () => {
           </MenuItem>
         )}
         <MenuItem 
+          key="delete"
           onClick={() => {
             handleDeleteNotification(selectedNotification.id);
             setAnchorEl(null);
@@ -939,10 +940,10 @@ const Notificacoes = () => {
                     onChange={(e) => handleFormChange('tipo', e.target.value)}
                     label="Tipo *"
                   >
-                    <MenuItem value="info">Informação</MenuItem>
-                    <MenuItem value="success">Sucesso</MenuItem>
-                    <MenuItem value="warning">Aviso</MenuItem>
-                    <MenuItem value="error">Erro</MenuItem>
+                    <MenuItem key="info-form" value="info">Informação</MenuItem>
+                    <MenuItem key="success-form" value="success">Sucesso</MenuItem>
+                    <MenuItem key="warning-form" value="warning">Aviso</MenuItem>
+                    <MenuItem key="error-form" value="error">Erro</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>
@@ -954,13 +955,13 @@ const Notificacoes = () => {
                     onChange={(e) => handleFormChange('modulo', e.target.value)}
                     label="Módulo"
                   >
-                    <MenuItem value="">Geral</MenuItem>
-                    <MenuItem value="frota">Frota</MenuItem>
-                    <MenuItem value="almoxarifado">Almoxarifado</MenuItem>
-                    <MenuItem value="emprestimos">Cautelas</MenuItem>
-                    <MenuItem value="operacional">Operacional</MenuItem>
-                    <MenuItem value="usuarios">Usuários</MenuItem>
-                    <MenuItem value="dashboard">Dashboard</MenuItem>
+                    <MenuItem key="geral" value="">Geral</MenuItem>
+                    <MenuItem key="frota-form" value="frota">Frota</MenuItem>
+                    <MenuItem key="almoxarifado-form" value="almoxarifado">Almoxarifado</MenuItem>
+                    <MenuItem key="emprestimos-form" value="emprestimos">Cautelas</MenuItem>
+                    <MenuItem key="operacional-form" value="operacional">Operacional</MenuItem>
+                    <MenuItem key="usuarios-form" value="usuarios">Usuários</MenuItem>
+                    <MenuItem key="dashboard-form" value="dashboard">Dashboard</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>

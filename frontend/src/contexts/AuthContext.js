@@ -36,40 +36,25 @@ export const AuthProvider = ({ children }) => {
   // Verificar se há token salvo no localStorage
   useEffect(() => {
     const checkAuth = async () => {
+      setLoading(true);
       try {
         const token = localStorage.getItem('token');
         if (token) {
-          // Configurar token no header da API
           api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-          
-          // Verificar se o token ainda é válido
+          // Corrige caminho duplicado /api/api
           const response = await api.get('/auth/verify');
-          if (response.data.user) {
-            setUser(response.data.user);
-            setIsAuthenticated(true);
-
-            // Sinalizar unidade atual imediatamente para evitar requisições sem tenant
-            try {
-              const existingUnitId = localStorage.getItem('currentUnitId');
-              const userUnitId = response.data.user.unidade_lotacao_id || response.data.user.unidade_id;
-              if (!existingUnitId && userUnitId) {
-                localStorage.setItem('currentUnitId', userUnitId.toString());
-                api.defaults.headers.common['X-Tenant-ID'] = userUnitId.toString();
-              }
-            } catch (e) {
-              console.warn('Não foi possível definir unidade inicial no localStorage:', e);
-            }
-          } else {
-            // Token inválido, remover
-            localStorage.removeItem('token');
-            delete api.defaults.headers.common['Authorization'];
-          }
+          setUser(response.data.user || null);
+        } else {
+          setUser(null);
         }
       } catch (error) {
-        console.error('Erro ao verificar autenticação:', error);
-        // Token inválido, remover
+        // Tratar 401/403 sem poluir o console
+        const status = error?.response?.status;
+        if (status !== 401 && status !== 403) {
+          console.error('Erro ao verificar autenticação:', error);
+        }
         localStorage.removeItem('token');
-        delete api.defaults.headers.common['Authorization'];
+        setUser(null);
       } finally {
         setLoading(false);
       }
@@ -92,18 +77,6 @@ export const AuthProvider = ({ children }) => {
       // Atualizar estado
       setUser(userData);
       setIsAuthenticated(true);
-
-      // Sinalizar unidade atual imediatamente para evitar requisições sem tenant
-      try {
-        const existingUnitId = localStorage.getItem('currentUnitId');
-        const userUnitId = userData.unidade_lotacao_id || userData.unidade_id;
-        if (!existingUnitId && userUnitId) {
-          localStorage.setItem('currentUnitId', userUnitId.toString());
-          api.defaults.headers.common['X-Tenant-ID'] = userUnitId.toString();
-        }
-      } catch (e) {
-        console.warn('Não foi possível definir unidade inicial no localStorage:', e);
-      }
       
       return { success: true, user: userData };
     } catch (error) {
@@ -160,9 +133,9 @@ export const AuthProvider = ({ children }) => {
   const hasSector = (sectors) => {
     if (!user || !sectors) return false;
     if (Array.isArray(sectors)) {
-      return sectors.includes(user.setor);
+      return sectors.includes(user.setor_nome) || sectors.includes(user.setor_id);
     }
-    return user.setor === sectors;
+    return user.setor_nome === sectors || user.setor_id === sectors;
   };
 
   const hasUnit = (units) => {
@@ -222,7 +195,7 @@ export const AuthProvider = ({ children }) => {
   // =====================================================
 
   const canManageUsers = () => {
-    return hasProfile(['Administrador', 'Comandante']) || hasLevel(2);
+    return isAdmin() || isComandante() || isChefe() || hasLevel(2);
   };
 
   const canManageSystem = () => {
@@ -255,7 +228,7 @@ export const AuthProvider = ({ children }) => {
     if (isAdmin()) return true;
     
     // Verificar se pertence ao setor
-    if (user.setor === sectorId) return true;
+    if (user.setor_id === sectorId) return true;
     
     // Comandantes podem acessar setores da sua unidade
     if (isComandante() && user.unidade_id) return true;
@@ -270,8 +243,7 @@ export const AuthProvider = ({ children }) => {
     if (isAdmin()) return true;
     
     // Verificar se pertence à unidade
-    const lotacaoId = user.unidade_lotacao_id || user.unidade_id;
-    if (lotacaoId === unitId) return true;
+    if (user.unidade_id === unitId) return true;
     
     return false;
   };
@@ -286,7 +258,7 @@ export const AuthProvider = ({ children }) => {
     if (isComandante()) return user.unidade_setores || [];
     
     // Outros usuários só têm acesso ao próprio setor
-    return user.setor ? [user.setor] : [];
+    return user.setor_id ? [user.setor_id] : [];
   };
 
   const getAccessibleUnits = () => {
@@ -296,8 +268,7 @@ export const AuthProvider = ({ children }) => {
     if (isAdmin()) return 'all';
     
     // Outros usuários só têm acesso à própria unidade
-    const lotacaoId = user.unidade_lotacao_id || user.unidade_id;
-    return lotacaoId ? [lotacaoId] : [];
+    return user.unidade_id ? [user.unidade_id] : [];
   };
 
   // =====================================================
@@ -311,7 +282,7 @@ export const AuthProvider = ({ children }) => {
       return `${user.posto_graduacao} ${user.nome_guerra}`;
     }
     
-    return user.nome || '';
+    return user.nome_completo || user.nome || '';
   };
 
   const getUserShortName = () => {
@@ -321,7 +292,7 @@ export const AuthProvider = ({ children }) => {
       return user.nome_guerra;
     }
     
-    const nomes = (user.nome || '').split(' ');
+    const nomes = (user.nome_completo || user.nome || '').split(' ');
     if (nomes.length >= 2) {
       return `${nomes[0]} ${nomes[nomes.length - 1]}`;
     }
@@ -334,13 +305,13 @@ export const AuthProvider = ({ children }) => {
     
     return {
       id: user.id,
-      nome: user.nome,
+      nome: user.nome_completo,
       email: user.email,
       tipo: user.tipo,
       perfil: user.perfil_nome,
       nivel: user.nivel_hierarquia,
       unidade: user.unidade_nome,
-      setor: user.setor,
+      setor: user.setor_nome,
       funcao: user.funcao_nome,
       displayName: getUserDisplayName(),
       shortName: getUserShortName(),

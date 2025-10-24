@@ -143,126 +143,6 @@ const Frota = () => {
     }
   };
 
-<<<<<<< Updated upstream
-  const loadTemplates = useCallback(async () => {
-    try {
-      setTemplatesLoading(true);
-      const response = await checklistTemplateService.getTemplates();
-      setTemplates(response.data || []);
-    } catch (err) {
-      console.error('Erro ao carregar modelos:', err);
-      setError('Erro ao carregar modelos');
-    } finally {
-      setTemplatesLoading(false);
-    }
-  }, []);
-
-  const loadManutencoes = useCallback(async () => {
-    try {
-      setManutencoesLoading(true);
-      const response = await frotaService.getManutencoes(manutencoesFilters);
-      setManutencoes(response.data.manutencoes || []);
-    } catch (err) {
-      console.error('Erro ao carregar manutenções:', err);
-      setError('Erro ao carregar manutenções');
-    } finally {
-      setManutencoesLoading(false);
-    }
-  }, [manutencoesFilters]);
-
-  const loadData = useCallback(() => {
-    switch (activeTab) {
-      case 0:
-        loadViaturas();
-        break;
-      case 1:
-        loadTemplates();
-        break;
-      case 2:
-        loadChecklistsPendentes();
-        loadChecklists();
-        break;
-      case 3:
-        loadManutencoes();
-        break;
-      default:
-        break;
-    }
-  }, [activeTab, loadViaturas, loadTemplates, loadChecklistsPendentes, loadChecklists, loadManutencoes]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData, activeTab]);
-
-  const handleTabChange = (event, newValue) => {
-    setActiveTab(newValue);
-    setError('');
-  };
-
-  const handleOpenDialog = (type, item = null) => {
-    if (type === 'checklist' && !item) {
-      // Para novo checklist, abrir o gerenciador de modelos
-      setTemplateManagerOpen(true);
-    } else {
-      // Para outros tipos ou edição, usar o diálogo padrão
-      setDialogType(type);
-      setSelectedItem(item);
-      setFormData(item || {});
-      setDialogOpen(true);
-    }
-  };
-
-  const handleCloseDialog = () => {
-    setDialogOpen(false);
-    setDialogType('');
-    setSelectedItem(null);
-    setFormData({});
-  };
-
-  const handleCloseTemplateManager = () => {
-    setTemplateManagerOpen(false);
-    setSelectedItem(null);
-  };
-
-  const handleTemplateManagerSave = async () => {
-    // Fechar o gerenciador de modelos e recarregar a lista
-    setTemplateManagerOpen(false);
-    setSelectedItem(null);
-    await loadTemplates();
-  };
-
-  const handleEditTemplate = (template) => {
-    setSelectedItem(template);
-    setTemplateManagerOpen(true);
-    setAnchorEl(null);
-  };
-
-  const handleDeleteTemplate = async (template) => {
-    if (window.confirm(`Tem certeza que deseja excluir o modelo "${template.nome}"?`)) {
-      try {
-        setLoading(true);
-        await checklistService.deleteTemplate(template.id);
-        await loadTemplates();
-        setAnchorEl(null);
-        setSelectedItem(null);
-      } catch (error) {
-        console.error('Erro ao excluir modelo:', error);
-        setError('Erro ao excluir modelo: ' + (error.response?.data?.message || error.message));
-      } finally {
-        setLoading(false);
-      }
-    }
-  };
-
-  const handleFormChange = (field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
-
-=======
->>>>>>> Stashed changes
   const handleSubmit = async () => {
     try {
       setLoading(true);
@@ -320,47 +200,6 @@ const Frota = () => {
         open={Boolean(anchorEl)}
         onClose={handleMenuClose}
       >
-<<<<<<< Updated upstream
-        {activeTab === 1 ? (
-          // Menu para modelos
-          [
-            <MenuItem key="edit" onClick={() => handleEditTemplate(selectedItem)}>
-              <EditIcon sx={{ mr: 1 }} />
-              Editar Modelo
-            </MenuItem>,
-            <MenuItem key="delete" onClick={() => handleDeleteTemplate(selectedItem)}>
-              <DeleteIcon sx={{ mr: 1 }} />
-              Excluir Modelo
-            </MenuItem>
-          ]
-        ) : (
-          // Menu para outras abas
-          [
-            <MenuItem key="view" onClick={() => {
-              if (activeTab === 2) {
-                // Aba de checklists - usar handleOpenDialog
-                handleOpenDialog('checklist', selectedItem);
-              } else {
-                // Outras abas - usar handleOpenDialog
-                handleOpenDialog(activeTab === 0 ? 'viatura' : activeTab === 3 ? 'manutencao' : 'checklist', selectedItem);
-              }
-              setAnchorEl(null);
-            }}>
-              <ViewIcon sx={{ mr: 1 }} />
-              Visualizar
-            </MenuItem>,
-            (activeTab === 0 || activeTab === 3) && (
-              <MenuItem key="edit" onClick={() => {
-                handleOpenDialog(activeTab === 0 ? 'viatura' : 'manutencao', selectedItem);
-                setAnchorEl(null);
-              }}>
-                <EditIcon sx={{ mr: 1 }} />
-                Editar
-              </MenuItem>
-            )
-          ]
-        )}
-=======
         <MenuItem key="view-frota" onClick={() => handleMenuAction('view')}>
           <ViewIcon sx={{ mr: 1 }} /> Visualizar
         </MenuItem>
@@ -370,7 +209,6 @@ const Frota = () => {
         <MenuItem key="delete-frota" onClick={() => handleMenuAction('delete')} sx={{ color: 'error.main' }}>
           <DeleteIcon sx={{ mr: 1 }} /> Excluir
         </MenuItem>
->>>>>>> Stashed changes
       </Menu>
 
       {/* Diálogo de formulário */}

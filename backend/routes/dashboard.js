@@ -15,6 +15,8 @@ router.use(optionalTenant);
 router.get('/geral', optionalTenant, async (req, res) => {
   try {
     const unidadeId = req.unidade?.id;
+    const { getUsuariosUnidadeColumn } = require('../utils/schema');
+    const unidadeCol = await getUsuariosUnidadeColumn();
     
     // Estatísticas gerais
     let estatisticasQuery;
@@ -24,7 +26,7 @@ router.get('/geral', optionalTenant, async (req, res) => {
           (SELECT COUNT(*) FROM viaturas WHERE unidade_id = $1) as total_viaturas,
           (SELECT COUNT(*) FROM equipamentos WHERE unidade_id = $1) as total_equipamentos,
           (SELECT COUNT(*) FROM produtos WHERE unidade_id = $1) as total_produtos,
-          (SELECT COUNT(*) FROM usuarios WHERE ativo = true AND unidade_id = $1) as total_usuarios
+          (SELECT COUNT(*) FROM usuarios WHERE ativo = true ${unidadeCol ? `AND ${unidadeCol} = $1` : ''}) as total_usuarios
       `;
     } else {
       estatisticasQuery = `

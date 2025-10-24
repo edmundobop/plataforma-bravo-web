@@ -232,12 +232,12 @@ const Perfil = () => {
 
   const getRoleLabel = (papel) => {
     switch (papel) {
-      case 'admin':
-        return 'Administrador';
-      case 'gestor':
-        return 'Gestor';
-      case 'operador':
-        return 'Operador';
+      case 'Administrador':
+      return 'Administrador';
+    case 'Chefe':
+      return 'Chefe';
+      case 'Operador':
+         return 'Operador';
       default:
         return papel;
     }
@@ -245,11 +245,11 @@ const Perfil = () => {
 
   const getRoleColor = (papel) => {
     switch (papel) {
-      case 'admin':
-        return 'error';
-      case 'gestor':
+      case 'Administrador':
+      return 'error';
+    case 'Chefe':
         return 'warning';
-      case 'operador':
+      case 'Operador':
         return 'primary';
       default:
         return 'default';
@@ -466,25 +466,7 @@ const Perfil = () => {
     return (
       <Grid container spacing={3}>
         {/* Cards de Estatísticas */}
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center" gap={2}>
-                <Avatar sx={{ bgcolor: theme.palette.primary.main }}>
-                  <CarIcon />
-                </Avatar>
-                <Box>
-                  <Typography variant="h4" fontWeight="bold">
-                    {estatisticas?.checklists || 0}
-                  </Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    Checklists Realizados
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
+
         
         <Grid item xs={12} sm={6} md={3}>
           <Card>

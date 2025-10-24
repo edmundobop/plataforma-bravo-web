@@ -25,7 +25,8 @@ const registerValidation = [
   body('email').isEmail().withMessage('Email inválido'),
   body('senha').isLength({ min: 6 }).withMessage('Senha deve ter pelo menos 6 caracteres'),
   body('matricula').isLength({ min: 3 }).withMessage('Matrícula deve ter pelo menos 3 caracteres'),
-  body('posto_graduacao').notEmpty().withMessage('Posto/Graduação é obrigatório')
+  body('posto_graduacao').notEmpty().withMessage('Posto/Graduação é obrigatório'),
+  body('setor').notEmpty().withMessage('Setor é obrigatório')
 ];
 
 /**
@@ -122,7 +123,11 @@ router.post('/login', loginValidation, async (req, res) => {
     // Verificar senha
     console.log('Debug login - Email:', email);
     console.log('Debug login - Senha recebida:', senha);
-    console.log('Debug login - Hash armazenado:', user.senha_hash.substring(0, 20) + '...');
+    if (user.senha_hash) {
+      console.log('Debug login - Hash armazenado:', String(user.senha_hash).substring(0, 20) + '...');
+    } else {
+      console.log('Debug login - Hash armazenado: <indisponível>');
+    }
     
     const isValidPassword = await bcrypt.compare(senha, user.senha_hash);
     console.log('Debug login - Senha válida:', isValidPassword);
@@ -141,11 +146,15 @@ router.post('/login', loginValidation, async (req, res) => {
     const token = jwt.sign(
       { userId: user.id, email: user.email, perfil_id: user.perfil_id, perfil_nome: user.perfil_nome },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN }
+      { expiresIn: process.env.JWT_EXPIRES_IN || '12h' }
     );
 
     // Remover senha da resposta e mapear campos para compatibilidade
     const { senha: _, ...userWithoutPassword } = user;
+    // Remover hash da senha de qualquer resposta
+    if (userWithoutPassword.senha_hash) {
+      delete userWithoutPassword.senha_hash;
+    }
     userWithoutPassword.papel = userWithoutPassword.perfil_nome;
 
     res.json({
@@ -167,7 +176,7 @@ router.post('/register', authenticateToken, authorizeRoles('Administrador'), reg
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { nome, email, senha, matricula, posto_graduacao, telefone, perfil_id = 5 } = req.body;
+    const { nome_completo, email, senha, matricula, posto_graduacao, setor_id, telefone, perfil_id = 5 } = req.body;
 
     // Verificar se email já existe
     const emailExists = await query(
@@ -194,10 +203,10 @@ router.post('/register', authenticateToken, authorizeRoles('Administrador'), reg
 
     // Inserir usuário
     const result = await query(
-      `INSERT INTO usuarios (nome, email, senha_hash, matricula, posto_graduacao, telefone, perfil_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id, nome, email, matricula, posto_graduacao, telefone, perfil_id, ativo, created_at`,
-      [nome, email.toLowerCase(), hashedPassword, matricula, posto_graduacao, telefone, perfil_id]
+      `INSERT INTO usuarios (nome_completo, email, senha_hash, matricula, posto_graduacao, setor_id, telefone, perfil_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id, nome_completo, email, matricula, posto_graduacao, setor_id, telefone, perfil_id, ativo, created_at`,
+      [nome_completo, email.toLowerCase(), hashedPassword, matricula, posto_graduacao, setor_id, telefone, perfil_id]
     );
 
     const newUser = result.rows[0];
@@ -312,120 +321,12 @@ router.put('/change-password', authenticateToken, [
  */
 
 // Verificar token
-router.get('/verify', authenticateToken, async (req, res) => {
-  try {
-    // Se chegou até aqui, o token é válido (middleware authenticateToken)
-    const userId = req.user.userId;
-    
-    // Buscar dados atualizados do usuário com perfil
-    const result = await query(
-      `SELECT u.id, u.nome, u.email, u.matricula, u.posto_graduacao, u.setor, u.telefone, u.perfil_id, p.nome as perfil_nome, u.ativo 
-       FROM usuarios u 
-       LEFT JOIN perfis p ON u.perfil_id = p.id 
-       WHERE u.id = $1 AND u.ativo = true`,
-      [userId]
-    );
-    
-    if (result.rows.length === 0) {
-      return res.status(401).json({ error: 'Usuário não encontrado ou inativo' });
-    }
-    
-    const user = result.rows[0];
-    
-    res.json({
-      valid: true,
-      user: {
-        id: user.id,
-        nome: user.nome,
-        email: user.email,
-        matricula: user.matricula,
-        posto_graduacao: user.posto_graduacao,
-        setor: user.setor,
-        telefone: user.telefone,
-        perfil_nome: user.perfil_nome,
-        ativo: user.ativo
-      }
-    });
-  } catch (error) {
-    console.error('Erro ao verificar token:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
+// (Removido endpoint duplicado de /verify com userId inválido)
 
 // Logout (invalidar token - implementação básica)
 router.post('/logout', authenticateToken, (req, res) => {
   // Em uma implementação mais robusta, você manteria uma blacklist de tokens
   res.json({ message: 'Logout realizado com sucesso' });
-});
-
-// Reset de senha (apenas Administrador)
-router.post('/reset-password', authenticateToken, authorizeRoles('Administrador'), [
-  body('userId').optional().isInt().withMessage('userId deve ser um número inteiro'),
-  body('email').optional().isEmail().withMessage('Email inválido'),
-  body('novaSenha').isLength({ min: 6 }).withMessage('Nova senha deve ter pelo menos 6 caracteres')
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { userId, email, novaSenha } = req.body;
-    if (!userId && !email) {
-      return res.status(400).json({ error: 'Informe userId ou email' });
-    }
-
-    // Buscar usuário pelo id ou email
-    let whereClause = '';
-    let params = [];
-    if (userId) {
-      whereClause = 'id = $1';
-      params = [userId];
-    } else {
-      whereClause = 'email = $1';
-      params = [email.toLowerCase()];
-    }
-
-    const userResult = await query(`SELECT id, nome, email, ativo FROM usuarios WHERE ${whereClause}`, params);
-    if (userResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Usuário não encontrado' });
-    }
-
-    const targetUser = userResult.rows[0];
-
-    // Gerar hash da nova senha
-    const saltRounds = parseInt(process.env.BCRYPT_ROUNDS) || 12;
-    const hashedNewPassword = await bcrypt.hash(novaSenha, saltRounds);
-
-    // Atualizar coluna correta de senha (senha_hash)
-    await query(
-      'UPDATE usuarios SET senha_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-      [hashedNewPassword, targetUser.id]
-    );
-
-    // (Opcional) criar notificação para o usuário
-    try {
-      await query(
-        `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [
-          targetUser.id,
-          'Senha redefinida',
-          'Sua senha foi redefinida por um administrador. Caso não reconheça esta ação, contate o suporte.',
-          'warning',
-          'sistema'
-        ]
-      );
-    } catch (e) {
-      // Falha ao criar notificação não deve impedir o sucesso da operação
-      console.warn('Aviso: falha ao criar notificação de reset de senha:', e.message);
-    }
-
-    res.json({ message: 'Senha redefinida com sucesso', usuario: { id: targetUser.id, email: targetUser.email } });
-  } catch (error) {
-    console.error('Erro ao redefinir senha:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
 });
 
 module.exports = router;

@@ -55,11 +55,16 @@ async function setupDatabase() {
     if (userExists.rows.length === 0) {
       console.log('👤 Criando usuário cbmgo_user...');
       await adminClient.query(
-        'CREATE USER cbmgo_user WITH PASSWORD \'cbmgo123\''
+        "CREATE USER cbmgo_user WITH PASSWORD 'cbmgo123'"
       );
       console.log('✅ Usuário cbmgo_user criado!');
     } else {
       console.log('✅ Usuário cbmgo_user já existe!');
+      console.log('🔑 Atualizando senha do usuário cbmgo_user...');
+      await adminClient.query(
+        "ALTER USER cbmgo_user WITH PASSWORD 'cbmgo123'"
+      );
+      console.log('✅ Senha do usuário cbmgo_user atualizada!');
     }
     
     // Dar permissões
@@ -83,6 +88,36 @@ async function setupDatabase() {
     await dbClient.query('GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO cbmgo_user');
     await dbClient.query('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO cbmgo_user');
     await dbClient.query('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO cbmgo_user');
+
+    // Transferir ownership das tabelas e sequências existentes para cbmgo_user
+    console.log('🧾 Ajustando ownership de objetos para cbmgo_user...');
+    const tables = await dbClient.query(`
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+    `);
+    for (const row of tables.rows) {
+      const tbl = row.table_name;
+      try {
+        await dbClient.query(`ALTER TABLE public."${tbl}" OWNER TO cbmgo_user`);
+      } catch (e) {
+        console.log(`   ⚠️ Não foi possível alterar owner da tabela ${tbl}: ${e.message}`);
+      }
+    }
+
+    const sequences = await dbClient.query(`
+      SELECT sequence_name
+      FROM information_schema.sequences
+      WHERE sequence_schema = 'public'
+    `);
+    for (const row of sequences.rows) {
+      const seq = row.sequence_name;
+      try {
+        await dbClient.query(`ALTER SEQUENCE public."${seq}" OWNER TO cbmgo_user`);
+      } catch (e) {
+        console.log(`   ⚠️ Não foi possível alterar owner da sequência ${seq}: ${e.message}`);
+      }
+    }
     await dbClient.end();
     
     console.log('\n🎉 Configuração concluída com sucesso!');
