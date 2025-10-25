@@ -164,7 +164,24 @@ router.post('/login', loginValidation, async (req, res) => {
     });
   } catch (error) {
     console.error('Erro no login:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    // Fornecer mensagem de erro mais detalhada para facilitar o debug
+    const errorMessage = process.env.NODE_ENV === 'production' 
+      ? 'Erro interno do servidor' 
+      : `Erro no login: ${error.message}`;
+    
+    // Registrar detalhes adicionais para debug
+    console.error('Stack trace:', error.stack);
+    console.error('Detalhes da requisição:', {
+      body: req.body,
+      headers: req.headers,
+      method: req.method,
+      url: req.originalUrl
+    });
+    
+    res.status(500).json({ 
+      error: errorMessage,
+      details: process.env.NODE_ENV !== 'production' ? error.message : undefined
+    });
   }
 });
 

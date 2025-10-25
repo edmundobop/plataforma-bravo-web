@@ -81,8 +81,34 @@ export const AuthProvider = ({ children }) => {
       return { success: true, user: userData };
     } catch (error) {
       console.error('Erro no login:', error);
-      const message = error.response?.data?.error || 'Erro ao fazer login';
-      return { success: false, error: message };
+      
+      // Melhorar o tratamento de erros para fornecer mensagens mais detalhadas
+      let errorMessage = 'Erro ao fazer login';
+      
+      if (error.response) {
+        // O servidor respondeu com um status de erro
+        const { status, data } = error.response;
+        
+        if (status === 401) {
+          errorMessage = 'Credenciais inválidas. Verifique seu email e senha.';
+        } else if (status === 500) {
+          errorMessage = data.details 
+            ? `Erro no servidor: ${data.details}` 
+            : 'Erro interno do servidor. Por favor, tente novamente mais tarde.';
+        } else if (data.error) {
+          errorMessage = data.error;
+        } else if (data.errors && data.errors.length > 0) {
+          errorMessage = data.errors.map(err => err.msg).join(', ');
+        }
+        
+        console.error(`Erro ${status} no login:`, data);
+      } else if (error.request) {
+        // A requisição foi feita mas não houve resposta
+        errorMessage = 'Servidor não respondeu. Verifique sua conexão com a internet.';
+        console.error('Sem resposta do servidor:', error.request);
+      }
+      
+      return { success: false, error: errorMessage, details: error.message };
     }
   };
 
