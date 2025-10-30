@@ -40,7 +40,6 @@ import {
   ListItem,
   ListItemText,
   ListItemAvatar,
-  ListItemSecondaryAction,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -49,7 +48,6 @@ import {
   MoreVert as MoreVertIcon,
   Edit as EditIcon,
   Visibility as ViewIcon,
-  Delete as DeleteIcon,
   Person as PersonIcon,
   Email as EmailIcon,
   Phone as PhoneIcon,
@@ -59,7 +57,6 @@ import {
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
   PersonOff as PersonOffIcon,
-  PersonAdd as PersonAddIcon,
   Lock as LockIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
@@ -118,12 +115,14 @@ const Usuarios = () => {
   // Estados para unidades
   const [unidades, setUnidades] = useState([]);
   
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadUsuarios();
     loadSetores();
     loadUnidades();
   }, []);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadUsuarios();
   }, [filters.page]);

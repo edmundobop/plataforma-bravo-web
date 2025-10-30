@@ -2,8 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Grid,
-  Card,
-  CardContent,
   Typography,
   Button,
   TextField,
@@ -39,13 +37,14 @@ import {
   Search as SearchIcon,
   Delete as DeleteIcon,
   PhotoCamera as PhotoCameraIcon,
-  Delete as DeletePhotoIcon,
 } from '@mui/icons-material';
 import { frotaService, uploadService } from '../services/api';
 import { useTenant } from '../contexts/TenantContext';
+import { useAuth } from '../contexts/AuthContext';
 
 const Viaturas = () => {
   const { currentUnit, availableUnits } = useTenant();
+  const { isOperador } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
@@ -321,9 +320,7 @@ const Viaturas = () => {
     }
   };
 
-  const formatDate = (dateString) => {
-    return dateString ? new Date(dateString).toLocaleDateString('pt-BR') : '-';
-  };
+  // (removido) formatDate não utilizado
 
   const renderViaturasTab = () => (
     <Box>
@@ -655,7 +652,7 @@ const Viaturas = () => {
                         height: 24
                       }}
                     >
-                      <DeletePhotoIcon sx={{ fontSize: 16 }} />
+                      <DeleteIcon sx={{ fontSize: 16 }} />
                     </IconButton>
                   </Box>
                 ) : (
@@ -737,10 +734,10 @@ const Viaturas = () => {
         <MenuItem key="view-viatura" onClick={() => handleMenuAction('view')}>
           <ViewIcon sx={{ mr: 1 }} /> Visualizar
         </MenuItem>
-        <MenuItem key="edit-viatura" onClick={() => handleMenuAction('edit')}>
+        <MenuItem key="edit-viatura" disabled={isOperador()} onClick={() => handleMenuAction('edit')}>
           <EditIcon sx={{ mr: 1 }} /> Editar
         </MenuItem>
-        <MenuItem key="delete-viatura" onClick={() => handleMenuAction('delete')}>
+        <MenuItem key="delete-viatura" disabled={isOperador()} onClick={() => handleMenuAction('delete')}>
           <DeleteIcon sx={{ mr: 1 }} /> Excluir
         </MenuItem>
       </Menu>
@@ -750,6 +747,7 @@ const Viaturas = () => {
         color="primary"
         aria-label="add"
         sx={{ position: 'fixed', bottom: 16, right: 16 }}
+        disabled={isOperador()}
         onClick={() => handleOpenDialog('viatura')}
       >
         <AddIcon />

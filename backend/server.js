@@ -7,6 +7,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
 require('dotenv').config({ override: true });
+const { query } = require('./config/database');
 
 const app = express();
 const server = http.createServer(app);
@@ -119,9 +120,72 @@ app.use('*', (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 
+// Scheduler simples para gerar solicitações das automações
+const semanaMap = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+function parseMaybeJson(value) {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === 'object') return value;
+  try { return JSON.parse(value); } catch { return []; }
+}
+
+async function processarAutomacoes() {
+  const agora = new Date();
+  const dia = semanaMap[agora.getDay()];
+  try {
+    const res = await query('SELECT * FROM checklist_automacoes WHERE ativo = true');
+    const autos = res.rows || [];
+    for (const a of autos) {
+      const dias = parseMaybeJson(a.dias_semana);
+      if (!Array.isArray(dias) || !dias.includes(dia)) continue;
+      const [hh, mm] = (a.horario || '07:00').split(':');
+      const alvoHora = parseInt(hh, 10);
+      const alvoMin = parseInt(mm, 10);
+      if (agora.getHours() !== alvoHora || agora.getMinutes() !== alvoMin) continue;
+
+      const dataPrevista = new Date(agora);
+      dataPrevista.setSeconds(0, 0);
+
+      const viaturas = parseMaybeJson(a.viaturas);
+      for (const vid of viaturas) {
+        // Evitar duplicação: já existe pendente igual no mesmo horário?
+        const chk = await query(`
+          SELECT id FROM checklist_solicitacoes
+          WHERE unidade_id = $1 AND viatura_id = $2 AND tipo_checklist = $3
+            AND COALESCE(template_id, 0) = COALESCE($4, 0)
+            AND status = 'pendente'
+            AND DATE(data_prevista) = DATE($5)
+            AND EXTRACT(HOUR FROM data_prevista) = $6
+            AND EXTRACT(MINUTE FROM data_prevista) = $7
+          LIMIT 1
+        `, [a.unidade_id, vid, a.tipo_checklist, a.template_id || null, dataPrevista, alvoHora, alvoMin]);
+        if (chk.rows && chk.rows.length > 0) continue;
+
+        await query(`
+          INSERT INTO checklist_solicitacoes (
+            unidade_id, viatura_id, template_id, tipo_checklist, ala_servico, data_prevista, responsavel_id, status, criada_em, atualizada_em
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,'pendente',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+        `, [a.unidade_id, vid, a.template_id || null, a.tipo_checklist, a.ala_servico, dataPrevista, a.criado_por || null]);
+      }
+    }
+  } catch (e) {
+    console.error('Erro no scheduler de automações:', e);
+  }
+}
+
 server.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
   console.log(`🌐 API disponível em http://localhost:${PORT}/api`);
+  // Agendar execução exatamente no início de cada minuto
+  function agendarSchedulerMinuto() {
+    const agora = new Date();
+    const msAteProximoMinuto = (60 - agora.getSeconds()) * 1000 - agora.getMilliseconds();
+    setTimeout(() => {
+      // Executa no início do minuto e segue a cada 60s ancorado
+      processarAutomacoes();
+      setInterval(processarAutomacoes, 60 * 1000);
+    }, Math.max(msAteProximoMinuto, 0));
+  }
+  agendarSchedulerMinuto();
 });
 
 module.exports = { app, io };

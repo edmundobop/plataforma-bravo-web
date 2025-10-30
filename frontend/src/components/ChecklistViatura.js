@@ -57,7 +57,7 @@ import { frotaService, checklistService, uploadService, templateService } from '
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 
-const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, selectedViatura: selectedViaturaProps }) => {
+const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, selectedViatura: selectedViaturaProps, prefill }) => {
   const { user } = useAuth(); // Obter usuário logado
   const { currentUnit } = useTenant(); // Obter unidade atual
   const [loading, setLoading] = useState(false);
@@ -130,6 +130,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (open) {
       if (viaturasProps && viaturasProps.length > 0) {
@@ -148,8 +149,30 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
           email: user.email
         });
       }
+      
+      // Aplicar prefill para campos simples
+      if (prefill) {
+        if (prefill.tipo_checklist) setTipoChecklist(prefill.tipo_checklist);
+        if (prefill.ala_servico) setAlaServico(prefill.ala_servico);
+      }
     }
-  }, [open, viaturasProps, user, currentUnit]);
+  }, [open, viaturasProps, user, currentUnit, prefill]);
+
+  // Após carregar viaturas, aplicar prefill de viatura_id
+  useEffect(() => {
+    if (prefill?.viatura_id && viaturas.length > 0 && !selectedViatura) {
+      const v = viaturas.find(x => x.id === prefill.viatura_id);
+      if (v) setSelectedViatura(v);
+    }
+  }, [viaturas, prefill, selectedViatura]);
+
+  // Após carregar templates, aplicar prefill de template_id
+  useEffect(() => {
+    if (prefill?.template_id && templates.length > 0 && !selectedTemplate) {
+      const t = templates.find(x => x.id === prefill.template_id);
+      if (t) setSelectedTemplate(t);
+    }
+  }, [templates, prefill, selectedTemplate]);
 
   // Resetar formulário quando fechar
   useEffect(() => {
@@ -373,13 +396,33 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
       
       console.log('✅ Credenciais validadas com sucesso');
 
-      // SEGUNDO: Criar checklist (só se as credenciais forem válidas)
+      // Garantir que itens do template foram carregados no Passo 2
+      if (!itensChecklist || itensChecklist.length === 0) {
+        setError('Não foi possível carregar os itens do template. Volte ao Passo 2 e tente novamente.');
+        setLoading(false);
+        return;
+      }
+
+      // SEGUNDO: Criar ou atualizar checklist (só se as credenciais forem válidas)
+      // Normalizar valores sensíveis a restrições do banco
+      const normalizeAlaServico = (val) => {
+        const v = (val || '').trim();
+        const map = {
+          'alpha': 'Alpha', 'Alpha': 'Alpha',
+          'bravo': 'Bravo', 'Bravo': 'Bravo',
+          'charlie': 'Charlie', 'Charlie': 'Charlie',
+          'delta': 'Delta', 'Delta': 'Delta',
+          'adm': 'ADM', 'ADM': 'ADM'
+        };
+        return map[v] || 'Alpha';
+      };
+
       const checklistData = {
         viatura_id: selectedViatura.id,
         template_id: selectedTemplate.id,
         km_inicial: parseInt(kmInicial),
         combustivel_percentual: parseInt(combustivelPercentual),
-        ala_servico: alaServico,
+        ala_servico: normalizeAlaServico(alaServico),
         tipo_checklist: tipoChecklist,
         data_hora: dataHora.toISOString(),
         observacoes_gerais: observacoesGerais,
@@ -393,10 +436,19 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         }))
       };
 
-      const response = await checklistService.createChecklist(checklistData);
+      console.log('📦 Enviando checklistData', checklistData);
+
+      let checklistId = null;
+      if (prefill?.checklist_id) {
+        await checklistService.updateChecklist(prefill.checklist_id, checklistData);
+        checklistId = prefill.checklist_id;
+      } else {
+        const response = await checklistService.createChecklist(checklistData);
+        checklistId = response.checklist.id;
+      }
       
       // TERCEIRO: Finalizar checklist (credenciais já validadas)
-      await checklistService.finalizarChecklist(response.checklist.id, {
+      await checklistService.finalizarChecklist(checklistId, {
         usuario_autenticacao: usuarioAutenticacao.nome,
         senha_autenticacao: senhaAutenticacao
       });
@@ -415,7 +467,9 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         // Limpar senha para permitir nova tentativa
         setSenhaAutenticacao('');
       } else {
-        setError(error.response?.data?.error || 'Erro ao processar checklist');
+        const generic = error.response?.data?.error || 'Erro ao processar checklist';
+        const details = error.response?.data?.details;
+        setError(details ? `${generic} - ${details}` : generic);
       }
     } finally {
       setLoading(false);
@@ -445,6 +499,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
               setSelectedViatura(viatura);
             }}
             label="Viatura"
+            disabled={!!prefill}
           >
             {viaturas.map((viatura) => (
               <MenuItem key={viatura.id} value={viatura.id}>
@@ -511,6 +566,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
             value={tipoChecklist}
             onChange={(e) => setTipoChecklist(e.target.value)}
             label="Tipo de Checklist"
+            disabled={!!prefill}
           >
             <MenuItem key="Diário" value="Diário">Checklist Diário</MenuItem>
             <MenuItem key="Semanal" value="Semanal">Checklist Semanal</MenuItem>
@@ -534,7 +590,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
               setSelectedTemplate(template);
             }}
             label="Modelo de Checklist"
-            disabled={templatesLoading}
+            disabled={templatesLoading || !!prefill}
           >
             {templatesLoading ? (
               <MenuItem key="loading" disabled>
@@ -789,6 +845,13 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
               setError('');
             }
           }}
+          onKeyDown={(e) => {
+            // Pressionar ENTER deve acionar a finalização
+            if (e.key === 'Enter') {
+              // Não impedir o comportamento; chamamos handleSubmit diretamente
+              handleSubmit();
+            }
+          }}
           required
           placeholder="Digite sua senha para confirmar"
           autoFocus
@@ -842,6 +905,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
             variant="contained" 
             disabled={loading}
             startIcon={loading ? <CircularProgress size={20} /> : <SendIcon />}
+            type="button"
           >
             {loading ? 'Finalizando...' : 'Finalizar Checklist'}
           </Button>

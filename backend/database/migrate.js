@@ -254,6 +254,8 @@ const createTables = async () => {
         data_checklist TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         status VARCHAR(50) DEFAULT 'em_andamento',
         observacoes_gerais TEXT,
+        cancelamento_motivo TEXT,
+        cancelado_em TIMESTAMP,
         usuario_autenticacao VARCHAR(255),
         senha_autenticacao VARCHAR(255),
         finalizado_em TIMESTAMP,
@@ -269,6 +271,12 @@ const createTables = async () => {
       BEGIN
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='checklist_viaturas' AND column_name='situacao') THEN
           ALTER TABLE checklist_viaturas ADD COLUMN situacao VARCHAR(20) NOT NULL DEFAULT 'Sem Alteração' CHECK (situacao IN ('Sem Alteração', 'Com Alteração'));
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='checklist_viaturas' AND column_name='cancelamento_motivo') THEN
+          ALTER TABLE checklist_viaturas ADD COLUMN cancelamento_motivo TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='checklist_viaturas' AND column_name='cancelado_em') THEN
+          ALTER TABLE checklist_viaturas ADD COLUMN cancelado_em TIMESTAMP;
         END IF;
       END $$;
     `);
@@ -287,8 +295,48 @@ const createTables = async () => {
       )
     `);
 
+    // Tabela de Solicitações de Checklists de Viaturas
+    await query(`
+      CREATE TABLE IF NOT EXISTS checklist_solicitacoes (
+        id SERIAL PRIMARY KEY,
+        unidade_id INTEGER REFERENCES unidades(id) NOT NULL,
+        viatura_id INTEGER REFERENCES viaturas(id) NOT NULL,
+        template_id INTEGER REFERENCES checklist_templates(id),
+        tipo_checklist VARCHAR(50) NOT NULL,
+        ala_servico VARCHAR(20) NOT NULL CHECK (ala_servico IN ('Alpha', 'Bravo', 'Charlie', 'Delta', 'ADM')),
+        data_prevista TIMESTAMP,
+        responsavel_id INTEGER REFERENCES usuarios(id),
+        status VARCHAR(20) NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente', 'cancelada', 'atendida')),
+        checklist_id INTEGER REFERENCES checklist_viaturas(id),
+        criada_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        atualizada_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Tabela de Automações de Checklists de Viaturas
+    await query(`
+      CREATE TABLE IF NOT EXISTS checklist_automacoes (
+        id SERIAL PRIMARY KEY,
+        unidade_id INTEGER REFERENCES unidades(id) NOT NULL,
+        nome VARCHAR(120),
+        ativo BOOLEAN NOT NULL DEFAULT true,
+        horario VARCHAR(8) NOT NULL, -- formato HH:MM
+        dias_semana JSONB NOT NULL DEFAULT '[]', -- ex: ['Seg','Ter']
+        ala_servico VARCHAR(20) NOT NULL CHECK (ala_servico IN ('Alpha', 'Bravo', 'Charlie', 'Delta', 'ADM')),
+        viaturas JSONB NOT NULL DEFAULT '[]', -- ids de viaturas
+        template_id INTEGER REFERENCES checklist_templates(id),
+        tipo_checklist VARCHAR(50) NOT NULL,
+        criado_por INTEGER REFERENCES usuarios(id),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Índices para performance
     await query('CREATE INDEX IF NOT EXISTS idx_usuarios_email ON usuarios(email)');
+    await query('CREATE INDEX IF NOT EXISTS idx_checklist_solicitacoes_unidade ON checklist_solicitacoes(unidade_id)');
+    await query('CREATE INDEX IF NOT EXISTS idx_checklist_solicitacoes_status ON checklist_solicitacoes(status)');
+    await query('CREATE INDEX IF NOT EXISTS idx_checklist_solicitacoes_prevista ON checklist_solicitacoes(data_prevista)');
     await query('CREATE INDEX IF NOT EXISTS idx_viaturas_prefixo ON viaturas(prefixo)');
     await query('CREATE INDEX IF NOT EXISTS idx_produtos_codigo ON produtos(codigo)');
     await query('CREATE INDEX IF NOT EXISTS idx_equipamentos_codigo ON equipamentos(codigo)');
@@ -299,6 +347,8 @@ const createTables = async () => {
     await query('CREATE INDEX IF NOT EXISTS idx_checklist_viaturas_usuario ON checklist_viaturas(usuario_id)');
     await query('CREATE INDEX IF NOT EXISTS idx_checklist_viaturas_data ON checklist_viaturas(data_checklist)');
     await query('CREATE INDEX IF NOT EXISTS idx_checklist_itens_checklist ON checklist_itens(checklist_id)');
+    await query('CREATE INDEX IF NOT EXISTS idx_checklist_automacoes_unidade ON checklist_automacoes(unidade_id)');
+    await query('CREATE INDEX IF NOT EXISTS idx_checklist_automacoes_ativo ON checklist_automacoes(ativo)');
 
     console.log('✅ Migração concluída com sucesso!');
   } catch (error) {
