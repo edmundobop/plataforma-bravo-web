@@ -148,7 +148,7 @@ export const frotaService = {
   getViaturaById: (id) => api.get(`/frota/viaturas/${id}`),
   createViatura: (viaturaData) => api.post('/frota/viaturas', viaturaData),
   updateViatura: (id, viaturaData) => api.put(`/frota/viaturas/${id}`, viaturaData),
-  deleteViatura: (id) => api.delete(`/frota/viaturas/${id}`),
+  deleteViatura: (id, data) => api.delete(`/frota/viaturas/${id}`, { data }),
   
   
   // Manutenções

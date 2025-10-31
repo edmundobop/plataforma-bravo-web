@@ -38,13 +38,13 @@ import {
   Delete as DeleteIcon,
   PhotoCamera as PhotoCameraIcon,
 } from '@mui/icons-material';
-import { frotaService, uploadService } from '../services/api';
+import { frotaService, uploadService, usuariosService } from '../services/api';
 import { useTenant } from '../contexts/TenantContext';
 import { useAuth } from '../contexts/AuthContext';
 
 const Viaturas = () => {
   const { currentUnit, availableUnits } = useTenant();
-  const { isOperador } = useAuth();
+  const { isOperador, getUserInfo } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
@@ -63,11 +63,15 @@ const Viaturas = () => {
   const [dialogType, setDialogType] = useState(''); // 'viatura', 'view'
   const [selectedItem, setSelectedItem] = useState(null);
   const [anchorEl, setAnchorEl] = useState(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
   
   // Estados para formulários
   const [formData, setFormData] = useState({});
   const [formErrors, setFormErrors] = useState({});
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [setores, setSetores] = useState([]);
 
   // Carregar viaturas
   const loadViaturas = useCallback(async () => {
@@ -114,6 +118,23 @@ const Viaturas = () => {
   useEffect(() => {
     loadViaturas();
   }, [loadViaturas]);
+
+  // Carregar lista de setores para Select
+  useEffect(() => {
+    const loadSetores = async () => {
+      try {
+        const response = await usuariosService.getSetores();
+        const lista = response?.data?.setores || [];
+        const normalizados = Array.isArray(lista)
+          ? lista.map((s) => (typeof s === 'string' ? { value: s, label: s } : s))
+          : [];
+        setSetores(normalizados);
+      } catch (err) {
+        console.error('Erro ao carregar setores:', err);
+      }
+    };
+    loadSetores();
+  }, []);
 
   // useEffect para recarregar dados quando a unidade atual mudar
   useEffect(() => {
@@ -182,6 +203,7 @@ const Viaturas = () => {
   };
 
   const handleMenuOpen = (event, item) => {
+    event.stopPropagation();
     setAnchorEl(event.currentTarget);
     setSelectedItem(item);
   };
@@ -196,24 +218,35 @@ const Viaturas = () => {
       setError('❌ Item não encontrado para exclusão');
       return;
     }
+    setSelectedItem(item);
+    setDeleteDialogOpen(true);
+  };
 
-    const confirmMessage = `Tem certeza que deseja excluir a viatura ${item.prefixo}?`;
-
-    if (!window.confirm(confirmMessage)) {
+  const handleConfirmDelete = async () => {
+    if (!selectedItem?.id) return;
+    if (!deleteReason || !deleteReason.trim()) {
+      setError('Informe o motivo da exclusão.');
       return;
     }
-
     try {
-      setLoading(true);
-      await frotaService.deleteViatura(item.id);
-      setError('✅ Viatura excluída com sucesso');
-      loadViaturas();
+      setActionLoading(true);
+      const info = getUserInfo();
+      await frotaService.deleteViatura(selectedItem.id, {
+        motivo: deleteReason.trim(),
+        usuario_id: info?.id || info?.userId || null,
+        usuario_nome: info?.displayName || info?.nome || info?.email || 'usuário',
+        unidade_id: currentUnit?.id || null,
+      });
+      setError(`✅ Viatura excluída por ${info?.displayName || info?.nome || 'usuário'}. Motivo: ${deleteReason.trim()}`);
+      setDeleteDialogOpen(false);
+      setDeleteReason('');
+      setSelectedItem(null);
+      await loadViaturas();
     } catch (err) {
-      console.error('Erro ao excluir:', err);
-      const errorMessage = err.response?.data?.error || 'Erro ao excluir item';
-      setError(`❌ ${errorMessage}`);
+      console.error('Erro ao excluir viatura:', err);
+      setError(err.response?.data?.error || 'Erro ao excluir viatura. Verifique suas permissões.');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
@@ -312,9 +345,11 @@ const Viaturas = () => {
   };
 
   const getStatusColor = (status) => {
-    switch (status) {
+    const s = (status || '').toString().toLowerCase();
+    switch (s) {
       case 'ativo': return 'success';
       case 'inativo': return 'default';
+      case 'manutenção':
       case 'manutencao': return 'warning';
       default: return 'default';
     }
@@ -335,6 +370,19 @@ const Viaturas = () => {
           }}
           sx={{ minWidth: 300 }}
         />
+        <FormControl size="small" sx={{ minWidth: 180 }}>
+          <InputLabel>Setor</InputLabel>
+          <Select
+            value={viaturasFilters.setor}
+            onChange={(e) => setViaturasFilters(prev => ({ ...prev, setor: e.target.value }))}
+            label="Setor"
+          >
+            <MenuItem key="todos-setores" value="">Todos</MenuItem>
+            {setores.map((s) => (
+              <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
         <FormControl size="small" sx={{ minWidth: 120 }}>
           <InputLabel>Status</InputLabel>
           <Select
@@ -377,7 +425,7 @@ const Viaturas = () => {
               </TableRow>
             ) : (
               filteredViaturas.map((viatura) => (
-                <TableRow key={viatura.id}>
+                <TableRow key={viatura.id} onClick={() => handleOpenDialog('view', viatura)} sx={{ cursor: 'pointer' }}>
                   <TableCell>
                     {viatura.foto ? (
                       <Avatar
@@ -405,11 +453,13 @@ const Viaturas = () => {
                       size="small"
                     />
                   </TableCell>
-                  <TableCell>{viatura.setor_responsavel || '-'}</TableCell>
+                  <TableCell>{setores.find(s => s.value === viatura.setor_responsavel)?.label || viatura.setor_responsavel || '-'}</TableCell>
                   <TableCell>
-                    <IconButton onClick={(e) => handleMenuOpen(e, viatura)}>
-                      <MoreVertIcon />
-                    </IconButton>
+                    {!isOperador() && (
+                      <IconButton onClick={(e) => handleMenuOpen(e, viatura)}>
+                        <MoreVertIcon />
+                      </IconButton>
+                    )}
                   </TableCell>
                 </TableRow>
               ))
@@ -435,6 +485,20 @@ const Viaturas = () => {
         {dialogType === 'view' ? (
           // Visualização dos dados
           <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Avatar
+                  src={selectedItem?.foto || ''}
+                  alt={selectedItem?.prefixo || 'Foto da viatura'}
+                  sx={{ width: 120, height: 120 }}
+                  variant="rounded"
+                />
+                <Box>
+                  <Typography variant="h6">{selectedItem?.prefixo || '-'}</Typography>
+                  <Typography variant="body2" color="text.secondary">{selectedItem?.modelo || '-'} • {selectedItem?.marca || '-'}</Typography>
+                </Box>
+              </Box>
+            </Grid>
             <Grid item xs={12} sm={6}>
               <Typography variant="subtitle2" color="text.secondary">Tipo</Typography>
               <Typography variant="body1">{selectedItem?.tipo || '-'}</Typography>
@@ -470,6 +534,25 @@ const Viaturas = () => {
             <Grid item xs={12} sm={6}>
               <Typography variant="subtitle2" color="text.secondary">KM Atual</Typography>
               <Typography variant="body1">{selectedItem?.km_atual || '-'}</Typography>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Typography variant="subtitle2" color="text.secondary">Chassi</Typography>
+              <Typography variant="body1">{selectedItem?.chassi || '-'}</Typography>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Typography variant="subtitle2" color="text.secondary">RENAVAM</Typography>
+              <Typography variant="body1">{selectedItem?.renavam || '-'}</Typography>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Typography variant="subtitle2" color="text.secondary">Setor Responsável</Typography>
+              <Typography variant="body1">{selectedItem?.setor_responsavel || '-'}</Typography>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Typography variant="subtitle2" color="text.secondary">Unidade</Typography>
+              <Typography variant="body1">{(() => {
+                const u = availableUnits?.find((x) => x.id === selectedItem?.unidade_id);
+                return u ? `${u.codigo} - ${u.nome}` : (selectedItem?.unidade_id || '-');
+              })()}</Typography>
             </Grid>
             <Grid item xs={12}>
               <Typography variant="subtitle2" color="text.secondary">Observações</Typography>
@@ -590,12 +673,19 @@ const Viaturas = () => {
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Setor Responsável"
-                value={formData.setor_responsavel || ''}
-                onChange={(e) => handleFormChange('setor_responsavel', e.target.value)}
-              />
+              <FormControl fullWidth>
+                <InputLabel>Setor Responsável</InputLabel>
+                <Select
+                  value={formData.setor_responsavel || ''}
+                  onChange={(e) => handleFormChange('setor_responsavel', e.target.value)}
+                  label="Setor Responsável"
+                >
+                  <MenuItem key="selecione-setor" value=""><em>Selecione um setor</em></MenuItem>
+                  {setores.map((s) => (
+                    <MenuItem key={s} value={s}>{s}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Grid>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
@@ -734,24 +824,76 @@ const Viaturas = () => {
         <MenuItem key="view-viatura" onClick={() => handleMenuAction('view')}>
           <ViewIcon sx={{ mr: 1 }} /> Visualizar
         </MenuItem>
-        <MenuItem key="edit-viatura" disabled={isOperador()} onClick={() => handleMenuAction('edit')}>
-          <EditIcon sx={{ mr: 1 }} /> Editar
-        </MenuItem>
-        <MenuItem key="delete-viatura" disabled={isOperador()} onClick={() => handleMenuAction('delete')}>
-          <DeleteIcon sx={{ mr: 1 }} /> Excluir
-        </MenuItem>
+        {!isOperador() && (
+          <MenuItem key="edit-viatura" onClick={() => handleMenuAction('edit')}>
+            <EditIcon sx={{ mr: 1 }} /> Editar
+          </MenuItem>
+        )}
+        {!isOperador() && (
+          <MenuItem key="delete-viatura" onClick={() => handleMenuAction('delete')} sx={{ color: 'error.main' }}>
+            <DeleteIcon sx={{ mr: 1 }} /> Excluir
+          </MenuItem>
+        )}
       </Menu>
 
       {/* Botão flutuante para adicionar nova viatura */}
+      {!isOperador() && (
       <Fab
         color="primary"
         aria-label="add"
         sx={{ position: 'fixed', bottom: 16, right: 16 }}
-        disabled={isOperador()}
         onClick={() => handleOpenDialog('viatura')}
       >
         <AddIcon />
       </Fab>
+      )}
+
+      {/* Diálogo de confirmação de exclusão */}
+      <Dialog open={deleteDialogOpen} onClose={() => { setDeleteDialogOpen(false); setDeleteReason(''); }}>
+        <DialogTitle sx={{ color: 'error.main' }}>
+          Confirmar Exclusão
+        </DialogTitle>
+        <DialogContent>
+          <Typography>
+            Tem certeza que deseja excluir esta viatura?
+          </Typography>
+          {selectedItem && (
+            <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+              <Typography variant="subtitle2">Viatura</Typography>
+              <Typography variant="body2">{selectedItem.prefixo} • {selectedItem.modelo} • {selectedItem.placa}</Typography>
+              <Typography variant="subtitle2" sx={{ mt: 1 }}>Usuário que excluirá</Typography>
+              <Typography variant="body2">{getUserInfo()?.displayName || getUserInfo()?.nome || '-'}</Typography>
+            </Box>
+          )}
+          <TextField
+            label="Motivo da exclusão"
+            value={deleteReason}
+            onChange={(e) => setDeleteReason(e.target.value)}
+            fullWidth
+            multiline
+            minRows={2}
+            required
+            sx={{ mt: 2 }}
+          />
+          <Alert severity="warning" sx={{ mt: 2 }}>
+            Esta ação não pode ser desfeita!
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setDeleteDialogOpen(false); setDeleteReason(''); }} disabled={actionLoading}>
+            Cancelar
+          </Button>
+          <Button 
+            onClick={handleConfirmDelete}
+            color="error"
+            variant="contained"
+            disabled={actionLoading || !deleteReason.trim()}
+            startIcon={actionLoading ? <CircularProgress size={16} /> : <DeleteIcon />}
+          >
+            {actionLoading ? 'Excluindo...' : 'Excluir Viatura'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

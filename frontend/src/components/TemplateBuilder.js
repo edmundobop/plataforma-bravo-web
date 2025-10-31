@@ -60,7 +60,7 @@ import {
   Cancel as CancelIcon,
   Visibility as ViewIcon,
 } from '@mui/icons-material';
-import { templateService } from '../services/api';
+import { templateService, uploadService } from '../services/api';
 import { useTenant } from '../contexts/TenantContext';
 
 const TemplateBuilder = () => {
@@ -96,15 +96,18 @@ const TemplateBuilder = () => {
     itens: []
   });
   const [editingCategoryIndex, setEditingCategoryIndex] = useState(-1);
+  const [uploadingCategoryPhoto, setUploadingCategoryPhoto] = useState(false);
   
   // Estados para item sendo editado
   const [itemDialog, setItemDialog] = useState(false);
   const [itemForm, setItemForm] = useState({
     nome: '',
     tipo: 'checkbox',
-    obrigatorio: false
+    obrigatorio: false,
+    imagem_url: ''
   });
   const [editingItemIndex, setEditingItemIndex] = useState(-1);
+  const [uploadingItemPhoto, setUploadingItemPhoto] = useState(false);
 
   // Tipos de viatura disponíveis
   const tiposViatura = [
@@ -347,7 +350,7 @@ const TemplateBuilder = () => {
     if (itemIndex >= 0) {
       setItemForm(categoryForm.itens[itemIndex]);
     } else {
-      setItemForm({ nome: '', tipo: 'checkbox', obrigatorio: false });
+      setItemForm({ nome: '', tipo: 'checkbox', obrigatorio: false, imagem_url: '' });
     }
     
     setItemDialog(true);
@@ -364,7 +367,7 @@ const TemplateBuilder = () => {
     
     setCategoryForm({ ...categoryForm, itens: newItens });
     setItemDialog(false);
-    setItemForm({ nome: '', tipo: 'checkbox', obrigatorio: false });
+    setItemForm({ nome: '', tipo: 'checkbox', obrigatorio: false, imagem_url: '' });
   };
 
   const handleDeleteItem = (itemIndex) => {
@@ -804,13 +807,85 @@ const TemplateBuilder = () => {
               />
             </Grid>
             <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="URL da Imagem (opcional)"
-                value={categoryForm.imagem_url}
-                onChange={(e) => setCategoryForm({ ...categoryForm, imagem_url: e.target.value })}
-                placeholder="https://exemplo.com/imagem.jpg"
-              />
+              <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+                <Box sx={{ width: 160 }}>
+                  {categoryForm.imagem_url ? (
+                    <Box sx={{ position: 'relative' }}>
+                      <img
+                        src={categoryForm.imagem_url}
+                        alt={categoryForm.nome || 'Imagem da categoria'}
+                        style={{ width: '160px', height: '120px', objectFit: 'cover', borderRadius: 4, border: '1px solid #ddd' }}
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
+                      <Button
+                        size="small"
+                        color="error"
+                        sx={{ mt: 1 }}
+                        onClick={() => setCategoryForm({ ...categoryForm, imagem_url: '' })}
+                      >
+                        Remover imagem
+                      </Button>
+                    </Box>
+                  ) : (
+                    <Box
+                      sx={{
+                        width: 160,
+                        height: 120,
+                        border: '2px dashed #ccc',
+                        borderRadius: 2,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        '&:hover': { borderColor: 'primary.main' }
+                      }}
+                      onClick={() => document.getElementById('categoria-foto-upload-input').click()}
+                    >
+                      <PhotoIcon sx={{ fontSize: 36, color: 'grey.400' }} />
+                    </Box>
+                  )}
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <TextField
+                    fullWidth
+                    label="URL da Imagem (opcional)"
+                    value={categoryForm.imagem_url}
+                    onChange={(e) => setCategoryForm({ ...categoryForm, imagem_url: e.target.value })}
+                    placeholder="https://exemplo.com/imagem.jpg"
+                  />
+                  <input
+                    id="categoria-foto-upload-input"
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setUploadingCategoryPhoto(true);
+                      try {
+                        const res = await uploadService.uploadFoto(file);
+                        const url = `http://localhost:5000${res.data.url}`;
+                        setCategoryForm({ ...categoryForm, imagem_url: url });
+                      } catch (err) {
+                        console.error('Erro ao enviar imagem da categoria', err);
+                        setError('Erro ao enviar imagem da categoria');
+                      } finally {
+                        setUploadingCategoryPhoto(false);
+                      }
+                    }}
+                  />
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    sx={{ mt: 1 }}
+                    startIcon={uploadingCategoryPhoto ? <CircularProgress size={16} /> : <PhotoIcon />}
+                    disabled={uploadingCategoryPhoto}
+                    onClick={() => document.getElementById('categoria-foto-upload-input').click()}
+                  >
+                    {uploadingCategoryPhoto ? 'Enviando...' : (categoryForm.imagem_url ? 'Alterar Imagem' : 'Enviar Imagem')}
+                  </Button>
+                </Box>
+              </Box>
             </Grid>
 
           </Grid>
@@ -910,6 +985,87 @@ const TemplateBuilder = () => {
                   ))}
                 </Select>
               </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+                <Box sx={{ width: 160 }}>
+                  {itemForm.imagem_url ? (
+                    <Box>
+                      <img
+                        src={itemForm.imagem_url}
+                        alt={itemForm.nome || 'Imagem do item'}
+                        style={{ width: '160px', height: '120px', objectFit: 'cover', borderRadius: 4, border: '1px solid #ddd' }}
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
+                      <Button
+                        size="small"
+                        color="error"
+                        sx={{ mt: 1 }}
+                        onClick={() => setItemForm({ ...itemForm, imagem_url: '' })}
+                      >
+                        Remover imagem
+                      </Button>
+                    </Box>
+                  ) : (
+                    <Box
+                      sx={{
+                        width: 160,
+                        height: 120,
+                        border: '2px dashed #ccc',
+                        borderRadius: 2,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        '&:hover': { borderColor: 'primary.main' }
+                      }}
+                      onClick={() => document.getElementById('item-foto-upload-input').click()}
+                    >
+                      <PhotoIcon sx={{ fontSize: 36, color: 'grey.400' }} />
+                    </Box>
+                  )}
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <TextField
+                    fullWidth
+                    label="URL da Imagem do Item (opcional)"
+                    value={itemForm.imagem_url}
+                    onChange={(e) => setItemForm({ ...itemForm, imagem_url: e.target.value })}
+                    placeholder="https://exemplo.com/imagem.jpg"
+                  />
+                  <input
+                    id="item-foto-upload-input"
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setUploadingItemPhoto(true);
+                      try {
+                        const res = await uploadService.uploadFoto(file);
+                        const url = `http://localhost:5000${res.data.url}`;
+                        setItemForm({ ...itemForm, imagem_url: url });
+                      } catch (err) {
+                        console.error('Erro ao enviar imagem do item', err);
+                        setError('Erro ao enviar imagem do item');
+                      } finally {
+                        setUploadingItemPhoto(false);
+                      }
+                    }}
+                  />
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    sx={{ mt: 1 }}
+                    startIcon={uploadingItemPhoto ? <CircularProgress size={16} /> : <PhotoIcon />}
+                    disabled={uploadingItemPhoto}
+                    onClick={() => document.getElementById('item-foto-upload-input').click()}
+                  >
+                    {uploadingItemPhoto ? 'Enviando...' : (itemForm.imagem_url ? 'Alterar Imagem' : 'Enviar Imagem')}
+                  </Button>
+                </Box>
+              </Box>
             </Grid>
             <Grid item xs={12}>
               <FormControlLabel
