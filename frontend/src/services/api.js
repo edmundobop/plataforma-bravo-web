@@ -1,8 +1,11 @@
 import axios from 'axios';
 
 // Configuração base da API
+// Permitir configurar a API pelo ambiente e evitar dependência do proxy do dev server
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '/api';
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
   timeout: 30000, // 30 segundos
   headers: {
     'Content-Type': 'application/json',
@@ -80,7 +83,7 @@ export const authService = {
 // Serviços de usuários
 // Instância separada para rotas públicas (sem interceptor de auth)
 const publicApi = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
@@ -145,7 +148,7 @@ export const frotaService = {
   getViaturaById: (id) => api.get(`/frota/viaturas/${id}`),
   createViatura: (viaturaData) => api.post('/frota/viaturas', viaturaData),
   updateViatura: (id, viaturaData) => api.put(`/frota/viaturas/${id}`, viaturaData),
-  deleteViatura: (id) => api.delete(`/frota/viaturas/${id}`),
+  deleteViatura: (id, data) => api.delete(`/frota/viaturas/${id}`, { data }),
   
   
   // Manutenções
@@ -249,9 +252,76 @@ export const checklistService = {
   createChecklist: (data) => api.post('/checklist/viaturas', data).then(res => res.data),
   updateChecklist: (id, data) => api.put(`/checklist/viaturas/${id}`, data).then(res => res.data),
   deleteChecklist: (id) => api.delete(`/checklist/viaturas/${id}`).then(res => res.data),
+  cancelarChecklist: (id, motivo) => api.put(`/checklist/viaturas/${id}/cancelar`, { motivo }).then(res => res.data),
   finalizarChecklist: (id, authData) => api.post(`/checklist/viaturas/${id}/finalizar`, authData).then(res => res.data),
   validarCredenciais: (authData) => api.post('/checklist/validar-credenciais', authData).then(res => res.data),
   searchUsuarios: (query) => api.get('/checklist/usuarios/search', { params: { q: query } }).then(res => res.data),
+  
+  // Solicitações de checklist (a API pode não existir ainda; retorna vazio se falhar)
+  getSolicitacoes: async (params = {}) => {
+    try {
+      const res = await api.get('/checklist/solicitacoes', { params });
+      return res.data;
+    } catch (err) {
+      console.warn('ChecklistService.getSolicitacoes: API não disponível, retornando lista vazia');
+      return { solicitacoes: [] };
+    }
+  },
+
+  // Criar uma nova solicitação de checklist
+  createSolicitacao: async (data) => {
+    try {
+      const res = await api.post('/checklist/solicitacoes', data);
+      return res.data;
+    } catch (err) {
+      console.error('Erro ao criar solicitação de checklist:', err);
+      throw err;
+    }
+  },
+
+  // Iniciar uma solicitação e obter prefill seguro
+  iniciarSolicitacao: async (id) => {
+    const res = await api.post(`/checklist/solicitacoes/${id}/iniciar`);
+    return res.data;
+  },
+
+  // Cancelar uma solicitação
+  cancelarSolicitacao: async (id) => {
+    const res = await api.put(`/checklist/solicitacoes/${id}/cancelar`);
+    return res.data;
+  },
+
+  // Excluir uma solicitação definitivamente (Admin/Chefe)
+  deleteSolicitacao: async (id) => {
+    const res = await api.delete(`/checklist/solicitacoes/${id}`);
+    return res.data;
+  },
+
+  // Automações
+  getAutomacoes: async (params = {}) => {
+    const res = await api.get('/checklist/automacoes', { params });
+    return res.data;
+  },
+  createAutomacao: async (data) => {
+    const res = await api.post('/checklist/automacoes', data);
+    return res.data;
+  },
+  updateAutomacao: async (id, data) => {
+    const res = await api.put(`/checklist/automacoes/${id}`, data);
+    return res.data;
+  },
+  toggleAutomacao: async (id, ativo) => {
+    const res = await api.put(`/checklist/automacoes/${id}/ativar`, { ativo });
+    return res.data;
+  },
+  deleteAutomacao: async (id) => {
+    const res = await api.delete(`/checklist/automacoes/${id}`);
+    return res.data;
+  },
+  gerarSolicitacoesAutomacao: async (id) => {
+    const res = await api.post(`/checklist/automacoes/${id}/gerar-solicitacoes`);
+    return res.data;
+  },
 };
 
 // Utilitários para upload de arquivos

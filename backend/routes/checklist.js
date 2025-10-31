@@ -7,7 +7,7 @@
  */
 
 const express = require('express');
-const { body, validationResult, query: expressQuery } = require('express-validator');
+const { body, validationResult, query: expressQuery, param } = require('express-validator');
 const { query } = require('../config/database');
 const { authenticateToken, authorizeRoles } = require('../middleware/auth');
 const { optionalTenant } = require('../middleware/tenant');
@@ -139,6 +139,366 @@ router.post('/viaturas/:id/finalizar', [
 router.use(authenticateToken);
 router.use(optionalTenant);
 
+// Solicitações de Checklist de Viaturas
+// Listar solicitações
+router.get('/solicitacoes', async (req, res) => {
+  try {
+    const { status = 'pendente', page = 1, limit = 10 } = req.query;
+    const offset = (page - 1) * limit;
+
+    let queryText = `
+      SELECT s.*, v.prefixo as viatura_prefixo, v.modelo as viatura_modelo,
+             t.nome as template_nome
+      FROM checklist_solicitacoes s
+      JOIN viaturas v ON s.viatura_id = v.id
+      LEFT JOIN checklist_templates t ON s.template_id = t.id
+      WHERE 1=1
+    `;
+    const params = [];
+    let paramCount = 0;
+
+    if (req.unidade?.id) {
+      paramCount++;
+      queryText += ` AND s.unidade_id = $${paramCount}`;
+      params.push(req.unidade.id);
+    }
+
+    if (status) {
+      paramCount++;
+      queryText += ` AND s.status = $${paramCount}`;
+      params.push(status);
+    }
+
+    queryText += ` ORDER BY COALESCE(s.data_prevista, s.criada_em) DESC LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
+    params.push(limit, offset);
+
+    const result = await query(queryText, params);
+
+    // Contagem
+    let countQuery = `SELECT COUNT(*) as total FROM checklist_solicitacoes s WHERE 1=1`;
+    const countParams = [];
+    let countIdx = 1;
+    if (req.unidade?.id) {
+      countQuery += ` AND s.unidade_id = $${countIdx}`;
+      countParams.push(req.unidade.id);
+      countIdx++;
+    }
+    if (status) {
+      countQuery += ` AND s.status = $${countIdx}`;
+      countParams.push(status);
+      countIdx++;
+    }
+    const countResult = await query(countQuery, countParams);
+    const total = parseInt(countResult.rows[0].total);
+
+    res.json({
+      solicitacoes: result.rows,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao listar solicitações de checklist:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Automações de Checklist de Viaturas (CRUD simples)
+// Listar automações
+router.get('/automacoes', async (req, res) => {
+  try {
+    const params = [];
+    let queryText = `
+      SELECT a.*, t.nome as template_nome
+      FROM checklist_automacoes a
+      LEFT JOIN checklist_templates t ON a.template_id = t.id
+      WHERE 1=1
+    `;
+    if (req.unidade?.id) {
+      params.push(req.unidade.id);
+      queryText += ` AND a.unidade_id = $${params.length}`;
+    }
+    queryText += ' ORDER BY a.created_at DESC';
+    const result = await query(queryText, params);
+    res.json({ automacoes: result.rows });
+  } catch (error) {
+    console.error('Erro ao listar automações:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Criar automação
+router.post('/automacoes', [
+  body('horario').notEmpty().withMessage('Horário é obrigatório'),
+  body('dias_semana').isArray({ min: 1 }).withMessage('Informe ao menos um dia da semana'),
+  body('ala_servico').isIn(['Alpha', 'Bravo', 'Charlie', 'Delta', 'ADM']).withMessage('Ala de serviço inválida'),
+  body('viaturas').isArray({ min: 1 }).withMessage('Selecione ao menos uma viatura'),
+  body('template_id').isInt().withMessage('Template é obrigatório'),
+  body('tipo_checklist').notEmpty().withMessage('Tipo de checklist é obrigatório')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+    const {
+      nome = null,
+      ativo = true,
+      horario,
+      dias_semana,
+      ala_servico,
+      viaturas,
+      template_id,
+      tipo_checklist
+    } = req.body;
+
+    const unidade_id = req.unidade?.id;
+    if (!unidade_id) {
+      return res.status(400).json({ error: 'Unidade não definida' });
+    }
+
+    const result = await query(`
+      INSERT INTO checklist_automacoes (
+        unidade_id, nome, ativo, horario, dias_semana, ala_servico, viaturas, template_id, tipo_checklist, criado_por, created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+      RETURNING *
+    `, [unidade_id, nome, !!ativo, horario, JSON.stringify(dias_semana), ala_servico, JSON.stringify(viaturas), template_id, tipo_checklist, req.user.id]);
+
+    res.status(201).json({ message: 'Automação criada com sucesso', automacao: result.rows[0] });
+  } catch (error) {
+    console.error('Erro ao criar automação:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Atualizar automação
+router.put('/automacoes/:id', [
+  param('id').isInt(),
+  body('horario').optional().notEmpty(),
+  body('dias_semana').optional().isArray({ min: 1 }),
+  body('ala_servico').optional().isIn(['Alpha', 'Bravo', 'Charlie', 'Delta', 'ADM']),
+  body('viaturas').optional().isArray({ min: 1 }),
+  body('template_id').optional().isInt(),
+  body('tipo_checklist').optional().notEmpty(),
+  body('ativo').optional().isBoolean(),
+], async (req, res) => {
+  try {
+    const { id } = req.params;
+    const fields = [];
+    const values = [];
+    let idx = 1;
+    const updatable = ['nome','ativo','horario','dias_semana','ala_servico','viaturas','template_id','tipo_checklist'];
+    for (const key of updatable) {
+      if (key in req.body) {
+        fields.push(`${key} = $${idx}`);
+        if (key === 'dias_semana' || key === 'viaturas') {
+          values.push(JSON.stringify(req.body[key]));
+        } else {
+          values.push(req.body[key]);
+        }
+        idx++;
+      }
+    }
+    if (fields.length === 0) {
+      return res.status(400).json({ error: 'Nenhum campo para atualizar' });
+    }
+    values.push(id);
+    const result = await query(`
+      UPDATE checklist_automacoes
+      SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $${idx}
+      RETURNING *
+    `, values);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Automação não encontrada' });
+    }
+    res.json({ message: 'Automação atualizada', automacao: result.rows[0] });
+  } catch (error) {
+    console.error('Erro ao atualizar automação:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Ativar/Desativar automação
+router.put('/automacoes/:id/ativar', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { ativo } = req.body;
+    const result = await query(`
+      UPDATE checklist_automacoes SET ativo = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *
+    `, [!!ativo, id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Automação não encontrada' });
+    }
+    res.json({ message: 'Status atualizado', automacao: result.rows[0] });
+  } catch (error) {
+    console.error('Erro ao alternar status da automação:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Excluir automação
+router.delete('/automacoes/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await query('DELETE FROM checklist_automacoes WHERE id = $1 RETURNING *', [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Automação não encontrada' });
+    }
+    res.json({ message: 'Automação excluída' });
+  } catch (error) {
+    console.error('Erro ao excluir automação:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Gerar solicitações agora com base na automação
+router.post('/automacoes/:id/gerar-solicitacoes', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const sel = await query('SELECT * FROM checklist_automacoes WHERE id = $1', [id]);
+    if (sel.rows.length === 0) {
+      return res.status(404).json({ error: 'Automação não encontrada' });
+    }
+    const a = sel.rows[0];
+    if (!a.ativo) {
+      return res.status(400).json({ error: 'Automação desativada' });
+    }
+
+    // Calcular data_prevista usando a hora configurada para hoje
+    const [h, m] = (a.horario || '07:00').split(':');
+    const dataPrevista = new Date();
+    dataPrevista.setHours(parseInt(h, 10), parseInt(m, 10), 0, 0);
+
+    const viaturas = Array.isArray(a.viaturas) ? a.viaturas : (a.viaturas?.ids || []);
+    const created = [];
+    for (const vid of viaturas) {
+      const r = await query(`
+        INSERT INTO checklist_solicitacoes (
+          unidade_id, viatura_id, template_id, tipo_checklist, ala_servico, data_prevista, responsavel_id, status, criada_em, atualizada_em
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,'pendente',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+        RETURNING *
+      `, [a.unidade_id, vid, a.template_id || null, a.tipo_checklist, a.ala_servico, dataPrevista, req.user.id]);
+      created.push(r.rows[0]);
+    }
+
+    res.json({ message: `${created.length} solicitações criadas`, solicitacoes: created });
+  } catch (error) {
+    console.error('Erro ao gerar solicitações da automação:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Criar solicitação
+router.post('/solicitacoes', [
+  body('viatura_id').isInt().withMessage('ID da viatura é obrigatório'),
+  body('template_id').optional().isInt(),
+  body('tipo_checklist').notEmpty().withMessage('Tipo de checklist é obrigatório'),
+  body('ala_servico').isIn(['Alpha', 'Bravo', 'Charlie', 'Delta', 'ADM']).withMessage('Ala de serviço inválida'),
+  body('data_prevista').optional().isISO8601().withMessage('Data prevista inválida')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { viatura_id, template_id, tipo_checklist, ala_servico, data_prevista } = req.body;
+
+    // Verificar viatura e unidade
+    let vQuery = 'SELECT id, unidade_id FROM viaturas WHERE id = $1';
+    const vParams = [viatura_id];
+    const vResult = await query(vQuery, vParams);
+    if (vResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Viatura não encontrada' });
+    }
+    const unidade_id = vResult.rows[0].unidade_id;
+
+    // Inserir solicitação
+    const result = await query(`
+      INSERT INTO checklist_solicitacoes (
+        unidade_id, viatura_id, template_id, tipo_checklist, ala_servico, data_prevista, responsavel_id, status, criada_em, atualizada_em
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'pendente', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      RETURNING *
+    `, [unidade_id, viatura_id, template_id || null, tipo_checklist, ala_servico, data_prevista || null, req.user.id]);
+
+    res.status(201).json({ message: 'Solicitação criada com sucesso', solicitacao: result.rows[0] });
+  } catch (error) {
+    console.error('Erro ao criar solicitação de checklist:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Cancelar solicitação
+router.put('/solicitacoes/:id/cancelar', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Atualizar status para cancelada
+    const result = await query(`
+      UPDATE checklist_solicitacoes SET status = 'cancelada', atualizada_em = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *
+    `, [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Solicitação não encontrada' });
+    }
+
+    res.json({ message: 'Solicitação cancelada', solicitacao: result.rows[0] });
+  } catch (error) {
+    console.error('Erro ao cancelar solicitação:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Excluir solicitação definitivamente (apenas Administrador/Chefe)
+router.delete('/solicitacoes/:id', authorizeRoles('Administrador', 'Chefe'), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await query('DELETE FROM checklist_solicitacoes WHERE id = $1 RETURNING *', [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Solicitação não encontrada' });
+    }
+
+    res.json({ message: 'Solicitação excluída com sucesso' });
+  } catch (error) {
+    console.error('Erro ao excluir solicitação:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Iniciar solicitação (marca como atendida e retorna dados de prefill)
+router.post('/solicitacoes/:id/iniciar', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const sel = await query('SELECT * FROM checklist_solicitacoes WHERE id = $1', [id]);
+    if (sel.rows.length === 0) {
+      return res.status(404).json({ error: 'Solicitação não encontrada' });
+    }
+    const s = sel.rows[0];
+
+    // Marcar como atendida
+    await query('UPDATE checklist_solicitacoes SET status = $1, atualizada_em = CURRENT_TIMESTAMP WHERE id = $2', ['atendida', id]);
+
+    res.json({
+      message: 'Solicitação iniciada',
+      prefill: {
+        viatura_id: s.viatura_id,
+        template_id: s.template_id,
+        tipo_checklist: s.tipo_checklist,
+        ala_servico: s.ala_servico
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao iniciar solicitação:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 // Listar checklists de viaturas com filtros
 router.get('/viaturas', async (req, res) => {
   try {
@@ -146,7 +506,7 @@ router.get('/viaturas', async (req, res) => {
     console.log('🔍 Headers:', req.headers);
     console.log('🔍 Query params:', req.query);
     
-    const { page = 1, limit = 10, viatura_id, status } = req.query;
+    const { page = 1, limit = 10, viatura_id, status, data_inicio, data_fim, tipo_checklist, ala_servico } = req.query;
     const offset = (page - 1) * limit;
 
     let queryText = `
@@ -161,6 +521,7 @@ router.get('/viaturas', async (req, res) => {
              c.tipo_checklist,
              c.observacoes_gerais,
              c.status,
+             v.prefixo as viatura_prefixo,
              v.placa,
              v.modelo,
              v.tipo as viatura_tipo,
@@ -197,6 +558,30 @@ router.get('/viaturas', async (req, res) => {
       paramCount++;
       queryText += ` AND c.status = $${paramCount}`;
       params.push(status);
+    }
+
+    if (tipo_checklist) {
+      paramCount++;
+      queryText += ` AND c.tipo_checklist = $${paramCount}`;
+      params.push(tipo_checklist);
+    }
+
+    if (ala_servico) {
+      paramCount++;
+      queryText += ` AND c.ala_servico = $${paramCount}`;
+      params.push(ala_servico);
+    }
+
+    if (data_inicio) {
+      paramCount++;
+      queryText += ` AND DATE(c.data_checklist) >= $${paramCount}`;
+      params.push(data_inicio);
+    }
+
+    if (data_fim) {
+      paramCount++;
+      queryText += ` AND DATE(c.data_checklist) <= $${paramCount}`;
+      params.push(data_fim);
     }
     
     queryText += `
@@ -237,6 +622,30 @@ router.get('/viaturas', async (req, res) => {
     if (status) {
       countQuery += ` AND c.status = $${countParamIndex}`;
       countParams.push(status);
+      countParamIndex++;
+    }
+
+    if (tipo_checklist) {
+      countQuery += ` AND c.tipo_checklist = $${countParamIndex}`;
+      countParams.push(tipo_checklist);
+      countParamIndex++;
+    }
+
+    if (ala_servico) {
+      countQuery += ` AND c.ala_servico = $${countParamIndex}`;
+      countParams.push(ala_servico);
+      countParamIndex++;
+    }
+
+    if (data_inicio) {
+      countQuery += ` AND DATE(c.data_checklist) >= $${countParamIndex}`;
+      countParams.push(data_inicio);
+      countParamIndex++;
+    }
+
+    if (data_fim) {
+      countQuery += ` AND DATE(c.data_checklist) <= $${countParamIndex}`;
+      countParams.push(data_fim);
       countParamIndex++;
     }
 
@@ -319,6 +728,9 @@ router.post('/viaturas', [
   let viatura_id, template_id, km_inicial, combustivel_percentual, ala_servico, tipo_checklist, data_hora, observacoes_gerais, itens;
   
   try {
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ error: 'Não autenticado' });
+    }
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
@@ -335,6 +747,20 @@ router.post('/viaturas', [
       observacoes_gerais,
       itens
     } = req.body);
+
+    // Normalizar ala_servico para evitar violação de CHECK no banco
+    const normalizeAlaServico = (val) => {
+      const v = (val || '').trim();
+      const map = {
+        'alpha': 'Alpha', 'Alpha': 'Alpha',
+        'bravo': 'Bravo', 'Bravo': 'Bravo',
+        'charlie': 'Charlie', 'Charlie': 'Charlie',
+        'delta': 'Delta', 'Delta': 'Delta',
+        'adm': 'ADM', 'ADM': 'ADM'
+      };
+      return map[v] || 'Alpha';
+    };
+    ala_servico = normalizeAlaServico(ala_servico);
 
     const usuario_id = req.user.id;
 
@@ -410,6 +836,10 @@ router.post('/viaturas', [
       itens
     }, null, 2));
     console.error('=== FIM DO ERRO ===');
+    // Tratar violação de CHECK (PostgreSQL code 23514) para erro amigável
+    if (error.code === '23514') {
+      return res.status(400).json({ error: 'Ala de serviço inválida. Permitidos: Alpha, Bravo, Charlie, Delta, ADM.' });
+    }
     res.status(500).json({ 
       error: 'Erro interno do servidor',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
@@ -535,6 +965,48 @@ router.put('/viaturas/:id', [
     });
   } catch (error) {
     console.error('Erro ao atualizar checklist:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Cancelar checklist (Administrador, Chefe, Comandante)
+router.put('/viaturas/:id/cancelar', authorizeRoles('Administrador', 'Chefe', 'Comandante'), [
+  body('motivo').trim().isLength({ min: 3, max: 1000 }).withMessage('Motivo do cancelamento é obrigatório (mín. 3 caracteres)')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { id } = req.params;
+    const { motivo } = req.body;
+
+    // Verificar se o checklist existe
+    const checklistResult = await query('SELECT id, status FROM checklist_viaturas WHERE id = $1', [id]);
+    if (checklistResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Checklist não encontrado' });
+    }
+
+    const checklist = checklistResult.rows[0];
+    if (checklist.status === 'cancelado') {
+      return res.status(400).json({ error: 'Checklist já está cancelado' });
+    }
+
+    // Atualizar para cancelado e persistir motivo
+    const updateResult = await query(`
+      UPDATE checklist_viaturas
+      SET status = 'cancelado', cancelamento_motivo = $2, cancelado_em = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+      RETURNING *
+    `, [id, motivo]);
+
+    res.json({
+      message: 'Checklist cancelado com sucesso',
+      checklist: updateResult.rows[0]
+    });
+  } catch (error) {
+    console.error('Erro ao cancelar checklist:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
