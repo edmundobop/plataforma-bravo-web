@@ -239,8 +239,14 @@ export const validateUsuarioForm = (formData) => {
       isValid = false;
     }
 
-    if (!formData.matricula || !validateIdentidadeMilitar(formData.matricula)) {
-      errors.matricula = 'Matrícula válida é obrigatória para militares';
+    // Matrícula: aceitar somente números, 3–20 dígitos
+    const validateMatricula = (v) => {
+      if (!v) return false;
+      const s = String(v).trim();
+      return /^\d{3,20}$/.test(s);
+    };
+    if (!formData.matricula || !validateMatricula(formData.matricula)) {
+      errors.matricula = 'Matrícula válida é obrigatória (somente números)';
       isValid = false;
     }
 
@@ -307,6 +313,10 @@ export const sanitizeUsuarioData = (formData) => {
   
   if (sanitized.telefone) {
     sanitized.telefone = sanitized.telefone.replace(/\D/g, '');
+  }
+  // Normaliza matrícula para números
+  if (sanitized.matricula) {
+    sanitized.matricula = String(sanitized.matricula).replace(/\D/g, '');
   }
   
   // Remove campos vazios ou nulos

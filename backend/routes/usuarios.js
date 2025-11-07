@@ -136,10 +136,13 @@ router.post('/solicitar-cadastro',
         observacoes
       } = req.body;
 
-      // Verificar se email ou CPF já existem
+      // Verificar se email (e CPF, se existir a coluna) já existem
+      const hasCpf = await columnExists('usuarios', 'cpf');
       const existingUser = await query(
-        'SELECT id FROM usuarios WHERE email = $1 OR cpf = $2',
-        [email, cpf]
+        hasCpf
+          ? 'SELECT id FROM usuarios WHERE email = $1 OR cpf = $2'
+          : 'SELECT id FROM usuarios WHERE email = $1',
+        hasCpf ? [email, cpf] : [email]
       );
 
       if (existingUser.rows.length > 0) {
@@ -165,33 +168,141 @@ router.post('/solicitar-cadastro',
       }
       
       // Inserir solicitação de cadastro (usuário inativo até aprovação)
-      const result = await query(`
-        INSERT INTO usuarios (
-          nome_completo, email, cpf, telefone, tipo,
-          posto_graduacao, nome_guerra, matricula,
-          data_nascimento, data_incorporacao, unidade_id,
-          perfil_id, ativo, senha
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, false, $13)
-        RETURNING id, nome_completo, email, tipo
-      `, [
-        nome_completo, email, cpf, telefone, tipo,
-        posto_graduacao, nome_guerra, matricula,
-        data_nascimento, data_incorporacao, unidade_id,
-        5, // Perfil Operador por padrão
-        '$2b$10$defaulthashedpassword' // Senha temporária
-      ]);
+      // Monta inserção dinamicamente conforme colunas existentes, evitando 500 por incompatibilidades
+      const fields = [];
+      const placeholders = [];
+      const params = [];
+      let idx = 1;
+      const add = (name, value, cast = '') => {
+        fields.push(name);
+        placeholders.push(`$${idx}${cast}`);
+        params.push(value);
+        idx++;
+      };
+
+      const toNullIfEmpty = (v) => (v === undefined || v === null || v === '' ? null : v);
+
+      // Nome: prefere nome_completo; se não, usa nome
+      const hasNomeCompleto = await columnExists('usuarios', 'nome_completo');
+      const hasNome = await columnExists('usuarios', 'nome');
+      // Alguns esquemas possuem ambas colunas como NOT NULL: definir ambas
+      if (hasNomeCompleto) add('nome_completo', nome_completo);
+      if (hasNome) add('nome', nome_completo);
+
+      // Email (obrigatório)
+      add('email', email);
+
+      // CPF, se existir coluna
+      if (hasCpf) add('cpf', toNullIfEmpty(cpf));
+
+      // Telefone
+      if (await columnExists('usuarios', 'telefone')) add('telefone', toNullIfEmpty(telefone));
+
+      // Tipo
+      if (await columnExists('usuarios', 'tipo')) add('tipo', tipo);
+
+      // Posto/Graduação
+      if (await columnExists('usuarios', 'posto_graduacao')) add('posto_graduacao', toNullIfEmpty(posto_graduacao));
+
+      // Nome de guerra
+      if (await columnExists('usuarios', 'nome_guerra')) add('nome_guerra', toNullIfEmpty(nome_guerra));
+
+      // Matrícula
+      if (await columnExists('usuarios', 'matricula')) add('matricula', toNullIfEmpty(matricula));
+
+      // Datas
+      if (await columnExists('usuarios', 'data_nascimento')) add('data_nascimento', toNullIfEmpty(data_nascimento), '::date');
+      if (await columnExists('usuarios', 'data_incorporacao')) add('data_incorporacao', toNullIfEmpty(data_incorporacao), '::date');
+
+      // Unidade (lotação): usa unidade_lotacao_id se existir; senão unidade_id
+      const hasUnidLot = await columnExists('usuarios', 'unidade_lotacao_id');
+      const hasUnidId = await columnExists('usuarios', 'unidade_id');
+      const lotacaoValue = (unidade_id === 0 || unidade_id === '' || unidade_id === undefined) ? null : unidade_id;
+      if (hasUnidLot) add('unidade_lotacao_id', lotacaoValue);
+      else if (hasUnidId) add('unidade_id', lotacaoValue);
+
+      // Perfil (perfil_id) se existir; tentar usar um perfil válido; senão cair para role
+      const hasPerfilId = await columnExists('usuarios', 'perfil_id');
+      const hasRole = await columnExists('usuarios', 'role');
+      const hasPerfisTable = await tableExists('perfis');
+      if (hasPerfilId && hasPerfisTable) {
+        // Tentar encontrar um perfil padrão válido
+        const perfilDefault = await query(
+          `SELECT id FROM perfis WHERE nome IN ('Operador', 'Usuario', 'Usuário') OR id = 5 ORDER BY id LIMIT 1`
+        );
+        if (perfilDefault.rows.length > 0) {
+          add('perfil_id', perfilDefault.rows[0].id);
+        } else if (hasRole) {
+          add('role', 'usuario');
+        }
+        // Se não houver perfil padrão e não houver coluna role, não adiciona perfil
+      } else if (hasRole) {
+        add('role', 'usuario');
+      }
+
+      // Observações
+      if (await columnExists('usuarios', 'observacoes')) add('observacoes', observacoes ?? null);
+
+      // Senha: usa coluna senha_hash se existir, senão senha
+      const hasSenhaHash = await columnExists('usuarios', 'senha_hash');
+      const hasSenha = await columnExists('usuarios', 'senha');
+      // Gerar um hash válido para evitar falhas de constraint/validação
+      const defaultHash = await bcrypt.hash('Temp@123', 10);
+      if (hasSenhaHash) add('senha_hash', defaultHash);
+      else if (hasSenha) add('senha', defaultHash);
+
+      // Ativo: false até aprovação, somente se a coluna existir
+      if (await columnExists('usuarios', 'ativo')) add('ativo', false);
+
+      // Status da solicitação: definir como pendente se a coluna existir
+      if (await columnExists('usuarios', 'status_solicitacao')) add('status_solicitacao', 'pendente');
+
+      const insertSql = `
+        INSERT INTO usuarios (${fields.join(', ')})
+        VALUES (${placeholders.join(', ')})
+        RETURNING id, email
+      `;
+
+      // Log de depuração para investigar 500 em ambientes variados
+      console.log('SolicitarCadastro - Campos:', fields);
+      console.log('SolicitarCadastro - SQL:', insertSql);
+      console.log('SolicitarCadastro - Params:', params);
+
+      const result = await query(insertSql, params);
 
       // Criar notificação para administradores
-      await query(`
-        INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo)
-        SELECT u.id, $1, $2, 'info', 'sistema'
-        FROM usuarios u 
-        JOIN perfis p ON u.perfil_id = p.id
-        WHERE p.nome = 'Administrador' AND u.ativo = true
-      `, [
-        'Nova Solicitação de Cadastro',
-        `${nome_completo} (${tipo}) solicitou cadastro no sistema.`
-      ]);
+      // Guardar contra ausência da tabela/coluna de perfis
+      try {
+        const hasPerfisTable = await tableExists('perfis');
+        const hasPerfilIdCol = await columnExists('usuarios', 'perfil_id');
+        const hasRoleCol = await columnExists('usuarios', 'role');
+
+        if (hasPerfisTable && hasPerfilIdCol) {
+          await query(`
+            INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo)
+            SELECT u.id, $1, $2, 'info', 'sistema'
+            FROM usuarios u 
+            JOIN perfis p ON u.perfil_id = p.id
+            WHERE p.nome = 'Administrador' AND u.ativo = true
+          `, [
+            'Nova Solicitação de Cadastro',
+            `${nome_completo} (${tipo}) solicitou cadastro no sistema.`
+          ]);
+        } else if (hasRoleCol) {
+          await query(`
+            INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo)
+            SELECT u.id, $1, $2, 'info', 'sistema'
+            FROM usuarios u 
+            WHERE u.role = 'Administrador' AND u.ativo = true
+          `, [
+            'Nova Solicitação de Cadastro',
+            `${nome_completo} (${tipo}) solicitou cadastro no sistema.`
+          ]);
+        }
+        // Se nenhuma estrutura de perfis/roles existir, silenciosamente não cria notificação
+      } catch (notifyErr) {
+        console.warn('Aviso: falha ao criar notificação de solicitação de cadastro:', notifyErr.message);
+      }
 
       res.status(201).json({
         success: true,
@@ -201,9 +312,19 @@ router.post('/solicitar-cadastro',
 
     } catch (error) {
       console.error('Erro ao solicitar cadastro:', error);
+      // Responder com detalhes quando não for produção, para facilitar depuração
+      const isProd = process.env.NODE_ENV === 'production';
+      const errorPayload = isProd ? undefined : {
+        message: error.message,
+        code: error.code,
+        detail: error.detail,
+        constraint: error.constraint,
+        stack: error.stack
+      };
       res.status(500).json({
         success: false,
-        message: 'Erro interno do servidor'
+        message: 'Erro interno do servidor',
+        error: errorPayload
       });
     }
   }
@@ -242,6 +363,26 @@ router.get('/perfis', async (req, res) => {
       success: false,
       error: 'Erro interno do servidor' 
     });
+  }
+});
+
+/**
+ * @route GET /api/usuarios/public/unidades
+ * @desc Lista unidades ativas (público)
+ * @access Public
+ */
+router.get('/public/unidades', async (req, res) => {
+  try {
+    const result = await query(`
+      SELECT id, nome, sigla
+      FROM unidades
+      WHERE ativa = true
+      ORDER BY nome
+    `);
+    res.json({ success: true, unidades: result.rows });
+  } catch (error) {
+    console.error('Erro ao listar unidades públicas:', error);
+    res.status(500).json({ success: false, message: 'Erro ao listar unidades.' });
   }
 });
 
@@ -410,7 +551,7 @@ router.get('/', authorizeRoles(['Administrador', 'Comandante', 'Chefe']), checkT
         ${selectFuncoes}
       FROM usuarios u
       LEFT JOIN perfis p ON u.perfil_id = p.id
-      LEFT JOIN unidades un ON u.unidade_id = un.id
+      LEFT JOIN unidades un ON u.${lotacaoCol} = un.id
       ${setorJoin}
       ${funcaoJoin}
       ${whereClause}
@@ -446,6 +587,7 @@ router.get('/', authorizeRoles(['Administrador', 'Comandante', 'Chefe']), checkT
  */
 router.get('/pendentes', authorizeRoles(['Administrador', 'Comandante']), async (req, res) => {
   try {
+    const lotacaoCol = await getUsuariosUnidadeColumn() || 'unidade_id';
     const result = await query(`
       SELECT 
         u.id,
@@ -461,7 +603,7 @@ router.get('/pendentes', authorizeRoles(['Administrador', 'Comandante']), async 
         u.created_at,
         un.nome as unidade_nome
       FROM usuarios u
-      LEFT JOIN unidades un ON u.unidade_id = un.id
+      LEFT JOIN unidades un ON u.${lotacaoCol} = un.id
       WHERE u.ativo = false
       ORDER BY u.created_at DESC
     `);
@@ -488,25 +630,28 @@ router.get('/solicitacoes-pendentes', authorizeRoles(['Administrador', 'Comandan
   try {
     const { page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;
+    const lotacaoCol = await getUsuariosUnidadeColumn() || 'unidade_id';
     
     const result = await query(`
       SELECT 
-        id,
-        nome_completo,
-        email,
-        tipo,
-        posto_graduacao,
-        nome_guerra,
-        matricula,
-        cpf,
-        telefone,
-        data_nascimento,
-        unidade_id,
-        created_at,
-        status_solicitacao
-      FROM usuarios 
-      WHERE status_solicitacao = 'pendente'
-      ORDER BY created_at DESC
+        u.id,
+        u.nome_completo,
+        u.email,
+        u.tipo,
+        u.posto_graduacao,
+        u.nome_guerra,
+        u.matricula,
+        u.cpf,
+        u.telefone,
+        u.data_nascimento,
+        u.${lotacaoCol} as unidade_id,
+        un.nome as unidade_nome,
+        u.created_at as data_solicitacao,
+        u.status_solicitacao
+      FROM usuarios u
+      LEFT JOIN unidades un ON u.${lotacaoCol} = un.id
+      WHERE u.status_solicitacao = 'pendente'
+      ORDER BY u.created_at DESC
       LIMIT $1 OFFSET $2
     `, [limit, offset]);
     
@@ -532,6 +677,145 @@ router.get('/solicitacoes-pendentes', authorizeRoles(['Administrador', 'Comandan
       success: false,
       error: 'Erro interno do servidor' 
     });
+  }
+});
+
+/**
+ * @route POST /api/usuarios/aprovar-cadastro/:id
+ * @desc Aprovar ou rejeitar uma solicitação de cadastro
+ * @access Administrador, Comandante
+ */
+router.post('/aprovar-cadastro/:id', authorizeRoles(['Administrador', 'Comandante']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { acao, observacoes_aprovacao, setor, funcao, role } = req.body; // acao: 'aprovar' | 'rejeitar'
+
+    if (!['aprovar', 'rejeitar'].includes(acao)) {
+      return res.status(400).json({ success: false, message: 'Ação inválida' });
+    }
+
+    // Verificar se usuário existe e está pendente
+    const usuarioResult = await query(
+      `SELECT id, status_solicitacao FROM usuarios WHERE id = $1`,
+      [id]
+    );
+    if (usuarioResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Solicitação não encontrada' });
+    }
+    const usuario = usuarioResult.rows[0];
+    if (usuario.status_solicitacao && usuario.status_solicitacao !== 'pendente') {
+      return res.status(400).json({ success: false, message: 'Solicitação já processada' });
+    }
+
+    const updates = [];
+    const params = [];
+    let idx = 1;
+
+    // Observações da aprovação/rejeição se coluna existir
+    if (await columnExists('usuarios', 'observacoes_aprovacao') && observacoes_aprovacao !== undefined) {
+      updates.push(`observacoes_aprovacao = $${idx}`);
+      params.push(observacoes_aprovacao);
+      idx++;
+    }
+
+    // Quem aprovou
+    if (await columnExists('usuarios', 'aprovado_por_id')) {
+      updates.push(`aprovado_por_id = $${idx}`);
+      params.push(req.user.id);
+      idx++;
+    }
+
+    // Data de aprovação
+    if (await columnExists('usuarios', 'aprovado_em')) {
+      updates.push(`aprovado_em = NOW()`);
+    }
+
+    if (acao === 'rejeitar') {
+      if (await columnExists('usuarios', 'status_solicitacao')) {
+        updates.push(`status_solicitacao = 'rejeitada'`);
+      }
+      if (await columnExists('usuarios', 'ativo')) {
+        updates.push(`ativo = false`);
+      }
+    } else if (acao === 'aprovar') {
+      if (await columnExists('usuarios', 'status_solicitacao')) {
+        updates.push(`status_solicitacao = 'aprovada'`);
+      }
+      if (await columnExists('usuarios', 'ativo')) {
+        updates.push(`ativo = true`);
+      }
+
+      // Mapear perfil/role se fornecido
+      const hasPerfilId = await columnExists('usuarios', 'perfil_id');
+      const hasPerfisTable = await tableExists('perfis');
+      if (hasPerfilId && hasPerfisTable && role) {
+        const perfil = await query(`SELECT id FROM perfis WHERE nome = $1 LIMIT 1`, [role]);
+        if (perfil.rows.length > 0) {
+          updates.push(`perfil_id = $${idx}`);
+          params.push(perfil.rows[0].id);
+          idx++;
+        }
+      }
+
+      // Setor/função se houver colunas
+      if (await columnExists('usuarios', 'setor')) {
+        if (setor !== undefined) {
+          updates.push(`setor = $${idx}`);
+          params.push(setor);
+          idx++;
+        }
+      } else if (await columnExists('usuarios', 'setor_id')) {
+        if (setor !== undefined) {
+          // Sem mapeamento específico, grava como texto em observações caso não exista tabela de setores
+          updates.push(`setor_id = $${idx}`);
+          params.push(setor);
+          idx++;
+        }
+      }
+
+      if (await columnExists('usuarios', 'funcao')) {
+        if (funcao !== undefined) {
+          updates.push(`funcao = $${idx}`);
+          params.push(funcao);
+          idx++;
+        }
+      } else if (await columnExists('usuarios', 'funcao_id')) {
+        if (funcao !== undefined) {
+          updates.push(`funcao_id = $${idx}`);
+          params.push(funcao);
+          idx++;
+        }
+      }
+
+      // Sincronizar colunas de unidade: se ambas existirem, garantir que
+      // `unidade_id` receba o valor de `unidade_lotacao_id` quando estiver nulo.
+      const hasUnidadeId = await columnExists('usuarios', 'unidade_id');
+      const hasUnidadeLotacaoId = await columnExists('usuarios', 'unidade_lotacao_id');
+      if (hasUnidadeId && hasUnidadeLotacaoId) {
+        updates.push(`unidade_id = COALESCE(unidade_id, unidade_lotacao_id)`);
+      }
+    }
+
+    updates.push(`updated_at = NOW()`);
+
+    const sql = `
+      UPDATE usuarios
+      SET ${updates.join(', ')}
+      WHERE id = $${idx}
+      RETURNING id, nome_completo, email, ativo, status_solicitacao
+    `;
+    params.push(id);
+
+    const result = await query(sql, params);
+
+    res.json({
+      success: true,
+      message: acao === 'aprovar' ? 'Cadastro aprovado com sucesso' : 'Cadastro rejeitado com sucesso',
+      data: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Erro ao aprovar/rejeitar cadastro:', error);
+    res.status(500).json({ success: false, message: 'Erro interno do servidor' });
   }
 });
 
@@ -1053,6 +1337,7 @@ router.get('/data/funcoes', authorizeRoles(['Administrador', 'Comandante']), asy
 router.get('/me/perfil', async (req, res) => {
   try {
     const userId = req.user.id;
+    const lotacaoCol = await getUsuariosUnidadeColumn() || 'unidade_id';
 
     // Seleções dinâmicas para colunas opcionais em perfis
     const selectPerfilNivel = (await columnExists('perfis', 'nivel_hierarquia')) ? 'p.nivel_hierarquia' : 'NULL as nivel_hierarquia';
@@ -1089,7 +1374,7 @@ router.get('/me/perfil', async (req, res) => {
         
       FROM usuarios u
       LEFT JOIN perfis p ON u.perfil_id = p.id
-      LEFT JOIN unidades un ON u.unidade_id = un.id
+      LEFT JOIN unidades un ON u.${lotacaoCol} = un.id
       LEFT JOIN setores s ON u.setor_id = s.id
       LEFT JOIN funcoes f ON u.funcao_id = f.id
       WHERE u.id = $1

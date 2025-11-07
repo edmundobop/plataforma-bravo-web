@@ -4,6 +4,9 @@ import axios from 'axios';
 // Permitir configurar a API pelo ambiente e evitar dependência do proxy do dev server
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '/api';
 
+// Logar base URL para depuração em ambiente de desenvolvimento
+console.log('🔧 API_BASE_URL:', API_BASE_URL);
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000, // 30 segundos
@@ -39,6 +42,13 @@ api.interceptors.request.use(
     return config;
   },
   (error) => {
+    if (error.code === 'ERR_NETWORK') {
+      console.warn('⚠️ ERRO DE REDE: Backend indisponível ou conexão recusada.', {
+        url: error.config?.url,
+        baseURL: error.config?.baseURL || API_BASE_URL,
+        message: error.message
+      });
+    }
     return Promise.reject(error);
   }
 );
@@ -138,6 +148,18 @@ export const usuariosService = {
   // Buscar funções disponíveis
   getFuncoes: () => {
     return api.get('/usuarios/data/funcoes');
+  },
+
+  // Aprovar/Rejeitar solicitação de cadastro
+  aprovarSolicitacao: (id, { aprovado, observacoes, setor, funcao, role } = {}) => {
+    const acao = aprovado ? 'aprovar' : 'rejeitar';
+    return api.post(`/usuarios/aprovar-cadastro/${id}`, {
+      acao,
+      observacoes_aprovacao: observacoes,
+      setor,
+      funcao,
+      role,
+    });
   },
 };
 

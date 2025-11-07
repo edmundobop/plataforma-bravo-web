@@ -54,7 +54,7 @@ import {
   Cancel as CancelIcon,
   Close as CloseIcon
 } from '@mui/icons-material';
-import { frotaService, checklistService, uploadService, templateService } from '../services/api';
+import api, { frotaService, checklistService, uploadService, templateService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 
@@ -398,6 +398,8 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   };
 
   const handleSubmit = async () => {
+    // Evitar múltiplos envios concorrentes (Enter + botão, etc.)
+    if (loading) return;
     if (!usuarioAutenticacao || !senhaAutenticacao) {
       setError('Preencha os dados de autenticação');
       return;
@@ -496,6 +498,17 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         setError(error.response?.data?.error || 'Credenciais inválidas. Verifique o usuário e senha.');
         // Limpar senha para permitir nova tentativa
         setSenhaAutenticacao('');
+        // Interromper fluxo imediatamente — não criar checklist
+        return;
+      } else if (error.code === 'ERR_NETWORK') {
+        const base = (api?.defaults?.baseURL) || (process?.env?.REACT_APP_API_BASE_URL) || '/api';
+        console.warn('⚠️ ERR_NETWORK ao enviar checklist', {
+          baseURL: base,
+          url: error.config?.url,
+          message: error.message
+        });
+        setError(`Servidor indisponível ou conexão recusada (ERR_NETWORK). Base: ${base}. Verifique se o backend está rodando e acessível.`);
+        return;
       } else {
         const generic = error.response?.data?.error || 'Erro ao processar checklist';
         const details = error.response?.data?.details;
@@ -875,10 +888,12 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
             }
           }}
           onKeyDown={(e) => {
-            // Pressionar ENTER deve acionar a finalização
+            // Pressionar ENTER deve acionar a finalização, evitando duplo envio
             if (e.key === 'Enter') {
-              // Não impedir o comportamento; chamamos handleSubmit diretamente
-              handleSubmit();
+              e.preventDefault();
+              if (!loading) {
+                handleSubmit();
+              }
             }
           }}
           required

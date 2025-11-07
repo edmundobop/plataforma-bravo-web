@@ -9,11 +9,69 @@
 const express = require('express');
 const { body, validationResult, query: expressQuery, param } = require('express-validator');
 const { query } = require('../config/database');
+const { getUsuariosUnidadeColumn, columnExists } = require('../utils/schema');
 const { authenticateToken, authorizeRoles } = require('../middleware/auth');
 const { optionalTenant } = require('../middleware/tenant');
 const bcrypt = require('bcryptjs');
 
 const router = express.Router();
+
+// Helper: obter usuários do setor SOP com função Administrativo/Chefe/Auxiliar na mesma unidade
+async function getSOPNotificationUsers(unidadeId) {
+  try {
+    const unidadeCol = (await getUsuariosUnidadeColumn()) || 'unidade_id';
+    const hasUsuariosSetorId = await columnExists('usuarios', 'setor_id');
+    const hasSetorSigla = await columnExists('setores', 'sigla');
+    const hasUsuariosFuncaoId = await columnExists('usuarios', 'funcao_id');
+    const hasUsuariosFuncoes = await columnExists('usuarios', 'funcoes');
+
+    let sql = `SELECT u.id FROM usuarios u`;
+    const params = [unidadeId];
+    let where = ` WHERE u.ativo = true AND u.${unidadeCol} = $1`;
+
+    if (hasUsuariosSetorId) {
+      sql += ` LEFT JOIN setores s ON u.setor_id = s.id`;
+      where += hasSetorSigla
+        ? ` AND (s.nome = 'SOP' OR s.sigla = 'SOP')`
+        : ` AND s.nome = 'SOP'`;
+    } else {
+      // Fallback para coluna de texto "setor" em usuarios
+      where += ` AND LOWER(COALESCE(u.setor, '')) = 'sop'`;
+    }
+
+    if (hasUsuariosFuncaoId) {
+      sql += ` LEFT JOIN funcoes f ON u.funcao_id = f.id`;
+      where += ` AND f.nome IN ('Administrativo','Chefe de Seção','Auxiliar de Seção')`;
+    } else if (hasUsuariosFuncoes) {
+      // funcoes em JSONB (lista de textos)
+      where += ` AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE(u.funcoes, '[]'::jsonb)) v WHERE v IN ('Administrativo','Chefe de Seção','Auxiliar de Seção'))`;
+    } else {
+      // Se não houver informação de função, não retornar ninguém
+      where += ` AND 1=0`;
+    }
+
+    const result = await query(sql + where, params);
+    return result.rows.map(r => r.id);
+  } catch (err) {
+    console.error('Erro ao buscar usuários para notificação SOP:', err);
+    return [];
+  }
+}
+
+// Helper: criar notificações para uma lista de usuários
+async function createChecklistAlteracaoNotifications(userIds, referenciaId, titulo, mensagem) {
+  try {
+    for (const uid of userIds) {
+      await query(
+        `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [uid, titulo, mensagem, 'warning', 'frota', referenciaId]
+      );
+    }
+  } catch (err) {
+    console.error('Erro ao criar notificações de checklist com alteração:', err);
+  }
+}
 
 // Rota de validação de credenciais (sem autenticação)
 router.post('/validar-credenciais', [
@@ -708,12 +766,24 @@ router.get('/viaturas/:id', async (req, res) => {
 });
 
 // Criar novo checklist
+// Criar novo checklist
 router.post('/viaturas', [
   body('viatura_id').isInt().withMessage('ID da viatura é obrigatório'),
   body('template_id').optional().isInt().withMessage('ID do template deve ser um número'),
   body('km_inicial').isInt({ min: 0 }).withMessage('KM inicial deve ser um número positivo'),
   body('combustivel_percentual').isInt({ min: 0, max: 100 }).withMessage('Percentual de combustível deve estar entre 0 e 100'),
-  body('ala_servico').isIn(['Alpha', 'Bravo', 'Charlie', 'Delta', 'ADM']).withMessage('Ala de serviço deve ser Alpha, Bravo, Charlie, Delta ou ADM'),
+  // Normalizar ala_servico antes de validar contra a lista permitida
+  body('ala_servico').customSanitizer((val) => {
+    const v = (val || '').trim();
+    const map = {
+      'alpha': 'Alpha', 'Alpha': 'Alpha',
+      'bravo': 'Bravo', 'Bravo': 'Bravo',
+      'charlie': 'Charlie', 'Charlie': 'Charlie',
+      'delta': 'Delta', 'Delta': 'Delta',
+      'adm': 'ADM', 'ADM': 'ADM'
+    };
+    return map[v] || v;
+  }).isIn(['Alpha', 'Bravo', 'Charlie', 'Delta', 'ADM']).withMessage('Ala de serviço deve ser Alpha, Bravo, Charlie, Delta ou ADM'),
   body('tipo_checklist').notEmpty().withMessage('Tipo de checklist é obrigatório'),
   body('data_hora').isISO8601().withMessage('Data e hora devem estar em formato válido'),
   body('itens').isArray().withMessage('Itens do checklist são obrigatórios'),
@@ -733,6 +803,7 @@ router.post('/viaturas', [
     }
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.warn('⚠️ Validação falhou em POST /checklist/viaturas:', errors.array());
       return res.status(400).json({ errors: errors.array() });
     }
 
@@ -748,7 +819,19 @@ router.post('/viaturas', [
       itens
     } = req.body);
 
-    // Normalizar ala_servico para evitar violação de CHECK no banco
+    // Debug: valores recebidos brutos (parcial)
+    console.log('📥 Payload recebido (parcial):', {
+      viatura_id,
+      template_id,
+      km_inicial,
+      combustivel_percentual,
+      ala_servico_raw: ala_servico,
+      tipo_checklist,
+      data_hora,
+      itens_count: Array.isArray(itens) ? itens.length : 0
+    });
+
+    // Reforçar normalização de ala_servico (defensivo, caso sanitização não rode)
     const normalizeAlaServico = (val) => {
       const v = (val || '').trim();
       const map = {
@@ -761,6 +844,7 @@ router.post('/viaturas', [
       return map[v] || 'Alpha';
     };
     ala_servico = normalizeAlaServico(ala_servico);
+    console.log('✅ ala_servico normalizado:', ala_servico);
 
     const usuario_id = req.user.id;
 
@@ -773,7 +857,7 @@ router.post('/viaturas', [
       viaturaQuery += ' AND unidade_id = $2';
       viaturaParams.push(req.unidade.id);
     }
-    
+    console.log('🔎 Buscando viatura:', { viaturaQuery, viaturaParams });
     const viaturaResult = await query(viaturaQuery, viaturaParams);
     
     if (viaturaResult.rows.length === 0) {
@@ -786,9 +870,23 @@ router.post('/viaturas', [
     // Calcular situação baseada nos itens
     const temAlteracao = itens.some(item => item.status === 'com_alteracao');
     const situacao = temAlteracao ? 'Com Alteração' : 'Sem Alteração';
+    console.log('🧮 Situação calculada:', { temAlteracao, situacao });
 
     // Criar o checklist
     const viatura = viaturaResult.rows[0];
+    console.log('🧾 Preparando INSERT checklist_viaturas com valores:', {
+      viatura_id,
+      template_id: template_id || null,
+      usuario_id,
+      unidade_id: viatura.unidade_id,
+      km_inicial,
+      combustivel_percentual,
+      ala_servico,
+      tipo_checklist,
+      data_hora,
+      observacoes_gerais,
+      situacao
+    });
     const checklistResult = await query(`
       INSERT INTO checklist_viaturas (
         viatura_id, template_id, usuario_id, unidade_id, km_inicial, combustivel_percentual, ala_servico, tipo_checklist, data_hora, observacoes_gerais, situacao
@@ -816,6 +914,16 @@ router.post('/viaturas', [
       ]);
     }
 
+    // Notificar SOP (Administrativo/Chefe/Auxiliar) se houver alteração
+    if (temAlteracao) {
+      const userIds = await getSOPNotificationUsers(viatura.unidade_id);
+      if (userIds.length > 0) {
+        const titulo = 'Checklist com Alteração';
+        const mensagem = `Checklist da viatura ${viatura.prefixo} (${viatura.marca} ${viatura.modelo}) possui itens com alteração.`;
+        await createChecklistAlteracaoNotifications(userIds, checklist_id, titulo, mensagem);
+      }
+    }
+
     res.status(201).json({
       message: 'Checklist criado com sucesso',
       checklist: checklistResult.rows[0]
@@ -823,6 +931,8 @@ router.post('/viaturas', [
   } catch (error) {
     console.error('=== ERRO AO CRIAR CHECKLIST ===');
     console.error('Erro:', error.message);
+    if (error.detail) console.error('Detalhe:', error.detail);
+    if (error.constraint) console.error('Constraint:', error.constraint);
     console.error('Stack trace:', error.stack);
     console.error('Dados recebidos completos:', JSON.stringify({
       viatura_id,
@@ -836,9 +946,28 @@ router.post('/viaturas', [
       itens
     }, null, 2));
     console.error('=== FIM DO ERRO ===');
-    // Tratar violação de CHECK (PostgreSQL code 23514) para erro amigável
+    // Tratar violação de CHECK (PostgreSQL code 23514) com mensagem mais precisa
     if (error.code === '23514') {
-      return res.status(400).json({ error: 'Ala de serviço inválida. Permitidos: Alpha, Bravo, Charlie, Delta, ADM.' });
+      // Tentar identificar constraint para mensagem apropriada
+      const msg = (error.constraint || '').includes('combustivel')
+        ? 'Percentual de combustível inválido. Deve estar entre 0 e 100.'
+        : (error.constraint || '').includes('situacao')
+          ? 'Situação inválida. Permitidos: "Sem Alteração" ou "Com Alteração".'
+          : (error.constraint || '').includes('ala_servico')
+            ? 'Ala de serviço inválida. Permitidos: Alpha, Bravo, Charlie, Delta, ADM.'
+            : (error.table === 'checklist_itens')
+              ? 'Status do item inválido. Permitidos: ok ou com_alteracao.'
+              : 'Dados inválidos (violação de regra). Verifique os campos informados.';
+      const details = {
+        constraint: error.constraint,
+        detail: error.detail,
+        received: {
+          ala_servico,
+          combustivel_percentual,
+          situacao
+        }
+      };
+      return res.status(400).json({ error: msg, details: JSON.stringify(details) });
     }
     res.status(500).json({ 
       error: 'Erro interno do servidor',
@@ -925,8 +1054,9 @@ router.put('/viaturas/:id', [
     `;
 
     const updatedChecklistResult = await query(updateQuery, updateValues);
-
+    
     // Atualizar itens se fornecidos
+    let temAlteracaoRecalc = false;
     if (itens && itens.length > 0) {
       // Remover itens existentes
       await query('DELETE FROM checklist_itens WHERE checklist_id = $1', [id]);
@@ -950,13 +1080,29 @@ router.put('/viaturas/:id', [
       }
 
       // Recalcular situação baseada nos novos itens
-      const temAlteracao = itens.some(item => item.status === 'com_alteracao');
-      const situacao = temAlteracao ? 'Com Alteração' : 'Sem Alteração';
+      temAlteracaoRecalc = itens.some(item => item.status === 'com_alteracao');
+      const situacao = temAlteracaoRecalc ? 'Com Alteração' : 'Sem Alteração';
 
       // Atualizar a situação do checklist
       await query(`
         UPDATE checklist_viaturas SET situacao = $1 WHERE id = $2
       `, [situacao, id]);
+    }
+
+    // Criar notificação se o checklist estiver com alteração (itens recalculados ou já estava) e, opcionalmente, quando finalizado
+    const updatedChecklist = updatedChecklistResult.rows[0];
+    const shouldNotify = temAlteracaoRecalc || updatedChecklist.situacao === 'Com Alteração';
+    if (shouldNotify) {
+      const unidadeId = updatedChecklist.unidade_id;
+      const userIds = await getSOPNotificationUsers(unidadeId);
+      if (userIds.length > 0) {
+        // Buscar dados da viatura para mensagem mais clara
+        const vRes = await query('SELECT prefixo, marca, modelo FROM viaturas WHERE id = $1', [updatedChecklist.viatura_id]);
+        const v = vRes.rows[0] || { prefixo: updatedChecklist.viatura_id, marca: '', modelo: '' };
+        const titulo = 'Checklist com Alteração';
+        const mensagem = `Checklist da viatura ${v.prefixo} (${v.marca} ${v.modelo}) possui itens com alteração.`;
+        await createChecklistAlteracaoNotifications(userIds, updatedChecklist.id, titulo, mensagem);
+      }
     }
 
     res.json({

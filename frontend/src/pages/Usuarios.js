@@ -878,8 +878,9 @@ const Usuarios = () => {
                       fullWidth
                       label="Matrícula *"
                       value={formData.matricula}
-                      onChange={(e) => handleFormChange('matricula', e.target.value)}
+                      onChange={(e) => handleFormChange('matricula', e.target.value.replace(/\D/g, ''))}
                       disabled={dialogType === 'view'}
+                      inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>

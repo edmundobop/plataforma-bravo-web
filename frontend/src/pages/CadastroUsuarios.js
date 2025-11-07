@@ -93,6 +93,7 @@ import {
   Cancel as CancelIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
+import { useLocation } from 'react-router-dom';
 import { useTenant } from '../contexts/TenantContext';
 import { usuariosService } from '../services/api';
 import { 
@@ -110,6 +111,7 @@ import {
 // trocar de unidade, garantindo coerência entre UI e backend.
 const CadastroUsuarios = () => {
   const theme = useTheme();
+  const location = useLocation();
   const { user, hasRole } = useAuth();
   const { availableUnits, currentUnit } = useTenant();
   const [loading, setLoading] = useState(false);
@@ -224,6 +226,69 @@ const CadastroUsuarios = () => {
     loadSolicitacoesPendentes();
     loadDadosAuxiliares();
   }, []);
+
+  // Abrir diálogo pré-preenchido quando vier da página de Aprovação
+  useEffect(() => {
+    const state = location.state;
+    const prefill = state?.prefillSolicitacao;
+    const dt = state?.dialogType;
+    if (prefill && dt === 'approve') {
+      // Mapear dados da solicitação para o formulário
+      const unidadeNome = prefill.unidade_nome || prefill.unidade;
+      const setorNome = prefill.setor_nome || prefill.setor;
+      const unidadeMatch = (unidades || []).find(u => u.id === prefill.unidade_id) || (unidades || []).find(u => u.nome === unidadeNome);
+      const setorMatch = (setores || []).find(s => s.id === prefill.setor_id) || (setores || []).find(s => s.nome === setorNome);
+      const unidadeIdResolved = unidadeMatch ? String(unidadeMatch.id) : (prefill.unidade_id ? String(prefill.unidade_id) : (currentUnit?.id ? String(currentUnit.id) : ''));
+      const setorIdResolved = setorMatch ? String(setorMatch.id) : (prefill.setor_id ? String(prefill.setor_id) : '');
+
+      setSelectedUsuario({ id: prefill.id, ...prefill });
+      setDialogType('approve');
+      setFormData({
+        nome_completo: prefill.nome_completo || '',
+        email: prefill.email || '',
+        cpf: prefill.cpf || '',
+        telefone: prefill.telefone || '',
+        data_nascimento: toInputDate(prefill.data_nascimento) || '',
+        tipo: prefill.tipo || 'militar',
+        posto_graduacao: prefill.posto_graduacao || '',
+        nome_guerra: prefill.nome_guerra || '',
+        matricula: prefill.matricula || '',
+        data_incorporacao: toInputDate(prefill.data_incorporacao) || '',
+        unidades_ids: unidadeIdResolved ? [unidadeIdResolved] : [],
+        unidade_lotacao_id: unidadeIdResolved || '',
+        setor_id: setorIdResolved || '',
+        funcoes: [],
+        perfil_id: 5,
+        ativo: true,
+        senha: '',
+        confirmar_senha: '',
+      });
+      setDialogOpen(true);
+      // Carregar detalhes completos do usuário para garantir preenchimento de datas e campos
+      (async () => {
+        try {
+          if (prefill.id) {
+            const resp = await usuariosService.getUsuarioById(prefill.id);
+            const userData = resp.data || {};
+            setFormData((prev) => ({
+              ...prev,
+              data_nascimento: toInputDate(userData.data_nascimento) || prev.data_nascimento,
+              data_incorporacao: toInputDate(userData.data_incorporacao) || prev.data_incorporacao,
+              posto_graduacao: userData.posto_graduacao || prev.posto_graduacao,
+              nome_guerra: userData.nome_guerra || prev.nome_guerra,
+              matricula: userData.matricula || prev.matricula,
+              unidade_lotacao_id: userData.unidade_lotacao_id || prev.unidade_lotacao_id,
+              setor_id: userData.setor_id || prev.setor_id,
+            }));
+          }
+        } catch (err) {
+          console.warn('Falha ao carregar detalhes completos do usuário para aprovação:', err);
+        }
+      })();
+      // Limpar state para evitar reabertura ao navegar dentro da página
+      window.history.replaceState({}, document.title);
+    }
+  }, [location, unidades, setores, currentUnit]);
 
   useEffect(() => {
     if (tabValue === 0) {
@@ -590,15 +655,60 @@ const CadastroUsuarios = () => {
     }
   };
 
+  const handleSalvarEAprovar = async () => {
+    try {
+      setLoading(true);
+      setError('');
+
+      // Preparar dados para validação
+      const dataForValidation = (() => { 
+        const { senha, confirmar_senha, ...rest } = formData; 
+        return rest; 
+      })();
+
+      const validation = validateUsuarioForm(dataForValidation);
+      if (!validation.isValid) {
+        setFormErrors(validation.errors);
+        setError('Corrija os campos destacados e tente novamente.');
+        return;
+      }
+
+      const sanitizedData = sanitizeUsuarioData(formData);
+      await usuariosService.updateUsuario(selectedUsuario.id, sanitizedData);
+
+      const setorNome = (setores.find(s => String(s.id) === String(formData.setor_id))?.nome) || '';
+      const funcaoNome = Array.isArray(formData.funcoes) && formData.funcoes.length > 0 ? formData.funcoes[0] : '';
+      const perfilNome = (perfis.find(p => String(p.id) === String(formData.perfil_id))?.nome) || 'Operador';
+
+      await usuariosService.aprovarSolicitacao(selectedUsuario.id, {
+        aprovado: true,
+        setor: setorNome,
+        funcao: funcaoNome,
+        role: perfilNome,
+      });
+
+      setSuccess('Usuário salvo e aprovado com sucesso!');
+      handleCloseDialog();
+      loadSolicitacoesPendentes();
+      if (hasRole(['Administrador', 'Comandante', 'Chefe'])) {
+        loadUsuarios();
+      }
+    } catch (err) {
+      console.error('Erro ao salvar e aprovar:', err);
+      setError(err.response?.data?.message || 'Erro ao salvar e aprovar usuário');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleAprovarSolicitacao = async (solicitacaoId, aprovado = true) => {
     try {
       setLoading(true);
       await usuariosService.aprovarSolicitacao(solicitacaoId, { aprovado });
       setSuccess(`Solicitação ${aprovado ? 'aprovada' : 'rejeitada'} com sucesso!`);
       loadSolicitacoesPendentes();
-      if (hasRole(['Administrador', 'Comandante', 'Chefe'])) {
-        loadUsuarios();
-      }
+      // Recarregar lista de usuários para refletir aprovação sem depender de perfil
+      loadUsuarios();
     } catch (err) {
       console.error('Erro ao processar solicitação:', err);
       setError('Erro ao processar solicitação');
@@ -634,8 +744,10 @@ const CadastroUsuarios = () => {
         sx={{ 
           mb: 2, 
           opacity: isAtivo ? 1 : 0.7,
-          border: isAtivo ? 'none' : '1px solid #ccc'
+          border: isAtivo ? 'none' : '1px solid #ccc',
+          cursor: 'pointer'
         }}
+        onClick={() => handleOpenDialog('view', usuario)}
       >
         <CardContent>
           <Box display="flex" justifyContent="space-between" alignItems="flex-start">
@@ -682,6 +794,7 @@ const CadastroUsuarios = () => {
               
               <IconButton
                 onClick={(e) => {
+                  e.stopPropagation();
                   setAnchorEl(e.currentTarget);
                   setSelectedUsuario(usuario);
                 }}
@@ -791,7 +904,7 @@ const CadastroUsuarios = () => {
         fullWidth
       >
         <DialogTitle>
-          {dialogType === 'create' ? 'Criar Novo Usuário' : (isEdit ? 'Editar Usuário' : 'Visualizar Usuário')}
+          {dialogType === 'create' ? 'Criar Novo Usuário' : (isEdit ? 'Editar Usuário' : (dialogType === 'approve' ? 'Aprovar Cadastro' : 'Visualizar Usuário'))}
         </DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 2 }}>
@@ -919,21 +1032,24 @@ const CadastroUsuarios = () => {
                       fullWidth
                       label="Matrícula *"
                       value={formData.matricula}
-                      onChange={(e) => handleInputChange('matricula', e.target.value)}
+                      onChange={(e) => handleInputChange('matricula', e.target.value.replace(/\D/g, ''))}
                       error={!!formErrors.matricula}
                       helperText={formErrors.matricula}
                       required
+                      inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
                     />
                   </Grid>
                   
                   <Grid item xs={12} md={6}>
                     <TextField
                       fullWidth
-                      label="Data de Incorporação"
+                      label={isMilitar ? "Data de Incorporação *" : "Data de Incorporação"}
                       type="date"
                       value={formData.data_incorporacao}
                       onChange={(e) => handleInputChange('data_incorporacao', e.target.value)}
                       InputLabelProps={{ shrink: true }}
+                      error={!!formErrors.data_incorporacao}
+                      helperText={formErrors.data_incorporacao}
                     />
                   </Grid>
                 </>
@@ -1115,7 +1231,7 @@ const CadastroUsuarios = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog}>{isView ? 'Fechar' : 'Cancelar'}</Button>
-          {!isView && (
+          {!isView && dialogType !== 'approve' && (
             <Button 
               onClick={handleSubmit}
               variant="contained"
@@ -1123,6 +1239,17 @@ const CadastroUsuarios = () => {
               startIcon={loading ? <CircularProgress size={20} /> : null}
             >
               {dialogType === 'create' ? 'Criar' : 'Salvar'}
+            </Button>
+          )}
+          {dialogType === 'approve' && (
+            <Button 
+              onClick={handleSalvarEAprovar}
+              variant="contained"
+              color="success"
+              disabled={loading}
+              startIcon={loading ? <CircularProgress size={20} /> : null}
+            >
+              Salvar e Aprovar
             </Button>
           )}
         </DialogActions>

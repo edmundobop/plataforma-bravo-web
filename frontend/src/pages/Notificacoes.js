@@ -65,11 +65,13 @@ import {
   Clear as ClearIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '../contexts/NotificationContext';
 import { notificacoesService, usuariosService } from '../services/api';
 
 const Notificacoes = () => {
   const theme = useTheme();
+  const navigate = useNavigate();
   const { user, hasRole } = useAuth();
   const { markAsRead, markAllAsRead } = useNotifications();
   const [loading, setLoading] = useState(false);
@@ -204,6 +206,32 @@ const Notificacoes = () => {
     }
     
     setDialogOpen(true);
+  };
+
+  const getAssuntoRoute = (notification) => {
+    if (!notification) return null;
+    const modulo = notification.modulo || '';
+    const titulo = (notification.titulo || '').toLowerCase();
+
+    // Casos específicos
+    if (modulo === 'usuarios') {
+      if (titulo.includes('solicitação de cadastro') || titulo.includes('nova solicitação de cadastro')) {
+        return '/gestao-pessoas/aprovacao-cadastros';
+      }
+      return '/usuarios';
+    }
+    // Notificações geradas pelo sistema para solicitações de cadastro
+    if (modulo === 'sistema') {
+      if (titulo.includes('solicitação de cadastro') || titulo.includes('nova solicitação de cadastro')) {
+        return '/gestao-pessoas/aprovacao-cadastros';
+      }
+    }
+    if (modulo === 'frota') return '/frota/dashboard';
+    if (modulo === 'almoxarifado') return '/almoxarifado';
+    if (modulo === 'emprestimos') return '/emprestimos';
+    if (modulo === 'operacional') return '/operacional';
+    if (modulo === 'dashboard') return '/dashboard';
+    return null; // sem rota definida
   };
 
   const handleCloseDialog = () => {
@@ -884,6 +912,20 @@ const Notificacoes = () => {
               <Typography variant="body1" paragraph>
                 {selectedNotification.mensagem}
               </Typography>
+              {(() => {
+                const route = getAssuntoRoute(selectedNotification);
+                return route ? (
+                  <Box sx={{ mb: 2 }}>
+                    <Button 
+                      variant="contained" 
+                      color="primary"
+                      onClick={() => navigate(route)}
+                    >
+                      Abrir Assunto
+                    </Button>
+                  </Box>
+                ) : null;
+              })()}
               <Box display="flex" gap={1} mb={2}>
                 <Chip
                   label={selectedNotification.tipo}

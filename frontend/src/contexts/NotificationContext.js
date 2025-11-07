@@ -99,6 +99,13 @@ export const NotificationProvider = ({ children }) => {
     }
   }, [isAuthenticated, user]);
 
+  // Carregar notificações iniciais mesmo sem socket habilitado
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      loadNotifications();
+    }
+  }, [isAuthenticated, user]);
+
   // Marcar notificação como lida
   const markAsRead = async (notificationId) => {
     try {

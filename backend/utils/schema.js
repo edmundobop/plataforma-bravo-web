@@ -1,7 +1,7 @@
 const { query } = require('../config/database');
 
 // Detecta dinamicamente qual coluna de unidade existe na tabela usuarios
-// Prioridade: unidade_id -> unidade_lotacao_id -> unidades_id
+// Prioridade: unidade_lotacao_id -> unidade_id -> unidades_id
 async function getUsuariosUnidadeColumn() {
   try {
     const res = await query(
@@ -10,8 +10,9 @@ async function getUsuariosUnidadeColumn() {
        AND column_name IN ('unidade_id', 'unidade_lotacao_id', 'unidades_id')`
     );
     const cols = res.rows.map(r => r.column_name);
-    if (cols.includes('unidade_id')) return 'unidade_id';
+    // Preferir coluna de lotação explícita quando existir
     if (cols.includes('unidade_lotacao_id')) return 'unidade_lotacao_id';
+    if (cols.includes('unidade_id')) return 'unidade_id';
     if (cols.includes('unidades_id')) return 'unidades_id';
     return null;
   } catch (err) {

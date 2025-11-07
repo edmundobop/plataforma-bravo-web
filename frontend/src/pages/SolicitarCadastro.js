@@ -44,10 +44,10 @@ const SolicitarCadastro = () => {
     nome_guerra: '',
     posto_graduacao: '',
     cpf: '',
-    identidade_militar: '',
+    matricula: '',
     email: '',
     telefone: '',
-    unidade: '',
+    unidade_id: '',
     data_nascimento: '',
     data_incorporacao: '',
     observacoes: '',
@@ -60,7 +60,6 @@ const SolicitarCadastro = () => {
   const [unidades, setUnidades] = useState([]);
 
   const postosGraduacoes = [
-    'General de Exército', 'General de Divisão', 'General de Brigada',
     'Coronel', 'Tenente-Coronel', 'Major',
     'Capitão', '1º Tenente', '2º Tenente', 'Aspirante a Oficial',
     'Subtenente', '1º Sargento', '2º Sargento', '3º Sargento',
@@ -73,20 +72,20 @@ const SolicitarCadastro = () => {
       try {
         const response = await militaresService.getUnidadesPublicas();
         if (response.data && response.data.unidades) {
-          setUnidades(response.data.unidades.map(unidade => unidade.nome));
+          setUnidades(response.data.unidades);
         }
       } catch (error) {
         console.error('Erro ao carregar unidades:', error);
         // Fallback para unidades estáticas em caso de erro
         setUnidades([
-          '1º Batalhão de Infantaria',
-          '2ª Companhia de Fuzileiros',
-          '3º Pelotão de Reconhecimento',
-          'Seção de Inteligência',
-          'Grupo de Apoio Logístico',
-          'Comando da Unidade',
-          'Estado-Maior',
-          'Outra'
+          { id: 1, nome: '1º Batalhão de Infantaria' },
+          { id: 2, nome: '2ª Companhia de Fuzileiros' },
+          { id: 3, nome: '3º Pelotão de Reconhecimento' },
+          { id: 4, nome: 'Seção de Inteligência' },
+          { id: 5, nome: 'Grupo de Apoio Logístico' },
+          { id: 6, nome: 'Comando da Unidade' },
+          { id: 7, nome: 'Estado-Maior' },
+          { id: 0, nome: 'Outra' }
         ]);
       }
     };
@@ -109,7 +108,7 @@ const SolicitarCadastro = () => {
 
     setFormData(prev => ({
       ...prev,
-      [name]: formattedValue
+      [name]: name === 'unidade_id' ? (value === '' ? '' : Number(formattedValue)) : formattedValue
     }));
 
     // Limpar erro do campo quando o usuário começar a digitar
@@ -143,8 +142,8 @@ const SolicitarCadastro = () => {
       newErrors.cpf = 'CPF inválido';
     }
 
-    if (!formData.identidade_militar.trim()) {
-      newErrors.identidade_militar = 'Identidade militar é obrigatória';
+    if (!formData.matricula || !String(formData.matricula).trim()) {
+      newErrors.matricula = 'Matrícula é obrigatória';
     }
 
     if (!formData.email.trim()) {
@@ -157,8 +156,8 @@ const SolicitarCadastro = () => {
       newErrors.telefone = 'Telefone é obrigatório';
     }
 
-    if (!formData.unidade.trim()) {
-      newErrors.unidade = 'Unidade é obrigatória';
+    if (!formData.unidade_id && formData.unidade_id !== 0) {
+      newErrors.unidade_id = 'Unidade é obrigatória';
     }
 
 
@@ -346,13 +345,16 @@ const SolicitarCadastro = () => {
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
-                  label="Identidade Militar"
-                  name="identidade_militar"
-                  value={formData.identidade_militar}
-                  onChange={handleChange}
-                  inputProps={{ maxLength: 5 }}
-                  error={!!errors.identidade_militar}
-                  helperText={errors.identidade_militar}
+                  label="Matrícula"
+                  name="matricula"
+                  value={formData.matricula}
+                  onChange={(e) => setFormData((prev) => ({
+                    ...prev,
+                    matricula: e.target.value.replace(/\D/g, '')
+                  }))}
+                  inputProps={{ inputMode: 'numeric', pattern: '[0-9]*', maxLength: 20 }}
+                  error={!!errors.matricula}
+                  helperText={errors.matricula}
                   placeholder="Ex: 12345"
                   required
                 />
@@ -463,23 +465,23 @@ const SolicitarCadastro = () => {
               </Grid>
 
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth error={!!errors.unidade} required>
+                <FormControl fullWidth error={!!errors.unidade_id} required>
                   <InputLabel>Unidade</InputLabel>
                   <Select
-                    name="unidade"
-                    value={formData.unidade}
+                    name="unidade_id"
+                    value={formData.unidade_id}
                     onChange={handleChange}
                     label="Unidade"
                   >
-                    {unidades.map((unidade) => (
-                      <MenuItem key={unidade} value={unidade}>
-                        {unidade}
+                    {unidades.map((un) => (
+                      <MenuItem key={un.id} value={un.id}>
+                        {un.nome}
                       </MenuItem>
                     ))}
                   </Select>
-                  {errors.unidade && (
+                  {errors.unidade_id && (
                     <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.5 }}>
-                      {errors.unidade}
+                      {errors.unidade_id}
                     </Typography>
                   )}
                 </FormControl>

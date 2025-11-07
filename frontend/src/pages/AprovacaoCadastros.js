@@ -52,12 +52,16 @@ import {
   AdminPanelSettings as AdminIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
+import { useTenant } from '../contexts/TenantContext';
+import { useNavigate } from 'react-router-dom';
 import { militaresService } from '../services/militaresService';
 import { formatDate, formatCPF, formatPhone } from '../utils/validations';
 
 const AprovacaoCadastros = () => {
   const theme = useTheme();
+  const navigate = useNavigate();
   const { user, hasRole } = useAuth();
+  const { currentUnit } = useTenant();
   
   const [solicitacoes, setSolicitacoes] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -97,7 +101,7 @@ const AprovacaoCadastros = () => {
     }
     loadSolicitacoes();
     loadSetoresEFuncoes();
-  }, [hasRole, pagination.page]);
+  }, [hasRole, pagination.page, currentUnit]);
 
   const loadSetoresEFuncoes = async () => {
     try {
@@ -125,7 +129,8 @@ const AprovacaoCadastros = () => {
     try {
       const response = await militaresService.getSolicitacoesPendentes({
         page: pagination.page,
-        limit: pagination.limit
+        limit: pagination.limit,
+        unidade_id: currentUnit?.id || undefined
       });
       
       if (response.data.success) {
@@ -149,6 +154,18 @@ const AprovacaoCadastros = () => {
   };
 
   const handleApprovalAction = (solicitacao, action) => {
+    // Para aprovação, navegar para a tela de edição com prefill
+    if (action === 'aprovar') {
+      navigate('/gestao-pessoas/cadastro-militares', {
+        state: {
+          prefillSolicitacao: solicitacao,
+          dialogType: 'approve'
+        }
+      });
+      return;
+    }
+
+    // Para rejeição, permanecer no fluxo atual
     setSelectedSolicitacao(solicitacao);
     setApprovalAction(action);
     setObservacoesAprovacao('');
@@ -332,7 +349,12 @@ const AprovacaoCadastros = () => {
                   </TableHead>
                   <TableBody>
                     {solicitacoes.map((solicitacao) => (
-                      <TableRow key={solicitacao.id} hover>
+                      <TableRow 
+                        key={solicitacao.id} 
+                        hover 
+                        onClick={() => handleViewDetails(solicitacao)}
+                        sx={{ cursor: 'pointer' }}
+                      >
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                             <Avatar sx={{ bgcolor: theme.palette.primary.main }}>
@@ -355,7 +377,7 @@ const AprovacaoCadastros = () => {
                             variant="outlined"
                           />
                         </TableCell>
-                        <TableCell>{solicitacao.unidade}</TableCell>
+                        <TableCell>{solicitacao.unidade_nome || solicitacao.unidade}</TableCell>
                         <TableCell>{solicitacao.email}</TableCell>
                         <TableCell>
                           {formatDataSolicitacao(solicitacao.data_solicitacao)}
@@ -363,9 +385,9 @@ const AprovacaoCadastros = () => {
                         <TableCell align="center">
                           <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
                             <Tooltip title="Ver Detalhes">
-                              <IconButton
+                          <IconButton
                                 size="small"
-                                onClick={() => handleViewDetails(solicitacao)}
+                                onClick={(e) => { e.stopPropagation(); handleViewDetails(solicitacao); }}
                               >
                                 <ViewIcon />
                               </IconButton>
@@ -374,7 +396,7 @@ const AprovacaoCadastros = () => {
                               <IconButton
                                 size="small"
                                 color="success"
-                                onClick={() => handleApprovalAction(solicitacao, 'aprovar')}
+                                onClick={(e) => { e.stopPropagation(); handleApprovalAction(solicitacao, 'aprovar'); }}
                               >
                                 <ApproveIcon />
                               </IconButton>
@@ -383,7 +405,7 @@ const AprovacaoCadastros = () => {
                               <IconButton
                                 size="small"
                                 color="error"
-                                onClick={() => handleApprovalAction(solicitacao, 'rejeitar')}
+                                onClick={(e) => { e.stopPropagation(); handleApprovalAction(solicitacao, 'rejeitar'); }}
                               >
                                 <RejectIcon />
                               </IconButton>

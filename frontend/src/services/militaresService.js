@@ -94,7 +94,7 @@ export const militaresService = {
       },
     });
     
-    return publicApi.get('/usuarios/config/unidades');
+    return publicApi.get('/usuarios/public/unidades');
   },
   
   // Buscar setores disponíveis

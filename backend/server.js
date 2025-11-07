@@ -11,9 +11,23 @@ const { query } = require('./config/database');
 
 const app = express();
 const server = http.createServer(app);
+// Origens permitidas no desenvolvimento (inclui múltiplas portas localhost)
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const allowedOrigins = [
+  FRONTEND_URL,
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:3002',
+  'http://localhost:3003',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
+  'http://127.0.0.1:3002',
+  'http://127.0.0.1:3003',
+];
+
 const io = socketIo(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: allowedOrigins,
     methods: ['GET', 'POST']
   }
 });
@@ -24,20 +38,26 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "http://localhost:5000", "http://localhost:3000"],
+      imgSrc: ["'self'", "data:", "http://localhost:5000", ...allowedOrigins],
       scriptSrc: ["'self'", "'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'"]
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      connectSrc: ["'self'", "http://localhost:5000", ...allowedOrigins]
     }
   }
 }));
 app.use(compression());
 app.use(morgan('combined'));
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: function(origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error(`Origin ${origin} não permitido pelo CORS`));
+  },
   credentials: true
 }));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Aumentar limites de payload para suportar checklists com fotos/base64
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Configuração do Swagger
 const { swaggerUi, specs } = require('./config/swagger');
@@ -172,20 +192,31 @@ async function processarAutomacoes() {
   }
 }
 
-server.listen(PORT, () => {
-  console.log(`🚀 Servidor rodando na porta ${PORT}`);
-  console.log(`🌐 API disponível em http://localhost:${PORT}/api`);
-  // Agendar execução exatamente no início de cada minuto
-  function agendarSchedulerMinuto() {
-    const agora = new Date();
-    const msAteProximoMinuto = (60 - agora.getSeconds()) * 1000 - agora.getMilliseconds();
-    setTimeout(() => {
-      // Executa no início do minuto e segue a cada 60s ancorado
-      processarAutomacoes();
-      setInterval(processarAutomacoes, 60 * 1000);
-    }, Math.max(msAteProximoMinuto, 0));
-  }
-  agendarSchedulerMinuto();
+if (process.env.NODE_ENV !== 'test') {
+  server.listen(PORT, () => {
+    console.log(`🚀 Servidor rodando na porta ${PORT}`);
+    console.log(`🌐 API disponível em http://localhost:${PORT}/api`);
+    // Agendar execução exatamente no início de cada minuto
+    function agendarSchedulerMinuto() {
+      const agora = new Date();
+      const msAteProximoMinuto = (60 - agora.getSeconds()) * 1000 - agora.getMilliseconds();
+      setTimeout(() => {
+        // Executa no início do minuto e segue a cada 60s ancorado
+        processarAutomacoes();
+        setInterval(processarAutomacoes, 60 * 1000);
+      }, Math.max(msAteProximoMinuto, 0));
+    }
+    agendarSchedulerMinuto();
+  });
+}
+
+// Handlers globais para evitar quedas silenciosas do servidor
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('⚠️ Unhandled Rejection em promessa:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('💥 Uncaught Exception:', err);
 });
 
 module.exports = { app, io };
