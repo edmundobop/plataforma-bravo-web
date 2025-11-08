@@ -32,8 +32,13 @@ export const NotificationProvider = ({ children }) => {
         params: { limit: 50 }
       });
       
-      setNotifications(response.data.notificacoes);
-      setUnreadCount(response.data.nao_lidas);
+      const list = response.data.notificacoes || [];
+      const naoLidas = typeof response.data.nao_lidas === 'number'
+        ? response.data.nao_lidas
+        : list.filter(n => !n.lida).length;
+
+      setNotifications(list);
+      setUnreadCount(naoLidas);
     } catch (error) {
       console.error('Erro ao carregar notificações:', error);
     }
@@ -41,7 +46,7 @@ export const NotificationProvider = ({ children }) => {
 
   // Conectar ao Socket.IO quando o usuário estiver autenticado
   useEffect(() => {
-    // Temporariamente desabilitado para evitar erros de conexão
+    // Temporariamente desabilitado para evitar erros de conexão de Socket.io
     // TODO: Implementar autenticação JWT adequada para Socket.io
     if (false && isAuthenticated && user) {
       const newSocket = io(process.env.REACT_APP_API_URL || 'http://localhost:3000', {
@@ -99,6 +104,13 @@ export const NotificationProvider = ({ children }) => {
     }
   }, [isAuthenticated, user]);
 
+  // Garantir carga inicial das notificações mesmo sem Socket.io
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      loadNotifications();
+    }
+  }, [isAuthenticated, user]);
+
   // Marcar notificação como lida
   const markAsRead = async (notificationId) => {
     try {
@@ -128,6 +140,23 @@ export const NotificationProvider = ({ children }) => {
       setUnreadCount(0);
     } catch (error) {
       console.error('Erro ao marcar todas as notificações como lidas:', error);
+    }
+  };
+
+  // Marcar notificação como não lida
+  const markAsUnread = async (notificationId) => {
+    try {
+      await api.put(`/notificacoes/${notificationId}/nao-lida`);
+
+      setNotifications(prev =>
+        prev.map(n =>
+          n.id === notificationId ? { ...n, lida: false } : n
+        )
+      );
+
+      setUnreadCount(prev => prev + 1);
+    } catch (error) {
+      console.error('Erro ao marcar notificação como não lida:', error);
     }
   };
 
@@ -195,6 +224,7 @@ export const NotificationProvider = ({ children }) => {
     unreadCount,
     markAsRead,
     markAllAsRead,
+    markAsUnread,
     deleteNotification,
     deleteReadNotifications,
     loadNotifications,

@@ -95,6 +95,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 import { usuariosService } from '../services/api';
+import { militaresService } from '../services/militaresService';
 import { 
   validateUsuarioForm, 
   sanitizeUsuarioData, 
@@ -185,13 +186,14 @@ const CadastroUsuarios = () => {
     nome_guerra: '',
     matricula: '',
     data_incorporacao: '',
+    antiguidade: '',
     
     // Organização
     // unidades_ids: lista de unidades às quais o usuário terá acesso (membros_unidade)
     unidades_ids: [],
     // unidade_lotacao_id: unidade de lotação oficial do usuário (coluna usuarios.unidade_lotacao_id)
     unidade_lotacao_id: '',
-    setor_id: '',
+    setor: '',
     funcoes: [],
     perfil_id: 5, // Operador por padrão
     
@@ -205,12 +207,7 @@ const CadastroUsuarios = () => {
   
   // Estados para dados auxiliares
   const [perfis, setPerfis] = useState([]);
-  const [postosGraduacoes] = useState([
-    'Soldado', 'Cabo', 'Terceiro Sargento', 'Segundo Sargento',
-    'Primeiro Sargento', 'Subtenente', 'Aspirante', 'Segundo Tenente',
-    'Primeiro Tenente', 'Capitão', 'Major', 'Tenente Coronel',
-    'Coronel'
-  ]);
+  const [postosGraduacoes, setPostosGraduacoes] = useState([]);
   const [unidades, setUnidades] = useState([]);
   const [setores, setSetores] = useState([]);
   const [funcoes, setFuncoes] = useState([]);
@@ -347,11 +344,11 @@ const CadastroUsuarios = () => {
         }
       }
 
-      // Carregar setores
+      // Carregar setores (lista de strings)
       try {
         const setoresResponse = await usuariosService.getSetores();
         const setoresList = setoresResponse.data.setores || [];
-        setSetores(setoresList.map((nome, idx) => ({ id: idx + 1, nome })));
+        setSetores(Array.isArray(setoresList) ? setoresList : []);
       } catch (errSetores) {
         console.warn('Falha ao carregar setores do servidor, usando lista padrão.', errSetores);
         const setoresPadrao = [
@@ -364,25 +361,45 @@ const CadastroUsuarios = () => {
           'PROEBOM',
           'Operacional',
         ];
-        setSetores(setoresPadrao.map((nome, idx) => ({ id: idx + 1, nome })));
+        setSetores(setoresPadrao);
       }
 
-      // Carregar funções
+      // Carregar funções (lista de strings)
       try {
         const funcoesResponse = await usuariosService.getFuncoes();
         const funcoesList = funcoesResponse.data.funcoes || [];
         const normFuncoes = Array.isArray(funcoesList)
-          ? funcoesList.map((item, idx) => (
-              typeof item === 'string'
-                ? { id: idx + 1, nome: item }
-                : { id: item.id ?? idx + 1, nome: item.nome ?? String(item) }
-            ))
+          ? funcoesList.map((item) => (typeof item === 'string' ? item : (item?.nome ?? String(item))))
           : [];
         setFuncoes(normFuncoes);
       } catch (errFuncoes) {
         console.warn('Falha ao carregar funcoes, usando lista padrão.', errFuncoes);
-        const funcoesPadrao = ['Operador', 'Auxiliar', 'Chefe', 'Comandante'].map((nome, idx) => ({ id: idx + 1, nome }));
+        const funcoesPadrao = ['Operador', 'Auxiliar', 'Chefe', 'Comandante'];
         setFuncoes(funcoesPadrao);
+      }
+
+      // Carregar Postos/Graduações padronizados
+      try {
+        const postosRes = await militaresService.getPostosGraduacoes();
+        const postosData = postosRes?.data?.postos || postosRes?.data?.data || postosRes?.data || [];
+        if (Array.isArray(postosData) && postosData.length > 0) {
+          setPostosGraduacoes(postosData);
+        } else {
+          setPostosGraduacoes([
+            'Coronel', 'Tenente-Coronel', 'Major',
+            'Capitão', '1º Tenente', '2º Tenente', 'Aspirante a Oficial',
+            'Subtenente', '1º Sargento', '2º Sargento', '3º Sargento',
+            'Cabo', 'Soldado'
+          ]);
+        }
+      } catch (errPostos) {
+        console.warn('Falha ao carregar postos/graduações, usando lista padrão.', errPostos);
+        setPostosGraduacoes([
+          'Coronel', 'Tenente-Coronel', 'Major',
+          'Capitão', '1º Tenente', '2º Tenente', 'Aspirante a Oficial',
+          'Subtenente', '1º Sargento', '2º Sargento', '3º Sargento',
+          'Cabo', 'Soldado'
+        ]);
       }
     } catch (err) {
       console.error('Erro ao carregar dados auxiliares:', err);
@@ -419,9 +436,17 @@ const CadastroUsuarios = () => {
       const unidadeNome = userData.unidade_nome || userData.unidade;
       const setorNome = userData.setor_nome || userData.setor;
       const unidadeMatch = (unidades || []).find(u => u.id === userData.unidade_id) || (unidades || []).find(u => u.nome === unidadeNome);
-      const setorMatch = (setores || []).find(s => s.id === userData.setor_id) || (setores || []).find(s => s.nome === setorNome);
       const unidadeIdResolved = unidadeMatch ? String(unidadeMatch.id) : (userData.unidade_id ? String(userData.unidade_id) : '');
-      const setorIdResolved = setorMatch ? String(setorMatch.id) : (userData.setor_id ? String(userData.setor_id) : '');
+      const setorResolved = setorNome || '';
+
+      // Garantir que o valor atual de setor esteja presente nas opções
+      // Isso evita que o Select mostre vazio quando o valor não está na lista fixa
+      if (setorResolved) {
+        setSetores((prev) => {
+          const lista = Array.isArray(prev) ? prev : [];
+          return lista.includes(setorResolved) ? lista : [setorResolved, ...lista];
+        });
+      }
 
       const unidadesIdsResolved = Array.isArray(userData.unidades_ids)
         ? userData.unidades_ids.map(String)
@@ -436,6 +461,24 @@ const CadastroUsuarios = () => {
         : unidadesIdsResolved;
       console.log('🔍 [DEBUG][CadastroUsuarios] Resolução de unidades:', { unidadesIdsResolved, unidadeLotacaoResolved, unidadesIdsComLotacao });
 
+      // Normalizador para postos/graduações canônicos
+      const normalizePosto = (valor) => {
+        if (!valor) return '';
+        const map = {
+          'Terceiro Sargento': '3º Sargento',
+          'Segundo Sargento': '2º Sargento',
+          'Primeiro Sargento': '1º Sargento',
+          'Primeiro Tenente': '1º Tenente',
+          'Segundo Tenente': '2º Tenente',
+          'Tenente Coronel': 'Tenente-Coronel',
+          'Aspirante': 'Aspirante a Oficial',
+          'Aspirante Oficial': 'Aspirante a Oficial',
+        };
+        return map[valor] || valor;
+      };
+
+      const postoResolvido = normalizePosto(userData.posto_graduacao || '');
+
       setFormData({
         nome_completo: userData.nome_completo || '',
         email: userData.email || '',
@@ -443,13 +486,14 @@ const CadastroUsuarios = () => {
         telefone: userData.telefone || '',
         data_nascimento: toInputDate(userData.data_nascimento) || '',
         tipo: tipoDetectado,
-        posto_graduacao: userData.posto_graduacao || '',
+        posto_graduacao: postoResolvido,
         nome_guerra: userData.nome_guerra || '',
         matricula: userData.matricula || '',
         data_incorporacao: toInputDate(userData.data_incorporacao) || '',
+        antiguidade: userData.antiguidade ?? '',
         unidades_ids: unidadesIdsComLotacao,
         unidade_lotacao_id: unidadeLotacaoResolved,
-        setor_id: setorIdResolved,
+        setor: setorResolved,
         funcoes: funcoesFromUsuario,
         perfil_id: userData.perfil_id || 5,
         ativo: userData.ativo !== false,
@@ -468,9 +512,10 @@ const CadastroUsuarios = () => {
         nome_guerra: '',
         matricula: '',
         data_incorporacao: '',
+        antiguidade: '',
         unidades_ids: [],
         unidade_lotacao_id: '',
-        setor_id: '',
+        setor: '',
         funcoes: [],
         perfil_id: 5,
         ativo: true,
@@ -499,7 +544,7 @@ const CadastroUsuarios = () => {
       data_incorporacao: '',
       unidades_ids: [],
       unidade_lotacao_id: '',
-      setor_id: '',
+      setor: '',
       funcoes: [],
       perfil_id: 5,
       ativo: true,
@@ -634,8 +679,10 @@ const CadastroUsuarios = () => {
         sx={{ 
           mb: 2, 
           opacity: isAtivo ? 1 : 0.7,
-          border: isAtivo ? 'none' : '1px solid #ccc'
+          border: isAtivo ? 'none' : '1px solid #ccc',
+          cursor: 'pointer'
         }}
+        onClick={() => handleOpenDialog('view', usuario)}
       >
         <CardContent>
           <Box display="flex" justifyContent="space-between" alignItems="flex-start">
@@ -682,6 +729,7 @@ const CadastroUsuarios = () => {
               
               <IconButton
                 onClick={(e) => {
+                  e.stopPropagation();
                   setAnchorEl(e.currentTarget);
                   setSelectedUsuario(usuario);
                 }}
@@ -936,6 +984,19 @@ const CadastroUsuarios = () => {
                       InputLabelProps={{ shrink: true }}
                     />
                   </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      label="Antiguidade (ranking)"
+                      type="number"
+                      value={formData.antiguidade}
+                      onChange={(e) => handleInputChange('antiguidade', e.target.value)}
+                      error={!!formErrors.antiguidade}
+                      helperText={formErrors.antiguidade}
+                      inputProps={{ min: 1, step: 1 }}
+                    />
+                  </Grid>
                 </>
               )}
               
@@ -994,13 +1055,13 @@ const CadastroUsuarios = () => {
                 <FormControl fullWidth>
                   <InputLabel>Setor</InputLabel>
                   <Select
-                    value={formData.setor_id}
-                    onChange={(e) => handleInputChange('setor_id', e.target.value)}
+                    value={formData.setor}
+                    onChange={(e) => handleInputChange('setor', e.target.value)}
                     label="Setor"
                   >
-                    {setores.map((setor) => (
-                      <MenuItem key={setor.id} value={String(setor.id)}>
-                        {setor.nome}
+                    {setores.map((nome) => (
+                      <MenuItem key={nome} value={nome}>
+                        {nome}
                       </MenuItem>
                     ))}
                   </Select>
@@ -1018,9 +1079,9 @@ const CadastroUsuarios = () => {
                     label="Funções"
                     renderValue={(selected) => (Array.isArray(selected) ? selected.join(', ') : '')}
                   >
-                    {funcoes.map((funcao) => (
-                      <MenuItem key={funcao.id} value={funcao.nome}>
-                        {funcao.nome}
+                    {funcoes.map((nome) => (
+                      <MenuItem key={nome} value={nome}>
+                        {nome}
                       </MenuItem>
                     ))}
                   </Select>

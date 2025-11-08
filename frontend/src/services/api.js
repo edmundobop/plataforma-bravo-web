@@ -1,8 +1,9 @@
 import axios from 'axios';
 
 // Configuração base da API
-// Permitir configurar a API pelo ambiente e evitar dependência do proxy do dev server
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '/api';
+// Em desenvolvimento, forçar uso de '/api' para aproveitar o proxy/local host
+const IS_DEV = !process.env.NODE_ENV || process.env.NODE_ENV === 'development';
+const API_BASE_URL = IS_DEV ? '/api' : (process.env.REACT_APP_API_BASE_URL || '/api');
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -119,6 +120,9 @@ export const usuariosService = {
   // Funções adicionais para solicitações e perfis
   getSolicitacoesPendentes: (params = {}) => {
     return api.get('/usuarios/solicitacoes-pendentes', { params });
+  },
+  aprovarSolicitacao: (id, data) => {
+    return api.post(`/usuarios/aprovar-cadastro/${id}`, data);
   },
   
   getPerfis: () => {

@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { query } = require('../config/database');
 
 // Importar o router de usuários para reutilizar suas funcionalidades
 const usuariosRouter = require('./usuarios');
@@ -42,9 +43,16 @@ router.get('/postos-graduacoes', (req, res, next) => {
 });
 
 // Rotas de unidades públicas (sem autenticação)
-router.get('/unidades', (req, res, next) => {
-  req.url = '/config/unidades';
-  usuariosRouter(req, res, next);
+// Retorna todas as unidades ativas diretamente da tabela `unidades`
+router.get('/unidades-publicas', async (req, res) => {
+  try {
+    const result = await query('SELECT id, nome, sigla FROM unidades WHERE ativa = TRUE ORDER BY nome ASC');
+    const unidades = (result.rows || []).map(u => ({ id: u.id, nome: u.nome, sigla: u.sigla || null }));
+    res.json({ success: true, unidades });
+  } catch (error) {
+    console.error('Erro ao listar unidades públicas:', error);
+    res.status(500).json({ success: false, error: 'Erro interno do servidor' });
+  }
 });
 
 // Rotas de solicitações

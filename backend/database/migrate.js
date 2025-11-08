@@ -49,26 +49,18 @@ const createTables = async () => {
       ON CONFLICT (nome) DO NOTHING
     `);
 
-    // Setores
+    // Removido: tabelas auxiliares de setores e funcoes (não utilizadas)
+    // Garantimos que não existam tabelas antigas
     await query(`
-      CREATE TABLE IF NOT EXISTS setores (
-        id SERIAL PRIMARY KEY,
-        nome VARCHAR(120) NOT NULL,
-        sigla VARCHAR(20),
-        ativo BOOLEAN DEFAULT true,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Funções
-    await query(`
-      CREATE TABLE IF NOT EXISTS funcoes (
-        id SERIAL PRIMARY KEY,
-        nome VARCHAR(120) NOT NULL,
-        descricao TEXT,
-        ativo BOOLEAN DEFAULT true,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='setores') THEN
+          DROP TABLE IF EXISTS setores CASCADE;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='funcoes') THEN
+          DROP TABLE IF EXISTS funcoes CASCADE;
+        END IF;
+      END $$;
     `);
 
     // ==========================
@@ -98,9 +90,7 @@ const createTables = async () => {
         unidade_id INTEGER REFERENCES unidades(id),
         unidade_lotacao_id INTEGER REFERENCES unidades(id),
         setor VARCHAR(100),
-        setor_id INTEGER REFERENCES setores(id),
         funcao VARCHAR(100),
-        funcao_id INTEGER REFERENCES funcoes(id),
         status_solicitacao VARCHAR(20) DEFAULT 'pendente',
         observacoes TEXT,
         observacoes_aprovacao TEXT,
@@ -140,11 +130,9 @@ const createTables = async () => {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='unidade_lotacao_id') THEN
           ALTER TABLE usuarios ADD COLUMN unidade_lotacao_id INTEGER REFERENCES unidades(id);
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='setor_id') THEN
-          ALTER TABLE usuarios ADD COLUMN setor_id INTEGER REFERENCES setores(id);
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='funcao_id') THEN
-          ALTER TABLE usuarios ADD COLUMN funcao_id INTEGER REFERENCES funcoes(id);
+        -- Garantir coluna de setor (texto)
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='setor') THEN
+          ALTER TABLE usuarios ADD COLUMN setor VARCHAR(100);
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='status_solicitacao') THEN
           ALTER TABLE usuarios ADD COLUMN status_solicitacao VARCHAR(20) DEFAULT 'pendente';
@@ -163,6 +151,13 @@ const createTables = async () => {
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='funcoes') THEN
           ALTER TABLE usuarios ADD COLUMN funcoes JSONB DEFAULT '[]';
+        END IF;
+        -- Remover colunas legadas (se existirem)
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='setor_id') THEN
+          ALTER TABLE usuarios DROP COLUMN IF EXISTS setor_id;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='funcao_id') THEN
+          ALTER TABLE usuarios DROP COLUMN IF EXISTS funcao_id;
         END IF;
       END $$;
     `);

@@ -47,7 +47,7 @@ const SolicitarCadastro = () => {
     identidade_militar: '',
     email: '',
     telefone: '',
-    unidade: '',
+    unidade_id: '',
     data_nascimento: '',
     data_incorporacao: '',
     observacoes: '',
@@ -60,7 +60,6 @@ const SolicitarCadastro = () => {
   const [unidades, setUnidades] = useState([]);
 
   const postosGraduacoes = [
-    'General de Exército', 'General de Divisão', 'General de Brigada',
     'Coronel', 'Tenente-Coronel', 'Major',
     'Capitão', '1º Tenente', '2º Tenente', 'Aspirante a Oficial',
     'Subtenente', '1º Sargento', '2º Sargento', '3º Sargento',
@@ -73,20 +72,21 @@ const SolicitarCadastro = () => {
       try {
         const response = await militaresService.getUnidadesPublicas();
         if (response.data && response.data.unidades) {
-          setUnidades(response.data.unidades.map(unidade => unidade.nome));
+          const mapped = response.data.unidades.map(u => ({ id: String(u.id), nome: u.nome }));
+          setUnidades(mapped);
         }
       } catch (error) {
         console.error('Erro ao carregar unidades:', error);
         // Fallback para unidades estáticas em caso de erro
         setUnidades([
-          '1º Batalhão de Infantaria',
-          '2ª Companhia de Fuzileiros',
-          '3º Pelotão de Reconhecimento',
-          'Seção de Inteligência',
-          'Grupo de Apoio Logístico',
-          'Comando da Unidade',
-          'Estado-Maior',
-          'Outra'
+          { id: '1', nome: '1º Batalhão de Infantaria' },
+          { id: '2', nome: '2ª Companhia de Fuzileiros' },
+          { id: '3', nome: '3º Pelotão de Reconhecimento' },
+          { id: '4', nome: 'Seção de Inteligência' },
+          { id: '5', nome: 'Grupo de Apoio Logístico' },
+          { id: '6', nome: 'Comando da Unidade' },
+          { id: '7', nome: 'Estado-Maior' },
+          { id: '999', nome: 'Outra' }
         ]);
       }
     };
@@ -157,8 +157,8 @@ const SolicitarCadastro = () => {
       newErrors.telefone = 'Telefone é obrigatório';
     }
 
-    if (!formData.unidade.trim()) {
-      newErrors.unidade = 'Unidade é obrigatória';
+    if (!String(formData.unidade_id || '').trim()) {
+      newErrors.unidade_id = 'Unidade é obrigatória';
     }
 
 
@@ -463,23 +463,23 @@ const SolicitarCadastro = () => {
               </Grid>
 
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth error={!!errors.unidade} required>
+                <FormControl fullWidth error={!!errors.unidade_id} required>
                   <InputLabel>Unidade</InputLabel>
                   <Select
-                    name="unidade"
-                    value={formData.unidade}
+                    name="unidade_id"
+                    value={formData.unidade_id}
                     onChange={handleChange}
                     label="Unidade"
                   >
                     {unidades.map((unidade) => (
-                      <MenuItem key={unidade} value={unidade}>
-                        {unidade}
+                      <MenuItem key={unidade.id} value={String(unidade.id)}>
+                        {unidade.nome}
                       </MenuItem>
                     ))}
                   </Select>
-                  {errors.unidade && (
+                  {errors.unidade_id && (
                     <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.5 }}>
-                      {errors.unidade}
+                      {errors.unidade_id}
                     </Typography>
                   )}
                 </FormControl>
