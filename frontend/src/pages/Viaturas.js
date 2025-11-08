@@ -44,7 +44,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 const Viaturas = () => {
   const { currentUnit, availableUnits } = useTenant();
-  const { isOperador, getUserInfo } = useAuth();
+  const { isOperador } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
@@ -824,16 +824,12 @@ const Viaturas = () => {
         <MenuItem key="view-viatura" onClick={() => handleMenuAction('view')}>
           <ViewIcon sx={{ mr: 1 }} /> Visualizar
         </MenuItem>
-        {!isOperador() && (
-          <MenuItem key="edit-viatura" onClick={() => handleMenuAction('edit')}>
-            <EditIcon sx={{ mr: 1 }} /> Editar
-          </MenuItem>
-        )}
-        {!isOperador() && (
-          <MenuItem key="delete-viatura" onClick={() => handleMenuAction('delete')} sx={{ color: 'error.main' }}>
-            <DeleteIcon sx={{ mr: 1 }} /> Excluir
-          </MenuItem>
-        )}
+        <MenuItem key="edit-viatura" disabled={isOperador()} onClick={() => handleMenuAction('edit')}>
+          <EditIcon sx={{ mr: 1 }} /> Editar
+        </MenuItem>
+        <MenuItem key="delete-viatura" disabled={isOperador()} onClick={() => handleMenuAction('delete')}>
+          <DeleteIcon sx={{ mr: 1 }} /> Excluir
+        </MenuItem>
       </Menu>
 
       {/* Botão flutuante para adicionar nova viatura */}
@@ -842,6 +838,7 @@ const Viaturas = () => {
         color="primary"
         aria-label="add"
         sx={{ position: 'fixed', bottom: 16, right: 16 }}
+        disabled={isOperador()}
         onClick={() => handleOpenDialog('viatura')}
       >
         <AddIcon />

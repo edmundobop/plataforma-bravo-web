@@ -924,7 +924,13 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
             {step === 2 ? 'Próxima Categoria' : 'Próximo'}
           </Button>
         ) : (
-          <Button onClick={handleSubmit} variant="contained" disabled={loading} startIcon={loading ? <CircularProgress size={20} /> : <SendIcon />} type="button">
+          <Button 
+            onClick={handleSubmit} 
+            variant="contained" 
+            disabled={loading}
+            startIcon={loading ? <CircularProgress size={20} /> : <SendIcon />}
+            type="button"
+          >
             {loading ? 'Finalizando...' : 'Finalizar Checklist'}
           </Button>
         )}
