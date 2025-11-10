@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Grid,
@@ -29,7 +29,6 @@ import {
   FormControl,
   InputLabel,
   Select,
-  Fab,
   Tooltip,
   Badge,
   useTheme,
@@ -40,16 +39,20 @@ import {
   ListItemText,
   ListItemAvatar,
   Divider,
+  ToggleButtonGroup,
+  ToggleButton,
+  FormGroup,
+  FormControlLabel,
+  Checkbox,
+  Stack,
 } from '@mui/material';
 import {
-  Add as AddIcon,
   Schedule as ScheduleIcon,
   SwapHoriz as SwapIcon,
   WorkOff as ExtraIcon,
   MoreVert as MoreVertIcon,
   Edit as EditIcon,
   Visibility as ViewIcon,
-  Search as SearchIcon,
   FilterList as FilterIcon,
   Check as CheckIcon,
   Close as CloseIcon,
@@ -58,11 +61,34 @@ import {
   AccessTime as TimeIcon,
   CalendarToday as CalendarIcon,
   Group as GroupIcon,
+  ViewList as ViewListIcon,
+  CalendarMonth as CalendarMonthIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { operacionalService } from '../services/api';
+import {
+  format,
+  parseISO,
+  addMonths,
+  startOfMonth,
+  endOfMonth,
+  startOfWeek,
+  endOfWeek,
+  eachDayOfInterval,
+  isSameMonth,
+} from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 const VALID_ALAS = ['Alfa', 'Bravo', 'Charlie', 'Delta'];
+const ALA_STYLES = {
+  Alfa: { border: '#2e7d32', bg: 'rgba(46, 125, 50, 0.08)' },
+  Bravo: { border: '#0277bd', bg: 'rgba(2, 119, 189, 0.08)' },
+  Charlie: { border: '#f9a825', bg: 'rgba(249, 168, 37, 0.15)' },
+  Delta: { border: '#d32f2f', bg: 'rgba(211, 47, 47, 0.12)' },
+};
+
 const INITIAL_ALA_BOARD = {
   pool: [],
   Alfa: [],
@@ -84,7 +110,6 @@ const Operacional = () => {
   const [escalasFilters, setEscalasFilters] = useState({
     data_inicio: '',
     data_fim: '',
-    setor: '',
     page: 1,
     limit: 10,
   });
@@ -143,6 +168,10 @@ const Operacional = () => {
     nome_base: '',
     observacoes: '',
   });
+  const [escalaViewMode, setEscalaViewMode] = useState('calendar');
+  const [selectedAlas, setSelectedAlas] = useState([...VALID_ALAS]);
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [escalaParticipantsCache, setEscalaParticipantsCache] = useState({});
   
   // Estados para diálogos
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -180,8 +209,31 @@ const Operacional = () => {
     try {
       setEscalasLoading(true);
       const response = await operacionalService.getEscalas(escalasFilters);
-      setEscalas(response.data.escalas || []);
-      setEscalasPagination(response.data.pagination || {});
+      const data = response.data || {};
+      const lista = Array.isArray(data) ? data : (data.escalas || []);
+      setEscalasPagination(data.pagination || {});
+
+      const enriched = await Promise.all(
+        lista.map(async (escala) => {
+          try {
+            let participantes = escalaParticipantsCache[escala.id];
+            if (!participantes) {
+              const detalhes = await operacionalService.getEscalaById(escala.id);
+              participantes = detalhes?.data?.usuarios || [];
+              setEscalaParticipantsCache((prev) => ({
+                ...prev,
+                [escala.id]: participantes,
+              }));
+            }
+            return { ...escala, participantes };
+          } catch (error) {
+            console.warn('Não foi possível obter participantes da escala', escala.id, error);
+            return { ...escala, participantes: [] };
+          }
+        })
+      );
+
+      setEscalas(enriched);
     } catch (err) {
       console.error('Erro ao carregar escalas:', err);
       setError('Erro ao carregar escalas');
@@ -492,9 +544,312 @@ const Operacional = () => {
     setAlasForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  const handleOpenSwapDialog = (participante, escala) => {
+    if (!participante || !escala) return;
+    setError('');
+    const dataSubstituto = getDateKey(participante.data_servico || escala.data_inicio) || '';
+    setDialogType('swap');
+    setSelectedItem({ participante, escala });
+    setFormData({
+      solicitante_nome: user?.nome || '',
+      solicitante_id: user?.id,
+      substituto_nome: participante.nome,
+      substituto_id: participante.usuario_id,
+      data_substituto: dataSubstituto,
+      data_solicitante: '',
+    });
+    setDialogOpen(true);
+  };
+
+  const parseDateValue = (value) => {
+    if (!value) return null;
+    try {
+      if (value instanceof Date) return value;
+      return parseISO(String(value));
+    } catch {
+      return null;
+    }
+  };
+
+  const getDateKey = (value) => {
+    const parsed = parseDateValue(value);
+    return parsed ? format(parsed, 'yyyy-MM-dd') : null;
+  };
+
+  const getEscalaAla = (escala) => {
+    const participantes = escala.participantes || [];
+    for (const participante of participantes) {
+      const referencia = usuariosMap[participante.usuario_id];
+      if (referencia?.ala && VALID_ALAS.includes(referencia.ala)) {
+        return referencia.ala;
+      }
+      if (participante.ala && VALID_ALAS.includes(participante.ala)) {
+        return participante.ala;
+      }
+    }
+    const match = escala.nome?.match(/Ala\s+([A-Za-z]+)/i);
+    if (match) {
+      const candidate = match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase();
+      if (VALID_ALAS.includes(candidate)) {
+        return candidate;
+      }
+    }
+    return VALID_ALAS[0];
+  };
+
+  const handleToggleViewMode = (event, newValue) => {
+    if (newValue) {
+      setEscalaViewMode(newValue);
+    }
+  };
+
+  const handleToggleAlaFilter = (ala, checked) => {
+    setSelectedAlas((prev) => {
+      if (checked) {
+        return Array.from(new Set([...prev, ala]));
+      }
+      return prev.filter((item) => item !== ala);
+    });
+  };
+
+  const handleCalendarMonthChange = (direction) => {
+    setCalendarMonth((prev) => addMonths(prev, direction));
+  };
+
+  const decorateEscalas = useMemo(() => (
+    escalas.map((escala) => {
+      const ala = getEscalaAla(escala);
+      const dataKey = getDateKey(escala.data_inicio) || getDateKey(escala.data_servico);
+      return {
+        ...escala,
+        ala,
+        dataKey,
+      };
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [escalas, usuariosMap]);
+
+  const filteredEscalas = useMemo(() => (
+    decorateEscalas.filter((escala) => selectedAlas.includes(escala.ala))
+  ), [decorateEscalas, selectedAlas]);
+
+  const escalasByDate = useMemo(() => {
+    const mapa = {};
+    filteredEscalas.forEach((escala) => {
+      if (!escala.dataKey) return;
+      if (!mapa[escala.dataKey]) {
+        mapa[escala.dataKey] = [];
+      }
+      mapa[escala.dataKey].push(escala);
+    });
+    return mapa;
+  }, [filteredEscalas]);
+
+  const calendarInterval = useMemo(() => {
+    const start = startOfWeek(startOfMonth(calendarMonth), { weekStartsOn: 0 });
+    const end = endOfWeek(endOfMonth(calendarMonth), { weekStartsOn: 0 });
+    const days = eachDayOfInterval({ start, end });
+    const weeks = [];
+    for (let i = 0; i < days.length; i += 7) {
+      weeks.push(days.slice(i, i + 7));
+    }
+    return weeks;
+  }, [calendarMonth]);
+
+  const renderCalendarView = () => {
+    if (escalasLoading) {
+      return (
+        <Box display="flex" justifyContent="center" mt={4}>
+          <CircularProgress />
+        </Box>
+      );
+    }
+
+    return (
+      <Card>
+        <CardContent>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <IconButton onClick={() => handleCalendarMonthChange(-1)}>
+              <ChevronLeftIcon />
+            </IconButton>
+            <Typography variant="h6" textTransform="capitalize">
+              {format(calendarMonth, 'MMMM yyyy', { locale: ptBR })}
+            </Typography>
+            <IconButton onClick={() => handleCalendarMonthChange(1)}>
+              <ChevronRightIcon />
+            </IconButton>
+          </Box>
+
+          <Grid container columns={7} spacing={1} sx={{ textTransform: 'uppercase', mb: 1 }}>
+            {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day) => (
+              <Grid item xs={1} key={day}>
+                <Typography variant="caption" color="textSecondary" textAlign="center">
+                  {day}
+                </Typography>
+              </Grid>
+            ))}
+          </Grid>
+
+          {calendarInterval.map((week, index) => (
+            <Grid container columns={7} spacing={1} key={`week-${index}`} sx={{ mb: 1 }}>
+              {week.map((day) => {
+                const dateKey = format(day, 'yyyy-MM-dd');
+                const dayEscalas = escalasByDate[dateKey] || [];
+                const hasEscala = dayEscalas.length > 0;
+                const ala = hasEscala ? dayEscalas[0].ala : null;
+                const style = ala ? ALA_STYLES[ala] : { border: theme.palette.divider, bg: theme.palette.background.default };
+
+                return (
+                  <Grid item xs={1} key={dateKey}>
+                    <Paper
+                      sx={{
+                        minHeight: 140,
+                        p: 1,
+                        bgcolor: hasEscala ? style.bg : 'background.default',
+                        border: '1px solid',
+                        borderColor: hasEscala ? style.border : 'divider',
+                        opacity: isSameMonth(day, calendarMonth) ? 1 : 0.4,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 0.5,
+                      }}
+                    >
+                      <Typography variant="subtitle2" fontWeight="bold">
+                        {format(day, 'd')}
+                      </Typography>
+                      {hasEscala ? (
+                        dayEscalas.map((escala) => (
+                          <Box key={escala.id}>
+                            <Chip
+                              label={`Ala ${escala.ala}`}
+                              size="small"
+                              sx={{
+                                mb: 0.5,
+                                bgcolor: 'transparent',
+                                color: style.border,
+                                borderColor: style.border,
+                              }}
+                              variant="outlined"
+                            />
+                            {(escala.participantes || []).map((participante) => (
+                              <Typography
+                                key={`${escala.id}-${participante.usuario_id}`}
+                                variant="caption"
+                                display="block"
+                              >
+                                {participante.nome}
+                              </Typography>
+                            ))}
+                          </Box>
+                        ))
+                      ) : (
+                        <Typography variant="caption" color="textSecondary">
+                          Sem escala
+                        </Typography>
+                      )}
+                    </Paper>
+                  </Grid>
+                );
+              })}
+            </Grid>
+          ))}
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const renderListView = () => {
+    if (escalasLoading) {
+      return (
+        <Box display="flex" justifyContent="center" mt={4}>
+          <CircularProgress />
+        </Box>
+      );
+    }
+
+    if (filteredEscalas.length === 0) {
+      return (
+        <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <Typography variant="h6" color="textSecondary">
+            Nenhuma escala encontrada para os filtros selecionados
+          </Typography>
+        </Paper>
+      );
+    }
+
+    const agrupadas = filteredEscalas.reduce((acc, escala) => {
+      if (!escala.dataKey) return acc;
+      if (!acc[escala.dataKey]) acc[escala.dataKey] = [];
+      acc[escala.dataKey].push(escala);
+      return acc;
+    }, {});
+
+    const diasOrdenados = Object.keys(agrupadas).sort();
+
+    return (
+      <Stack spacing={2}>
+        {diasOrdenados.map((dia) => (
+          <Card key={`lista-${dia}`}>
+            <CardContent>
+              <Box display="flex" justifyContent="space-between" flexWrap="wrap" alignItems="center" mb={1}>
+                <Typography variant="h6">
+                  {format(parseISO(dia), "dd 'de' MMMM, yyyy", { locale: ptBR })}
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  {agrupadas[dia].length} turno(s)
+                </Typography>
+              </Box>
+
+              {agrupadas[dia].map((escala) => {
+                const style = ALA_STYLES[escala.ala] || { border: theme.palette.primary.main, bg: 'transparent' };
+                return (
+                  <Box key={`escala-lista-${escala.id}`} mb={2}>
+                    <Box
+                      sx={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        px: 2,
+                        py: 1,
+                        borderRadius: 2,
+                        bgcolor: style.border,
+                        color: '#fff',
+                        fontWeight: 600,
+                        fontSize: '0.95rem',
+                        mb: 1,
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+                      }}
+                    >
+                      {`Ala ${escala.ala}`}
+                    </Box>
+                    <Stack direction="row" flexWrap="wrap" gap={1}>
+                      {(escala.participantes || []).map((participante) => (
+                        <Button
+                          key={`${escala.id}-${participante.usuario_id}`}
+                          variant="outlined"
+                          size="small"
+                          onClick={() => handleOpenSwapDialog(participante, escala)}
+                          sx={{
+                            textTransform: 'none',
+                            borderColor: style.border,
+                            color: style.border,
+                          }}
+                        >
+                          {participante.nome}
+                        </Button>
+                      ))}
+                    </Stack>
+                  </Box>
+                );
+              })}
+            </CardContent>
+          </Card>
+        ))}
+      </Stack>
+    );
+  };
+
   const renderEscalasTab = () => (
     <Box>
-      {/* Filtros */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Grid container spacing={2} alignItems="center">
@@ -519,21 +874,6 @@ const Operacional = () => {
               />
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
-              <FormControl fullWidth>
-                <InputLabel>Setor</InputLabel>
-                <Select
-                  value={escalasFilters.setor}
-                  onChange={(e) => setEscalasFilters(prev => ({ ...prev, setor: e.target.value }))}
-                  label="Setor"
-                >
-                  <MenuItem key="todos-setores-escala" value="">Todos</MenuItem>
-                  <MenuItem key="operacional-setor" value="operacional">Operacional</MenuItem>
-                  <MenuItem key="administrativo-setor" value="administrativo">Administrativo</MenuItem>
-                  <MenuItem key="manutencao-setor" value="manutencao">Manutenção</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
               <Button
                 fullWidth
                 variant="outlined"
@@ -543,96 +883,55 @@ const Operacional = () => {
                 Filtrar
               </Button>
             </Grid>
+            <Grid item xs={12} md={6}>
+              <ToggleButtonGroup
+                value={escalaViewMode}
+                exclusive
+                onChange={handleToggleViewMode}
+                size="small"
+                color="primary"
+              >
+                <ToggleButton value="calendar">
+                  <CalendarMonthIcon sx={{ mr: 1 }} fontSize="small" />
+                  Calendário
+                </ToggleButton>
+                <ToggleButton value="list">
+                  <ViewListIcon sx={{ mr: 1 }} fontSize="small" />
+                  Lista
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <FormGroup row>
+                {VALID_ALAS.map((ala) => (
+                  <FormControlLabel
+                    key={`filtro-${ala}`}
+                    control={(
+                      <Checkbox
+                        checked={selectedAlas.includes(ala)}
+                        onChange={(e) => handleToggleAlaFilter(ala, e.target.checked)}
+                        sx={{
+                          color: ALA_STYLES[ala].border,
+                          '&.Mui-checked': { color: ALA_STYLES[ala].border },
+                        }}
+                      />
+                    )}
+                    label={ala}
+                  />
+                ))}
+              </FormGroup>
+            </Grid>
           </Grid>
         </CardContent>
       </Card>
 
-      {/* Lista de escalas */}
-      <Grid container spacing={3}>
-        {escalasLoading ? (
-          <Grid item xs={12}>
-            <Box display="flex" justifyContent="center">
-              <CircularProgress />
-            </Box>
-          </Grid>
-        ) : escalas.length === 0 ? (
-          <Grid item xs={12}>
-            <Paper sx={{ p: 4, textAlign: 'center' }}>
-              <Typography variant="h6" color="textSecondary">
-                Nenhuma escala encontrada
-              </Typography>
-            </Paper>
-          </Grid>
-        ) : (
-          escalas.map((escala) => (
-            <Grid item xs={12} md={6} lg={4} key={escala.id}>
-              <Card>
-                <CardContent>
-                  <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-                    <Typography variant="h6" gutterBottom>
-                      {escala.nome}
-                    </Typography>
-                    <Chip
-                      label={escala.status}
-                      color={getStatusColor(escala.status)}
-                      size="small"
-                    />
-                  </Box>
-                  
-                  <Box display="flex" alignItems="center" gap={1} mb={1}>
-                    <CalendarIcon fontSize="small" color="action" />
-                    <Typography variant="body2">
-                      {formatDate(escala.data_inicio)} - {formatDate(escala.data_fim)}
-                    </Typography>
-                  </Box>
-                  
-                  <Box display="flex" alignItems="center" gap={1} mb={1}>
-                    <TimeIcon fontSize="small" color="action" />
-                    <Typography variant="body2">
-                      {escala.hora_inicio} - {escala.hora_fim}
-                    </Typography>
-                  </Box>
-                  
-                  <Box display="flex" alignItems="center" gap={1} mb={2}>
-                    <GroupIcon fontSize="small" color="action" />
-                    <Typography variant="body2">
-                      {escala.usuarios?.length || 0} usuários escalados
-                    </Typography>
-                  </Box>
-                  
-                  {escala.descricao && (
-                    <Typography variant="body2" color="textSecondary" mb={2}>
-                      {escala.descricao}
-                    </Typography>
-                  )}
-                  
-                  <Box display="flex" justifyContent="space-between" alignItems="center">
-                    <Typography variant="caption" color="textSecondary">
-                      Criada por: {escala.criado_por_nome}
-                    </Typography>
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        setAnchorEl(e.currentTarget);
-                        setSelectedItem(escala);
-                      }}
-                    >
-                      <MoreVertIcon />
-                    </IconButton>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))
-        )}
-      </Grid>
+      {escalaViewMode === 'calendar' ? renderCalendarView() : renderListView()}
 
-      {/* Paginação */}
-      {escalasPagination.pages > 1 && (
+      {escalaViewMode === 'list' && escalasPagination.pages > 1 && (
         <Box display="flex" justifyContent="center" mt={3}>
           <Pagination
             count={escalasPagination.pages}
-            page={escalasPagination.current_page}
+            page={escalasPagination.current_page || 1}
             onChange={(e, page) => {
               setEscalasFilters(prev => ({ ...prev, page }));
               loadEscalas();
@@ -1272,21 +1571,6 @@ const Operacional = () => {
       {activeTab === 2 && renderTrocasTab()}
       {activeTab === 3 && renderExtrasTab()}
 
-      {/* FAB para adicionar */}
-      {activeTab > 0 && (
-        <Fab
-          color="primary"
-          sx={{ position: 'fixed', bottom: 16, right: 16 }}
-          onClick={() => {
-            if (activeTab === 1) handleOpenDialog('escala');
-            else if (activeTab === 2) handleOpenDialog('troca');
-            else if (activeTab === 3) handleOpenDialog('extra');
-          }}
-        >
-          <AddIcon />
-        </Fab>
-      )}
-
       {/* Menu de ações */}
       {activeTab > 0 && (
         <Menu
@@ -1319,22 +1603,74 @@ const Operacional = () => {
           {dialogType === 'escala' && (selectedItem ? 'Editar Escala' : 'Nova Escala')}
           {dialogType === 'troca' && (selectedItem ? 'Visualizar Troca' : 'Nova Troca de Serviço')}
           {dialogType === 'extra' && (selectedItem ? 'Visualizar Serviço Extra' : 'Novo Serviço Extra')}
+          {dialogType === 'swap' && 'Solicitar Troca de Serviço'}
         </DialogTitle>
         <DialogContent>
-          {/* Formulários específicos serão implementados conforme necessário */}
-          <Typography variant="body2" color="textSecondary">
-            Formulário em desenvolvimento...
-          </Typography>
+          {dialogType === 'swap' ? (
+            <Stack spacing={2} mt={1}>
+              <Alert severity="info">
+                Escolha o dia em que você deseja que o colega selecionado cubra seu serviço. Em breve a solicitação será enviada automaticamente para aprovação.
+              </Alert>
+              <TextField
+                label="Militar que solicita"
+                value={formData.solicitante_nome || ''}
+                fullWidth
+                disabled
+              />
+              <TextField
+                label="Militar selecionado"
+                value={formData.substituto_nome || ''}
+                fullWidth
+                disabled
+              />
+              <TextField
+                label="Data do serviço do militar selecionado"
+                value={formData.data_substituto || ''}
+                fullWidth
+                disabled
+              />
+              <TextField
+                label="Data em que você precisa de cobertura"
+                type="date"
+                value={formData.data_solicitante || ''}
+                onChange={(e) => handleFormChange('data_solicitante', e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                helperText="Selecione o dia que você deseja trocar."
+              />
+              <TextField
+                label="Observações"
+                multiline
+                minRows={3}
+                value={formData.observacoes || ''}
+                onChange={(e) => handleFormChange('observacoes', e.target.value)}
+                placeholder="Descreva o motivo da troca (opcional)"
+              />
+            </Stack>
+          ) : (
+            <Typography variant="body2" color="textSecondary">
+              Formulário em desenvolvimento...
+            </Typography>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog}>Cancelar</Button>
-          <Button
-            onClick={handleSubmit}
-            variant="contained"
-            disabled={loading}
-          >
-            {loading ? <CircularProgress size={20} /> : 'Salvar'}
-          </Button>
+          {dialogType === 'swap' ? (
+            <Tooltip title="Funcionalidade em desenvolvimento" placement="top">
+              <span>
+                <Button variant="contained" disabled>
+                  Enviar Solicitação
+                </Button>
+              </span>
+            </Tooltip>
+          ) : (
+            <Button
+              onClick={handleSubmit}
+              variant="contained"
+              disabled={loading}
+            >
+              {loading ? <CircularProgress size={20} /> : 'Salvar'}
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
     </Box>
