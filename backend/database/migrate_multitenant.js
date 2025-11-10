@@ -30,6 +30,9 @@ const createMultiTenantTables = async () => {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='unidade_lotacao_id') THEN
           ALTER TABLE usuarios ADD COLUMN unidade_lotacao_id INTEGER REFERENCES unidades(id);
         END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='ala') THEN
+          ALTER TABLE usuarios ADD COLUMN ala VARCHAR(20);
+        END IF;
       END $$;
     `);
 

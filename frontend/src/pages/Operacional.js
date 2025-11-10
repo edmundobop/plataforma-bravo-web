@@ -60,7 +60,16 @@ import {
   Group as GroupIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
-import { operacionalService, userService } from '../services/api';
+import { operacionalService } from '../services/api';
+
+const VALID_ALAS = ['Alfa', 'Bravo', 'Charlie', 'Delta'];
+const INITIAL_ALA_BOARD = {
+  pool: [],
+  Alfa: [],
+  Bravo: [],
+  Charlie: [],
+  Delta: [],
+};
 
 const Operacional = () => {
   const theme = useTheme();
@@ -118,21 +127,21 @@ const Operacional = () => {
     current_page: 1,
   });
   
-  // Estados para usuários operacionais
+  // Estados para usuários operacionais / alas
   const [usuarios, setUsuarios] = useState([]);
-  const [usuariosLoading, setUsuariosLoading] = useState(false);
-  const [usuariosFilters, setUsuariosFilters] = useState({
-    setor: '',
-    posto: '',
-    status: 'ativo',
-    search: '',
-    page: 1,
-    limit: 10,
-  });
-  const [usuariosPagination, setUsuariosPagination] = useState({
-    total: 0,
-    pages: 0,
-    current_page: 1,
+  const [usuariosMap, setUsuariosMap] = useState({});
+  const [alaBoard, setAlaBoard] = useState(() => ({ ...INITIAL_ALA_BOARD }));
+  const [alasLoading, setAlasLoading] = useState(false);
+  const [alasSaving, setAlasSaving] = useState(false);
+  const [escalaGenerating, setEscalaGenerating] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [dragInfo, setDragInfo] = useState({ id: null, from: null });
+  const [alasForm, setAlasForm] = useState({
+    data_inicio: '',
+    ala_inicial: VALID_ALAS[0],
+    quantidade_servicos: 4,
+    nome_base: '',
+    observacoes: '',
   });
   
   // Estados para diálogos
@@ -151,16 +160,16 @@ const Operacional = () => {
   const loadData = () => {
     switch (activeTab) {
       case 0:
-        loadEscalas();
+        loadAlas();
         break;
       case 1:
-        loadTrocas();
+        loadEscalas();
         break;
       case 2:
-        loadExtras();
+        loadTrocas();
         break;
       case 3:
-        loadUsuarios();
+        loadExtras();
         break;
       default:
         break;
@@ -209,17 +218,46 @@ const Operacional = () => {
     }
   };
 
-  const loadUsuarios = async () => {
+  const loadAlas = async () => {
     try {
-      setUsuariosLoading(true);
-      const response = await userService.getUsuarios(usuariosFilters);
-      setUsuarios(response.data.usuarios || []);
-      setUsuariosPagination(response.data.pagination || {});
+      setAlasLoading(true);
+      setError('');
+      setSuccessMessage('');
+      const response = await operacionalService.getAlasConfiguracao();
+      const dados = response.data || {};
+      const usuariosLista = dados.usuarios || [];
+      const alasServidor = dados.alas || {};
+      const mapaUsuarios = {};
+      usuariosLista.forEach((usuario) => {
+        mapaUsuarios[usuario.id] = usuario;
+      });
+
+      const novoBoard = {
+        pool: [],
+        Alfa: [],
+        Bravo: [],
+        Charlie: [],
+        Delta: [],
+      };
+
+      VALID_ALAS.forEach((ala) => {
+        novoBoard[ala] = (alasServidor[ala] || []).filter((id) => mapaUsuarios[id]);
+      });
+
+      const atribuídos = new Set(VALID_ALAS.flatMap((ala) => novoBoard[ala]));
+      novoBoard.pool = usuariosLista
+        .filter((usuario) => !atribuídos.has(usuario.id))
+        .map((usuario) => usuario.id);
+
+      setUsuarios(usuariosLista);
+      setUsuariosMap(mapaUsuarios);
+      setAlaBoard(novoBoard);
     } catch (err) {
-      console.error('Erro ao carregar usuários:', err);
-      setError('Erro ao carregar usuários');
+      console.error('Erro ao carregar alas operacionais:', err);
+      const message = err.response?.data?.error || 'Erro ao carregar alas operacionais';
+      setError(message);
     } finally {
-      setUsuariosLoading(false);
+      setAlasLoading(false);
     }
   };
 
@@ -333,6 +371,125 @@ const Operacional = () => {
     if (!dateString) return '-';
     const date = new Date(dateString);
     return isNaN(date.getTime()) ? '-' : date.toLocaleString('pt-BR');
+  };
+
+  const isAdmin = user?.perfil_nome === 'Administrador';
+
+  const buildAlaPayload = () => {
+    const payload = {};
+    VALID_ALAS.forEach((ala) => {
+      payload[ala] = alaBoard[ala] || [];
+    });
+    return payload;
+  };
+
+  const handleDragStart = (userId, fromColumn) => {
+    if (!isAdmin) return;
+    setDragInfo({ id: userId, from: fromColumn });
+  };
+
+  const handleDragEnd = () => {
+    setDragInfo({ id: null, from: null });
+  };
+
+  const handleDropOnColumn = (columnKey) => {
+    if (!isAdmin || !dragInfo.id || !columnKey) return;
+    setAlaBoard((prev) => {
+      if (!prev[dragInfo.from] || !prev[columnKey]) {
+        const fallback = prev[columnKey] || [];
+        return {
+          ...prev,
+          [dragInfo.from]: prev[dragInfo.from] ? prev[dragInfo.from].filter((id) => id !== dragInfo.id) : [],
+          [columnKey]: fallback.includes(dragInfo.id) ? fallback : [...fallback, dragInfo.id]
+        };
+      }
+      if (dragInfo.from === columnKey) {
+        return prev;
+      }
+      const next = {
+        ...prev,
+        [dragInfo.from]: prev[dragInfo.from].filter((id) => id !== dragInfo.id),
+      };
+      const currentTarget = next[columnKey] || [];
+      if (!currentTarget.includes(dragInfo.id)) {
+        next[columnKey] = [...currentTarget, dragInfo.id];
+      } else {
+        next[columnKey] = currentTarget;
+      }
+      return next;
+    });
+    setDragInfo({ id: null, from: null });
+  };
+
+  const handleQuickMove = (userId, fromColumn, toColumn) => {
+    if (!isAdmin || fromColumn === toColumn) return;
+    setAlaBoard((prev) => {
+      const targetList = prev[toColumn] || [];
+      const next = {
+        ...prev,
+        [fromColumn]: prev[fromColumn] ? prev[fromColumn].filter((id) => id !== userId) : [],
+      };
+      if (!targetList.includes(userId)) {
+        next[toColumn] = [...targetList, userId];
+      } else {
+        next[toColumn] = targetList;
+      }
+      return next;
+    });
+  };
+
+  const handleSaveAlas = async () => {
+    if (!isAdmin) return;
+    try {
+      setAlasSaving(true);
+      setError('');
+      setSuccessMessage('');
+      await operacionalService.salvarAlas({ alas: buildAlaPayload() });
+      setSuccessMessage('Alas atualizadas com sucesso.');
+    } catch (err) {
+      console.error('Erro ao salvar alas:', err);
+      const message = err.response?.data?.error || 'Erro ao salvar as alas';
+      setError(message);
+    } finally {
+      setAlasSaving(false);
+    }
+  };
+
+  const handleGenerateEscalas = async () => {
+    if (!isAdmin) return;
+    if (!alasForm.data_inicio) {
+      setError('Selecione a data de início da escala');
+      return;
+    }
+    if (!alasForm.quantidade_servicos || Number(alasForm.quantidade_servicos) < 1) {
+      setError('Informe o número de serviços a serem gerados');
+      return;
+    }
+    try {
+      setEscalaGenerating(true);
+      setError('');
+      setSuccessMessage('');
+      await operacionalService.gerarEscalasAutomaticas({
+        data_inicio: alasForm.data_inicio,
+        ala_inicial: alasForm.ala_inicial,
+        quantidade_servicos: Number(alasForm.quantidade_servicos),
+        nome_base: alasForm.nome_base || undefined,
+        observacoes: alasForm.observacoes || undefined,
+        alas: buildAlaPayload(),
+      });
+      setSuccessMessage('Escalas geradas com sucesso.');
+      loadEscalas();
+    } catch (err) {
+      console.error('Erro ao gerar escalas:', err);
+      const message = err.response?.data?.error || 'Erro ao gerar escalas';
+      setError(message);
+    } finally {
+      setEscalaGenerating(false);
+    }
+  };
+
+  const handleAlaFormChange = (field, value) => {
+    setAlasForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const renderEscalasTab = () => (
@@ -794,183 +951,246 @@ const Operacional = () => {
     </Box>
   );
 
-  const renderUsuariosTab = () => (
-    <Box>
-      {/* Filtros */}
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} sm={6} md={3}>
-              <TextField
-                fullWidth
-                label="Buscar usuário"
-                value={usuariosFilters.search}
-                onChange={(e) => setUsuariosFilters(prev => ({ ...prev, search: e.target.value }))}
-                placeholder="Nome, matrícula..."
-                InputProps={{
-                  startAdornment: <SearchIcon color="action" sx={{ mr: 1 }} />,
-                }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={2}>
-              <FormControl fullWidth>
-                <InputLabel>Setor</InputLabel>
-                <Select
-                  value={usuariosFilters.setor}
-                  onChange={(e) => setUsuariosFilters(prev => ({ ...prev, setor: e.target.value }))}
-                  label="Setor"
-                >
-                  <MenuItem key="todos-setores-usuario" value="">Todos</MenuItem>
-                  <MenuItem key="operacional-usuario" value="operacional">Operacional</MenuItem>
-                  <MenuItem key="administrativo-usuario" value="administrativo">Administrativo</MenuItem>
-                  <MenuItem key="comando-usuario" value="comando">Comando</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6} md={2}>
-              <FormControl fullWidth>
-                <InputLabel>Posto</InputLabel>
-                <Select
-                  value={usuariosFilters.posto}
-                  onChange={(e) => setUsuariosFilters(prev => ({ ...prev, posto: e.target.value }))}
-                  label="Posto"
-                >
-                  <MenuItem key="todos-postos" value="">Todos</MenuItem>
-                  <MenuItem key="soldado-posto" value="soldado">Soldado</MenuItem>
-                  <MenuItem key="cabo-posto" value="cabo">Cabo</MenuItem>
-                  <MenuItem key="sargento-posto" value="sargento">Sargento</MenuItem>
-                  <MenuItem key="tenente-posto" value="tenente">Tenente</MenuItem>
-                  <MenuItem key="capitao-posto" value="capitao">Capitão</MenuItem>
-                  <MenuItem key="major-posto" value="major">Major</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6} md={2}>
-              <FormControl fullWidth>
-                <InputLabel>Status</InputLabel>
-                <Select
-                  value={usuariosFilters.status}
-                  onChange={(e) => setUsuariosFilters(prev => ({ ...prev, status: e.target.value }))}
-                  label="Status"
-                >
-                  <MenuItem key="todos-status-usuario" value="">Todos</MenuItem>
-                  <MenuItem key="ativo-usuario" value="ativo">Ativo</MenuItem>
-                  <MenuItem key="inativo-usuario" value="inativo">Inativo</MenuItem>
-                  <MenuItem key="licenca-usuario" value="licenca">Em Licença</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <Button
-                fullWidth
-                variant="outlined"
-                onClick={loadUsuarios}
-                startIcon={<FilterIcon />}
-              >
-                Filtrar
-              </Button>
+  const renderAlasTab = () => {
+    const alaStyles = {
+      Alfa: { bg: theme.palette.success.light, border: theme.palette.success.main },
+      Bravo: { bg: theme.palette.info.light, border: theme.palette.info.main },
+      Charlie: { bg: theme.palette.warning.light, border: theme.palette.warning.main },
+      Delta: { bg: theme.palette.error.light, border: theme.palette.error.main },
+    };
+
+    const renderUserCard = (userId, columnKey) => {
+      const usuario = usuariosMap[userId];
+      if (!usuario) return null;
+      return (
+        <Paper
+          key={`${columnKey}-${userId}`}
+          draggable={isAdmin}
+          onDragStart={() => handleDragStart(userId, columnKey)}
+          onDragEnd={handleDragEnd}
+          onDoubleClick={() => {
+            if (!isAdmin || columnKey === 'pool') return;
+            handleQuickMove(userId, columnKey, 'pool');
+          }}
+          sx={{
+            p: 1.5,
+            mb: 1,
+            cursor: isAdmin ? 'grab' : 'default',
+            border: '1px solid',
+            borderColor: columnKey === 'pool' ? 'divider' : alaStyles[columnKey]?.border || 'divider',
+            bgcolor: columnKey === 'pool' ? 'background.paper' : alaStyles[columnKey]?.bg || 'background.paper',
+            borderRadius: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1,
+          }}
+        >
+          <Box>
+            <Typography variant="subtitle2">{usuario.nome}</Typography>
+            <Typography variant="caption" color="textSecondary">
+              {usuario.matricula || 'Sem matrícula'}
+            </Typography>
+          </Box>
+          {isAdmin && columnKey !== 'pool' && (
+            <IconButton size="small" onClick={() => handleQuickMove(userId, columnKey, 'pool')}>
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          )}
+        </Paper>
+      );
+    };
+
+    if (alasLoading) {
+      return (
+        <Box display="flex" justifyContent="center" mt={4}>
+          <CircularProgress />
+        </Box>
+      );
+    }
+
+    if (usuarios.length === 0) {
+      return (
+        <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <Typography variant="h6" gutterBottom>
+            Nenhum militar operacional encontrado
+          </Typography>
+          <Typography variant="body2" color="textSecondary">
+            Cadastre usuários com o setor Operacional para montar as alas.
+          </Typography>
+        </Paper>
+      );
+    }
+
+    const poolIds = alaBoard.pool || [];
+
+    return (
+      <Box>
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={3}>
+            <Card
+              onDragOver={(e) => {
+                if (isAdmin) e.preventDefault();
+              }}
+              onDrop={(e) => {
+                if (isAdmin) {
+                  e.preventDefault();
+                  handleDropOnColumn('pool');
+                }
+              }}
+            >
+              <CardContent>
+                <Typography variant="h6">Militares Disponíveis</Typography>
+                <Typography variant="body2" color="textSecondary" mb={2}>
+                  Arraste para uma ala para compor a escala
+                </Typography>
+                {poolIds.length === 0 ? (
+                  <Typography variant="body2" color="textSecondary">
+                    Todos os militares estão alocados
+                  </Typography>
+                ) : (
+                  poolIds.map((id) => renderUserCard(id, 'pool'))
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={9}>
+            <Grid container spacing={2}>
+              {VALID_ALAS.map((ala) => (
+                <Grid item xs={12} sm={6} md={3} key={ala}>
+                  <Card
+                    sx={{
+                      borderTop: `4px solid ${alaStyles[ala]?.border || theme.palette.primary.main}`,
+                      minHeight: 280,
+                    }}
+                    onDragOver={(e) => {
+                      if (isAdmin) e.preventDefault();
+                    }}
+                    onDrop={(e) => {
+                      if (isAdmin) {
+                        e.preventDefault();
+                        handleDropOnColumn(ala);
+                      }
+                    }}
+                  >
+                    <CardContent>
+                      <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                        <Typography variant="h6">{`Ala ${ala}`}</Typography>
+                        <Chip label={`${alaBoard[ala]?.length || 0} militares`} size="small" />
+                      </Box>
+                      <Typography variant="caption" color="textSecondary">
+                        Cada ala deve ter pelo menos 5 militares
+                      </Typography>
+                      <Box mt={2}>
+                        {(alaBoard[ala] || []).length === 0 ? (
+                          <Typography variant="body2" color="textSecondary">
+                            Arraste militares para cá
+                          </Typography>
+                        ) : (
+                          alaBoard[ala].map((id) => renderUserCard(id, ala))
+                        )}
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
             </Grid>
           </Grid>
-        </CardContent>
-      </Card>
+        </Grid>
 
-      {/* Tabela de usuários */}
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Usuário</TableCell>
-              <TableCell>Matrícula</TableCell>
-              <TableCell>Posto</TableCell>
-              <TableCell>Setor</TableCell>
-              <TableCell>Telefone</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Ações</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {usuariosLoading ? (
-              <TableRow>
-                <TableCell colSpan={7} align="center">
-                  <CircularProgress />
-                </TableCell>
-              </TableRow>
-            ) : usuarios.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} align="center">
-                  Nenhum usuário encontrado
-                </TableCell>
-              </TableRow>
-            ) : (
-              usuarios.map((usuario) => (
-                <TableRow key={usuario.id}>
-                  <TableCell>
-                    <Box display="flex" alignItems="center" gap={1}>
-                      <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
-                        {usuario.nome?.charAt(0)?.toUpperCase()}
-                      </Avatar>
-                      <Box>
-                        <Typography variant="body2" fontWeight="medium">
-                          {usuario.nome}
-                        </Typography>
-                        <Typography variant="caption" color="textSecondary">
-                          {usuario.email}
-                        </Typography>
-                      </Box>
-                    </Box>
-                  </TableCell>
-                  <TableCell>{usuario.matricula}</TableCell>
-                  <TableCell>
-                    <Chip
-                      label={usuario.posto}
-                      size="small"
-                      color="primary"
-                      variant="outlined"
-                    />
-                  </TableCell>
-                  <TableCell>{usuario.setor}</TableCell>
-                  <TableCell>{usuario.telefone || '-'}</TableCell>
-                  <TableCell>
-                    <Chip
-                      label={usuario.status}
-                      size="small"
-                      color={usuario.status === 'ativo' ? 'success' : usuario.status === 'licenca' ? 'warning' : 'error'}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        setSelectedItem(usuario);
-                        setAnchorEl(e.currentTarget);
-                      }}
-                    >
-                      <MoreVertIcon />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+        {isAdmin && (
+          <>
+            <Box mt={3} display="flex" gap={2} flexWrap="wrap">
+              <Button
+                variant="outlined"
+                onClick={handleSaveAlas}
+                disabled={alasSaving || alasLoading}
+                startIcon={alasSaving ? <CircularProgress size={16} /> : <CheckIcon />}
+              >
+                Salvar Distribuição
+              </Button>
+            </Box>
 
-      {/* Paginação */}
-      {usuariosPagination.pages > 1 && (
-        <Box display="flex" justifyContent="center" mt={3}>
-          <Pagination
-            count={usuariosPagination.pages}
-            page={usuariosPagination.current_page}
-            onChange={(e, page) => {
-              setUsuariosFilters(prev => ({ ...prev, page }));
-              loadUsuarios();
-            }}
-            color="primary"
-          />
-        </Box>
-      )}
-    </Box>
-  );
+            <Card sx={{ mt: 3 }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Gerar Escalas Automáticas
+                </Typography>
+                <Typography variant="body2" color="textSecondary" mb={2}>
+                  Informe o dia de início, a ala que iniciará a escala e quantos serviços devem ser gerados.
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      label="Dia de início"
+                      type="date"
+                      fullWidth
+                      value={alasForm.data_inicio}
+                      onChange={(e) => handleAlaFormChange('data_inicio', e.target.value)}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <FormControl fullWidth>
+                      <InputLabel>Ala inicial</InputLabel>
+                      <Select
+                        label="Ala inicial"
+                        value={alasForm.ala_inicial}
+                        onChange={(e) => handleAlaFormChange('ala_inicial', e.target.value)}
+                      >
+                        {VALID_ALAS.map((ala) => (
+                          <MenuItem key={`ala-${ala}`} value={ala}>{ala}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      label="Quantidade de serviços"
+                      type="number"
+                      fullWidth
+                      inputProps={{ min: 1 }}
+                      value={alasForm.quantidade_servicos}
+                      onChange={(e) => handleAlaFormChange('quantidade_servicos', e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label="Nome base (opcional)"
+                      fullWidth
+                      value={alasForm.nome_base}
+                      onChange={(e) => handleAlaFormChange('nome_base', e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label="Observações"
+                      fullWidth
+                      multiline
+                      minRows={1}
+                      value={alasForm.observacoes}
+                      onChange={(e) => handleAlaFormChange('observacoes', e.target.value)}
+                    />
+                  </Grid>
+                </Grid>
+
+                <Box mt={3} display="flex" justifyContent="flex-end">
+                  <Button
+                    variant="contained"
+                    onClick={handleGenerateEscalas}
+                    disabled={escalaGenerating || alasLoading}
+                    startIcon={escalaGenerating ? <CircularProgress size={16} color="inherit" /> : <ScheduleIcon />}
+                  >
+                    Gerar Escalas
+                  </Button>
+                </Box>
+              </CardContent>
+            </Card>
+          </>
+        )}
+      </Box>
+    );
+  };
 
   return (
     <Box>
@@ -990,19 +1210,25 @@ const Operacional = () => {
         </Alert>
       )}
 
+      {successMessage && (
+        <Alert severity="success" sx={{ mb: 3 }} onClose={() => setSuccessMessage('')}>
+          {successMessage}
+        </Alert>
+      )}
+
       {/* Tabs */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
           <Tab 
             icon={
               <Badge 
-                badgeContent={usuarios.filter(u => u.status === 'ativo').length} 
+                badgeContent={usuarios.filter((u) => u.ativo !== false).length} 
                 color="primary"
               >
                 <PeopleIcon />
               </Badge>
             } 
-            label="Militares"
+            label="Alas"
           />
           <Tab 
             icon={
@@ -1041,49 +1267,46 @@ const Operacional = () => {
       </Box>
 
       {/* Conteúdo das tabs */}
-      {activeTab === 0 && renderUsuariosTab()}
+      {activeTab === 0 && renderAlasTab()}
       {activeTab === 1 && renderEscalasTab()}
       {activeTab === 2 && renderTrocasTab()}
       {activeTab === 3 && renderExtrasTab()}
 
       {/* FAB para adicionar */}
-      <Fab
-        color="primary"
-        sx={{ position: 'fixed', bottom: 16, right: 16 }}
-        onClick={() => {
-          if (activeTab === 0) handleOpenDialog('usuario');
-          else if (activeTab === 1) handleOpenDialog('escala');
-          else if (activeTab === 2) handleOpenDialog('troca');
-          else if (activeTab === 3) handleOpenDialog('extra');
-        }}
-      >
-        <AddIcon />
-      </Fab>
+      {activeTab > 0 && (
+        <Fab
+          color="primary"
+          sx={{ position: 'fixed', bottom: 16, right: 16 }}
+          onClick={() => {
+            if (activeTab === 1) handleOpenDialog('escala');
+            else if (activeTab === 2) handleOpenDialog('troca');
+            else if (activeTab === 3) handleOpenDialog('extra');
+          }}
+        >
+          <AddIcon />
+        </Fab>
+      )}
 
       {/* Menu de ações */}
-      <Menu
-        anchorEl={anchorEl}
-        open={Boolean(anchorEl)}
-        onClose={() => setAnchorEl(null)}
-      >
-        <MenuItem key="view-operacional" onClick={() => {
-          const type = activeTab === 0 ? 'escala' : activeTab === 1 ? 'troca' : 'extra';
-          handleOpenDialog(type, selectedItem);
-          setAnchorEl(null);
-        }}>
-          <ViewIcon sx={{ mr: 1 }} />
-          Visualizar
-        </MenuItem>
-        {activeTab === 0 && (
-          <MenuItem key="edit-operacional" onClick={() => {
-            handleOpenDialog('escala', selectedItem);
-            setAnchorEl(null);
-          }}>
-            <EditIcon sx={{ mr: 1 }} />
-            Editar
+      {activeTab > 0 && (
+        <Menu
+          anchorEl={anchorEl}
+          open={Boolean(anchorEl)}
+          onClose={() => setAnchorEl(null)}
+        >
+          <MenuItem
+            key="view-operacional"
+            onClick={() => {
+              const type = activeTab === 1 ? 'escala' : activeTab === 2 ? 'troca' : 'extra';
+              handleOpenDialog(type, selectedItem);
+              setAnchorEl(null);
+            }}
+          >
+            <ViewIcon sx={{ mr: 1 }} />
+            Visualizar
           </MenuItem>
-        )}
-      </Menu>
+        </Menu>
+      )}
 
       {/* Dialog para formulários */}
       <Dialog

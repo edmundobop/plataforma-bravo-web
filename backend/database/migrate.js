@@ -97,6 +97,7 @@ const createTables = async () => {
         perfil_id INTEGER REFERENCES perfis(id),
         unidade_id INTEGER REFERENCES unidades(id),
         unidade_lotacao_id INTEGER REFERENCES unidades(id),
+        ala VARCHAR(20),
         setor VARCHAR(100),
         setor_id INTEGER REFERENCES setores(id),
         funcao VARCHAR(100),
@@ -139,6 +140,9 @@ const createTables = async () => {
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='unidade_lotacao_id') THEN
           ALTER TABLE usuarios ADD COLUMN unidade_lotacao_id INTEGER REFERENCES unidades(id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='ala') THEN
+          ALTER TABLE usuarios ADD COLUMN ala VARCHAR(20);
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='setor_id') THEN
           ALTER TABLE usuarios ADD COLUMN setor_id INTEGER REFERENCES setores(id);
@@ -325,8 +329,8 @@ const createTables = async () => {
         id SERIAL PRIMARY KEY,
         nome VARCHAR(255) NOT NULL,
         tipo VARCHAR(50) NOT NULL,
-        data_inicio DATE NOT NULL,
-        data_fim DATE NOT NULL,
+        data_inicio TIMESTAMP NOT NULL,
+        data_fim TIMESTAMP NOT NULL,
         turno VARCHAR(20),
         setor VARCHAR(100),
         observacoes TEXT,
@@ -335,6 +339,23 @@ const createTables = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         unidade_id INTEGER REFERENCES unidades(id)
       )
+    `);
+    await query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='escalas' AND column_name='data_inicio' AND data_type='date'
+        ) THEN
+          ALTER TABLE escalas ALTER COLUMN data_inicio TYPE TIMESTAMP USING data_inicio::timestamp;
+        END IF;
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='escalas' AND column_name='data_fim' AND data_type='date'
+        ) THEN
+          ALTER TABLE escalas ALTER COLUMN data_fim TYPE TIMESTAMP USING data_fim::timestamp;
+        END IF;
+      END $$;
     `);
 
     await query(`

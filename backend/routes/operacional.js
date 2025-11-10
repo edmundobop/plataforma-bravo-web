@@ -2,11 +2,384 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { query, transaction } = require('../config/database');
 const { authenticateToken, authorizeRoles } = require('../middleware/auth');
+const { optionalTenant } = require('../middleware/tenant');
+
+const VALID_ALAS = ['Alfa', 'Bravo', 'Charlie', 'Delta'];
+const SHIFT_SEQUENCE = [...VALID_ALAS];
+const SHIFT_START_TIME = '08:00:00';
+const SHIFT_END_TIME = '07:59:00';
+const SHIFT_TURNO_LABEL = '24h (08h às 07h59)';
+const ESCALA_USUARIO_TURNO = '24h';
+const OPERACIONAL_SETOR = 'Operacional';
+const ESCALA_USUARIO_FUNCAO = 'Plantão Operacional';
 
 const router = express.Router();
 
+const buildEmptyAlaMap = () => VALID_ALAS.reduce((acc, ala) => {
+  acc[ala] = [];
+  return acc;
+}, {});
+
+const normalizeAlaName = (raw) => {
+  if (!raw) return null;
+  const normalized = raw.toString().trim().toLowerCase();
+  return VALID_ALAS.find((ala) => ala.toLowerCase() === normalized) || null;
+};
+
+const normalizeAlaAssignments = (input) => {
+  if (!input || typeof input !== 'object') {
+    throw new Error('Formato de alas inválido');
+  }
+  const assignments = buildEmptyAlaMap();
+  const seen = new Set();
+
+  Object.entries(input).forEach(([key, value]) => {
+    const alaName = normalizeAlaName(key);
+    if (!alaName) {
+      throw new Error(`Ala desconhecida: ${key}`);
+    }
+    if (!Array.isArray(value)) {
+      throw new Error(`A lista de usuários da ala ${alaName} deve ser um array`);
+    }
+    assignments[alaName] = value.map((id) => {
+      const numericId = Number(id);
+      if (!Number.isInteger(numericId)) {
+        throw new Error('IDs de usuários devem ser inteiros');
+      }
+      if (seen.has(numericId)) {
+        throw new Error(`Usuário ${numericId} foi atribuído a mais de uma ala`);
+      }
+      seen.add(numericId);
+      return numericId;
+    });
+  });
+
+  return assignments;
+};
+
+const addDaysUtc = (dateStr, days) => {
+  const base = new Date(`${dateStr}T00:00:00Z`);
+  base.setUTCDate(base.getUTCDate() + days);
+  return base.toISOString().slice(0, 10);
+};
+
+const formatTimestamp = (dateStr, timeStr) => `${dateStr} ${timeStr}`;
+
+const extractDateOnly = (value) => {
+  if (typeof value === 'string') {
+    const match = value.match(/^\d{4}-\d{2}-\d{2}/);
+    if (match) {
+      return match[0];
+    }
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error('Data inválida');
+  }
+  return parsed.toISOString().slice(0, 10);
+};
+
+const rotateSequenceFrom = (startAla) => {
+  const index = SHIFT_SEQUENCE.indexOf(startAla);
+  if (index === -1) {
+    throw new Error('Ala inicial inválida');
+  }
+  return SHIFT_SEQUENCE.slice(index).concat(SHIFT_SEQUENCE.slice(0, index));
+};
+
+const flattenAssignments = (alaMap) => VALID_ALAS.flatMap((ala) => alaMap[ala] || []);
+
+const ensureDistributionConstraints = (alaMap, totalEligible) => {
+  const flattened = flattenAssignments(alaMap);
+  const uniqueIds = new Set(flattened);
+  if (flattened.length !== uniqueIds.size) {
+    throw new Error('Existem usuários duplicados na distribuição das alas');
+  }
+
+  const minimumByAla = totalEligible >= VALID_ALAS.length * 5 ? 5 : 1;
+  VALID_ALAS.forEach((ala) => {
+    if ((alaMap[ala] || []).length < minimumByAla) {
+      throw new Error(`A ala ${ala} precisa de pelo menos ${minimumByAla} participantes`);
+    }
+  });
+};
+
+const ensureCoverage = (alaMap, eligibleIds) => {
+  const assigned = new Set(flattenAssignments(alaMap));
+  const missing = eligibleIds.filter((id) => !assigned.has(id));
+  if (missing.length > 0) {
+    throw new Error('Todos os usuários operacionais precisam ser atribuídos a uma ala');
+  }
+};
+
+const fetchEligibleOperationalUsers = async (unidadeId = null) => {
+  const params = [OPERACIONAL_SETOR];
+  let whereClause = 'WHERE u.ativo = true AND u.setor = $1';
+
+  if (unidadeId) {
+    params.push(unidadeId);
+    whereClause += ` AND COALESCE(u.unidade_lotacao_id, u.unidade_id) = $${params.length}`;
+  }
+
+  const result = await query(
+    `
+      SELECT u.id, u.nome, u.matricula, u.posto_graduacao, u.nome_guerra,
+             u.ala, u.setor, u.perfil_id, u.ativo
+      FROM usuarios u
+      ${whereClause}
+      ORDER BY COALESCE(u.ala, 'Z'), u.nome
+    `,
+    params
+  );
+
+  return result.rows;
+};
+
+const assignUsersToAlas = async (client, alaMap, eligibleIds) => {
+  if (eligibleIds.length === 0) {
+    return 0;
+  }
+
+  const flattened = flattenAssignments(alaMap);
+  if (flattened.length === 0) {
+    throw new Error('Nenhum usuário foi associado a uma ala');
+  }
+
+  await client.query(
+    'UPDATE usuarios SET ala = NULL, updated_at = CURRENT_TIMESTAMP WHERE setor = $1 AND id = ANY($2)',
+    [OPERACIONAL_SETOR, eligibleIds]
+  );
+
+  for (const ala of VALID_ALAS) {
+    const ids = alaMap[ala] || [];
+    if (ids.length === 0) continue;
+    await client.query(
+      'UPDATE usuarios SET ala = $1, updated_at = CURRENT_TIMESTAMP WHERE id = ANY($2)',
+      [ala, ids]
+    );
+  }
+
+  return flattened.length;
+};
+
+const loadCurrentAlaAssignments = async (unidadeId = null) => {
+  const rows = await fetchEligibleOperationalUsers(unidadeId);
+  const map = buildEmptyAlaMap();
+  rows.forEach((user) => {
+    if (user.ala && map[user.ala]) {
+      map[user.ala].push(user.id);
+    }
+  });
+  return { map, rows };
+};
+
+const determineUnidadeId = (req) => req.unidade?.id || req.user?.unidade_lotacao_id || req.user?.unidade_id || null;
+
 // Aplicar autenticação em todas as rotas
 router.use(authenticateToken);
+router.use(optionalTenant);
+
+// ALAS OPERACIONAIS
+
+router.get('/alas/usuarios', async (req, res) => {
+  try {
+    const unidadeId = determineUnidadeId(req);
+    const usuarios = await fetchEligibleOperationalUsers(unidadeId);
+    const alas = buildEmptyAlaMap();
+
+    usuarios.forEach((user) => {
+      if (user.ala && alas[user.ala]) {
+        alas[user.ala].push(user.id);
+      }
+    });
+
+    res.json({
+      total: usuarios.length,
+      usuarios,
+      alas
+    });
+  } catch (error) {
+    console.error('Erro ao listar usuários operacionais:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+router.put('/alas/usuarios', authorizeRoles('Administrador'), [
+  body('alas').notEmpty().withMessage('A distribuição das alas é obrigatória')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    let alaMap;
+    try {
+      alaMap = normalizeAlaAssignments(req.body.alas);
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    const unidadeId = determineUnidadeId(req);
+    const usuarios = await fetchEligibleOperationalUsers(unidadeId);
+    if (usuarios.length === 0) {
+      return res.status(400).json({ error: 'Não há usuários operacionais cadastrados' });
+    }
+    const eligibleIds = usuarios.map((user) => user.id);
+
+    try {
+      ensureCoverage(alaMap, eligibleIds);
+      ensureDistributionConstraints(alaMap, usuarios.length);
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    await transaction(async (client) => {
+      await assignUsersToAlas(client, alaMap, eligibleIds);
+    });
+
+    res.json({
+      message: 'Alas atualizadas com sucesso',
+      alas: alaMap,
+      total: usuarios.length
+    });
+  } catch (error) {
+    console.error('Erro ao atualizar alas operacionais:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+router.post('/alas/escalas', authorizeRoles('Administrador'), [
+  body('data_inicio').isISO8601().withMessage('Data de início inválida'),
+  body('ala_inicial').notEmpty().withMessage('Ala inicial é obrigatória'),
+  body('quantidade_servicos').isInt({ min: 1, max: 120 }).withMessage('Quantidade de serviços deve ser entre 1 e 120'),
+  body('alas').optional().custom((value) => {
+    try {
+      normalizeAlaAssignments(value);
+      return true;
+    } catch (error) {
+      throw new Error(error.message);
+    }
+  }),
+  body('nome_base').optional().isLength({ max: 255 }),
+  body('observacoes').optional().isLength({ max: 1000 })
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { data_inicio, ala_inicial, quantidade_servicos, observacoes, nome_base, alas } = req.body;
+    const unidadeId = determineUnidadeId(req);
+    const usuarios = await fetchEligibleOperationalUsers(unidadeId);
+    if (usuarios.length === 0) {
+      return res.status(400).json({ error: 'Não há usuários operacionais cadastrados' });
+    }
+
+    const eligibleIds = usuarios.map((user) => user.id);
+    const alaInicialNormalizada = normalizeAlaName(ala_inicial);
+    if (!alaInicialNormalizada) {
+      return res.status(400).json({ error: 'Ala inicial inválida' });
+    }
+
+    let alaMap;
+    if (alas) {
+      try {
+        alaMap = normalizeAlaAssignments(alas);
+      } catch (error) {
+        return res.status(400).json({ error: error.message });
+      }
+    } else {
+      const { map } = await loadCurrentAlaAssignments(unidadeId);
+      alaMap = map;
+    }
+
+    try {
+      ensureCoverage(alaMap, eligibleIds);
+      ensureDistributionConstraints(alaMap, usuarios.length);
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    let baseDate;
+    try {
+      baseDate = extractDateOnly(data_inicio);
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    const rotation = rotateSequenceFrom(alaInicialNormalizada);
+    const nomeBase = nome_base?.trim() || 'Escala Operacional';
+    const resultados = [];
+
+    await transaction(async (client) => {
+      if (alas) {
+        await assignUsersToAlas(client, alaMap, eligibleIds);
+      }
+
+      for (let i = 0; i < Number(quantidade_servicos); i++) {
+        const alaAtual = rotation[i % rotation.length];
+        const dataServico = addDaysUtc(baseDate, i);
+        const dataFim = addDaysUtc(dataServico, 1);
+        const escalaNome = `${nomeBase} - ${alaAtual} - ${dataServico.split('-').reverse().join('/')}`;
+
+        const escalaResult = await client.query(
+          `INSERT INTO escalas (nome, tipo, data_inicio, data_fim, turno, setor, observacoes, created_by, unidade_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           RETURNING id, data_inicio, data_fim`,
+          [
+            escalaNome,
+            'operacional_24x72',
+            formatTimestamp(dataServico, SHIFT_START_TIME),
+            formatTimestamp(dataFim, SHIFT_END_TIME),
+            SHIFT_TURNO_LABEL,
+            OPERACIONAL_SETOR,
+            observacoes || null,
+            req.user.id,
+            unidadeId
+          ]
+        );
+
+        const escalaId = escalaResult.rows[0].id;
+        const participantes = alaMap[alaAtual] || [];
+
+        for (const usuarioId of participantes) {
+          const conflict = await client.query(
+            'SELECT 1 FROM escala_usuarios WHERE usuario_id = $1 AND data_servico = $2',
+            [usuarioId, dataServico]
+          );
+
+          if (conflict.rows.length > 0) {
+            throw new Error(`Usuário ${usuarioId} já possui escala registrada em ${dataServico}`);
+          }
+
+          await client.query(
+            `INSERT INTO escala_usuarios (escala_id, usuario_id, data_servico, turno, funcao, status)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [escalaId, usuarioId, dataServico, ESCALA_USUARIO_TURNO, ESCALA_USUARIO_FUNCAO, 'agendado']
+          );
+        }
+
+        resultados.push({
+          escala_id: escalaId,
+          ala: alaAtual,
+          data_servico: dataServico,
+          participantes: participantes.length
+        });
+      }
+    });
+
+    res.status(201).json({
+      message: 'Escalas geradas com sucesso',
+      total: resultados.length,
+      escalas: resultados
+    });
+  } catch (error) {
+    console.error('Erro ao gerar escalas operacionais:', error);
+    res.status(500).json({ error: error.message || 'Erro interno do servidor' });
+  }
+});
 
 // ESCALAS
 

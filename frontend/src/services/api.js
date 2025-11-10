@@ -217,6 +217,11 @@ export const operacionalService = {
   
   // Usuários
   getUsuarios: (params) => api.get('/usuarios', { params }),
+
+  // Alas operacionais
+  getAlasConfiguracao: () => api.get('/operacional/alas/usuarios'),
+  salvarAlas: (payload) => api.put('/operacional/alas/usuarios', payload),
+  gerarEscalasAutomaticas: (payload) => api.post('/operacional/alas/escalas', payload),
   
   // Relatórios
   getRelatorioOperacional: () => api.get('/operacional/relatorio'),

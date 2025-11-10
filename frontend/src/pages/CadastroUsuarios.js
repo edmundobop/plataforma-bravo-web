@@ -583,8 +583,12 @@ const CadastroUsuarios = () => {
         loadUsuarios();
       }
     } catch (err) {
+      // Log detalhado para debug: mostra response.data (corpo retornado pelo servidor)
       console.error('Erro ao salvar usuário:', err);
-      setError(err.response?.data?.message || 'Erro ao salvar usuário');
+      console.error('Detalhes da resposta do servidor:', err.response?.data || err.response || err.message);
+      // Backend usa `{ error: "..." }` no body => priorizar esse campo
+      const serverMsg = err.response?.data?.error || err.response?.data?.message || err.message;
+      setError(serverMsg || 'Erro ao salvar usuário');
     } finally {
       setLoading(false);
     }
