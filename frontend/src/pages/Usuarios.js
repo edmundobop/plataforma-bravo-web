@@ -371,7 +371,12 @@ const Usuarios = () => {
       }, 1500);
     } catch (err) {
       console.error('Erro ao salvar usuário:', err);
-      setError(err.response?.data?.message || 'Erro ao salvar usuário');
+      // Mostrar mensagem específica do backend quando disponível
+      setError(
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        'Erro ao salvar usuário'
+      );
     } finally {
       setLoading(false);
     }

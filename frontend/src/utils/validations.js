@@ -317,6 +317,10 @@ export const sanitizeUsuarioData = (formData) => {
   if (sanitized.telefone) {
     sanitized.telefone = sanitized.telefone.replace(/\D/g, '');
   }
+  // Normaliza email (trim + lower-case) para consistência e comparação
+  if (sanitized.email) {
+    sanitized.email = String(sanitized.email).trim().toLowerCase();
+  }
 
   // Normaliza datas para formato ISO (YYYY-MM-DD)
   const normalizeDate = (value) => {
@@ -376,7 +380,7 @@ export const sanitizeUsuarioData = (formData) => {
   }
 
   // Converter IDs numéricos para inteiros válidos
-  ['perfil_id', 'setor_id', 'unidade_id'].forEach((field) => {
+  ['perfil_id', 'setor_id', 'unidade_id', 'unidade_lotacao_id'].forEach((field) => {
     if (sanitized[field] !== undefined) {
       const v = parseInt(String(sanitized[field]), 10);
       if (!isNaN(v) && v > 0) {

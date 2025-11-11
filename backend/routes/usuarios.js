@@ -111,6 +111,8 @@ router.post('/solicitar-cadastro',
     body('data_nascimento').isDate().withMessage('Data de nascimento deve ser válida'),
   ],
   async (req, res) => {
+    // Contexto de debug para rastrear colunas detectadas e campos usados
+    let debugCtx = { detectedCols: {}, fieldsUsed: [] };
     try {
       // Debug inicial do payload recebido (sanitizado)
       const debugBody = {
@@ -1227,6 +1229,8 @@ router.post('/',
     body('telefone').optional().isMobilePhone('pt-BR').withMessage('Telefone inválido')
   ],
   async (req, res) => {
+    // Contexto de debug para rastrear colunas detectadas e campos usados
+    let debugCtx = { detectedCols: {}, fieldsUsed: [] };
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -1274,6 +1278,11 @@ router.post('/',
       // Suporte dinâmico a funcao_id (FK) ou funcoes (JSONB)
       const hasFuncaoId = await columnExists('usuarios', 'funcao_id');
       const hasFuncoes = await columnExists('usuarios', 'funcoes');
+      const hasSetorId = await columnExists('usuarios', 'setor_id');
+      const hasSetorText = await columnExists('usuarios', 'setor');
+      const hasCreatedBy = await columnExists('usuarios', 'created_by');
+      const hasSenhaHash = await columnExists('usuarios', 'senha_hash');
+      const hasSenhaCol = await columnExists('usuarios', 'senha');
 
       let fields = [];
       let placeholders = [];
@@ -1312,7 +1321,33 @@ router.post('/',
       if (hasUnidadeId) {
         add('unidade_id', lotacaoValue);
       }
-      add('setor_id', setor_id);
+      // Atualizar contexto de colunas detectadas para debug
+      debugCtx.detectedCols = {
+        funcao_id: hasFuncaoId,
+        funcoes: hasFuncoes,
+        setor_id: hasSetorId,
+        setor: hasSetorText,
+        antiguidade: hasAntiguidade,
+        unidade_lotacao_id: hasUnidadeLotacaoId,
+        unidade_id: hasUnidadeId,
+        created_by: hasCreatedBy,
+        senha_hash: hasSenhaHash,
+        senha: hasSenhaCol,
+      };
+      // Persistir setor de forma compatível com o schema atual
+      if (hasSetorId) {
+        // Se houver apenas nome do setor, tentar usar diretamente o texto
+        // ou manter null quando setor_id não for fornecido.
+        const setorIdValue = (setor_id !== undefined && setor_id !== '')
+          ? parseInt(String(setor_id), 10)
+          : null;
+        add('setor_id', !isNaN(setorIdValue) && setorIdValue > 0 ? setorIdValue : null);
+      } else if (hasSetorText) {
+        const setorNome = typeof req.body.setor === 'string' ? req.body.setor.trim() : '';
+        if (setorNome) {
+          add('setor', setorNome);
+        }
+      }
       if (hasFuncaoId) {
         add('funcao_id', funcao_id || null);
       }
@@ -1323,18 +1358,32 @@ router.post('/',
         add('funcoes', JSON.stringify(funcoesArray), '::jsonb');
       }
       add('perfil_id', perfil_id);
-      // Armazenar hash de senha na coluna correta
-      add('senha_hash', hashedPassword);
+      // Armazenar senha na coluna disponível
+      if (hasSenhaHash) {
+        add('senha_hash', hashedPassword);
+      } else if (hasSenhaCol) {
+        add('senha', hashedPassword);
+      }
+      // Salvar campos usados para debug
+      debugCtx.fieldsUsed = [...fields];
 
+      // Montar INSERT dinamicamente, incluindo created_by apenas se existir
+      const insertFields = [...fields, 'ativo'];
+      const insertPlaceholders = [...placeholders, 'true'];
+      const insertParams = [...params];
+      if (hasCreatedBy) {
+        insertFields.push('created_by');
+        insertPlaceholders.push(`$${idx}`);
+        insertParams.push(req.user.id);
+        idx++;
+      }
       const insertSql = `
-        INSERT INTO usuarios (${fields.join(', ')}, ativo, created_by)
-        VALUES (${placeholders.join(', ')}, true, $${idx})
+        INSERT INTO usuarios (${insertFields.join(', ')})
+        VALUES (${insertPlaceholders.join(', ')})
         RETURNING id, nome_completo, email, tipo, ativo, created_at
       `;
 
-      params.push(req.user.id);
-
-      const result = await query(insertSql, params);
+      const result = await query(insertSql, insertParams);
 
       const novoUsuario = result.rows[0];
 
@@ -1356,10 +1405,20 @@ router.post('/',
         usuario: novoUsuario
       });
     } catch (error) {
-      console.error('Erro ao criar usuário:', error);
+      const dbInfo = {
+        code: error?.code,
+        detail: error?.detail,
+        constraint: error?.constraint,
+        table: error?.table,
+        column: error?.column,
+        message: error?.message,
+      };
+      console.error('💥 [Usuarios] Erro ao criar usuário:', dbInfo, '\nDetectado:', debugCtx, '\nStack:', error?.stack);
       res.status(500).json({ 
         success: false,
-        error: 'Erro interno do servidor' 
+        error: dbInfo?.message || 'Erro interno do servidor',
+        code: dbInfo?.code,
+        constraint: dbInfo?.constraint
       });
     }
   }

@@ -1,5 +1,18 @@
-:3003/login:1 Error while trying to use the following icon from the Manifest: http://localhost:3003/logo192.png (Download error or resource isn't a valid image)
-AuthContext.js:68  POST http://localhost:3003/api/auth/login 401 (Unauthorized)
+login:1 Error while trying to use the following icon from the Manifest: http://localhost:3003/logo192.png (Download error or resource isn't a valid image)
+TenantContext.js:37 🏢 TenantContext - Definindo currentUnit...
+TenantContext.js:38 📋 Available units: (2) [{…}, {…}]
+TenantContext.js:39 👤 User: {id: 3, nome: 'EDMUNDO DIAS MORAES NETO', email: 'edmundobop@gmail.com', matricula: '03925', posto_graduacao: 'Cabo', …}
+TenantContext.js:42 💾 Saved unit ID from localStorage: 2
+TenantContext.js:47 ✅ Usando unidade salva: {id: 2, codigo: '16DBM', nome: '16º DBM CAIAPÔNIA', tipo: 'quartel', cidade: 'Caiapônia', …}
+CadastroUsuarios.js:301 🔍 [DEBUG][CadastroUsuarios] Carregando unidades hasRole(Admin/Comandante): true availableUnits: 2
+CadastroUsuarios.js:301 🔍 [DEBUG][CadastroUsuarios] Carregando unidades hasRole(Admin/Comandante): true availableUnits: 2
+CadastroUsuarios.js:305 🔍 [DEBUG][CadastroUsuarios] Unidades via getTodasUnidades: (7) [{…}, {…}, {…}, {…}, {…}, {…}, {…}]
+CadastroUsuarios.js:307 🔍 [DEBUG][CadastroUsuarios] Unidades mapeadas: (7) [{…}, {…}, {…}, {…}, {…}, {…}, {…}]
+CadastroUsuarios.js:305 🔍 [DEBUG][CadastroUsuarios] Unidades via getTodasUnidades: (7) [{…}, {…}, {…}, {…}, {…}, {…}, {…}]
+CadastroUsuarios.js:307 🔍 [DEBUG][CadastroUsuarios] Unidades mapeadas: (7) [{…}, {…}, {…}, {…}, {…}, {…}, {…}]
+CadastroUsuarios.js:414 🔍 [DEBUG][CadastroUsuarios] handleOpenDialog: {type: 'create', usuarioId: undefined, unidadesDisponiveis: 7}
+CadastroUsuarios.js:616 Enviando dados do usuário: {nome_completo: 'FULANO DA SILVA', email: 'fulano@gmail.com', cpf: '84571292015', telefone: '64984207576', data_nascimento: '2000-12-02', …}antiguidade: 25ativo: truecpf: "84571292015"data_incorporacao: "1998-12-02"data_nascimento: "2000-12-02"email: "fulano@gmail.com"funcoes: (3) ['Motorista', 'Motorista D', 'Socorrista/Combatente']matricula: "02365"nome_completo: "FULANO DA SILVA"nome_guerra: "SGT FULANO"perfil_id: 5posto_graduacao: "2º Sargento"setor: "Operacional"telefone: "64984207576"tipo: "militar"unidade_lotacao_id: 1unidades_ids: ['1'][[Prototype]]: Object
+api.js:112  POST http://localhost:3003/api/usuarios 500 (Internal Server Error)
 dispatchXhrRequest @ xhr.js:195
 xhr @ xhr.js:15
 dispatchRequest @ dispatchRequest.js:51
@@ -8,8 +21,8 @@ _request @ Axios.js:163
 request @ Axios.js:40
 httpMethod @ Axios.js:226
 wrap @ bind.js:5
-login @ AuthContext.js:68
-handleSubmit @ Login.js:70
+createUsuario @ api.js:112
+handleSubmit @ CadastroUsuarios.js:619
 callCallback @ react-dom.development.js:4164
 invokeGuardedCallbackDev @ react-dom.development.js:4213
 invokeGuardedCallback @ react-dom.development.js:4277
@@ -25,11 +38,10 @@ dispatchEventForPluginEventSystem @ react-dom.development.js:9287
 dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ react-dom.development.js:6465
 dispatchEvent @ react-dom.development.js:6457
 dispatchDiscreteEvent @ react-dom.development.js:6430
-installHook.js:1 Erro no login: AxiosError {message: 'Request failed with status code 401', name: 'AxiosError', code: 'ERR_BAD_REQUEST', config: {…}, request: XMLHttpRequest, …}
+installHook.js:1 Erro ao salvar usuário: AxiosError {message: 'Request failed with status code 500', name: 'AxiosError', code: 'ERR_BAD_RESPONSE', config: {…}, request: XMLHttpRequest, …}
 overrideMethod @ installHook.js:1
-login @ AuthContext.js:83
-await in login
-handleSubmit @ Login.js:70
+handleSubmit @ CadastroUsuarios.js:646
+await in handleSubmit
 callCallback @ react-dom.development.js:4164
 invokeGuardedCallbackDev @ react-dom.development.js:4213
 invokeGuardedCallback @ react-dom.development.js:4277
@@ -45,41 +57,6 @@ dispatchEventForPluginEventSystem @ react-dom.development.js:9287
 dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ react-dom.development.js:6465
 dispatchEvent @ react-dom.development.js:6457
 dispatchDiscreteEvent @ react-dom.development.js:6430
-installHook.js:1 Erro 401 no login: {error: 'Credenciais inválidas'}
-overrideMethod @ installHook.js:1
-login @ AuthContext.js:104
-await in login
-handleSubmit @ Login.js:70
-callCallback @ react-dom.development.js:4164
-invokeGuardedCallbackDev @ react-dom.development.js:4213
-invokeGuardedCallback @ react-dom.development.js:4277
-invokeGuardedCallbackAndCatchFirstError @ react-dom.development.js:4291
-executeDispatch @ react-dom.development.js:9041
-processDispatchQueueItemsInOrder @ react-dom.development.js:9073
-processDispatchQueue @ react-dom.development.js:9086
-dispatchEventsForPlugins @ react-dom.development.js:9097
-(anonymous) @ react-dom.development.js:9288
-batchedUpdates$1 @ react-dom.development.js:26179
-batchedUpdates @ react-dom.development.js:3991
-dispatchEventForPluginEventSystem @ react-dom.development.js:9287
-dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ react-dom.development.js:6465
-dispatchEvent @ react-dom.development.js:6457
-dispatchDiscreteEvent @ react-dom.development.js:6430
-TenantContext.js:37 🏢 TenantContext - Definindo currentUnit...
-TenantContext.js:38 📋 Available units: (2) [{…}, {…}]
-TenantContext.js:39 👤 User: {id: 3, nome: 'EDMUNDO DIAS MORAES NETO', email: 'edmundobop@gmail.com', matricula: '03925', posto_graduacao: 'Cabo', …}
-TenantContext.js:42 💾 Saved unit ID from localStorage: 2
-TenantContext.js:47 ✅ Usando unidade salva: {id: 2, codigo: '16DBM', nome: '16º DBM CAIAPÔNIA', tipo: 'quartel', cidade: 'Caiapônia', …}
-CadastroUsuarios.js:301 🔍 [DEBUG][CadastroUsuarios] Carregando unidades hasRole(Admin/Comandante): true availableUnits: 0
-CadastroUsuarios.js:301 🔍 [DEBUG][CadastroUsuarios] Carregando unidades hasRole(Admin/Comandante): true availableUnits: 0
-CadastroUsuarios.js:305 🔍 [DEBUG][CadastroUsuarios] Unidades via getTodasUnidades: (7) [{…}, {…}, {…}, {…}, {…}, {…}, {…}]
-CadastroUsuarios.js:307 🔍 [DEBUG][CadastroUsuarios] Unidades mapeadas: (7) [{…}, {…}, {…}, {…}, {…}, {…}, {…}]
-CadastroUsuarios.js:305 🔍 [DEBUG][CadastroUsuarios] Unidades via getTodasUnidades: (7) [{…}, {…}, {…}, {…}, {…}, {…}, {…}]
-CadastroUsuarios.js:307 🔍 [DEBUG][CadastroUsuarios] Unidades mapeadas: (7) [{…}, {…}, {…}, {…}, {…}, {…}, {…}]
-CadastroUsuarios.js:414 🔍 [DEBUG][CadastroUsuarios] handleOpenDialog: {type: 'edit', usuarioId: 33, unidadesDisponiveis: 7}
-CadastroUsuarios.js:429 🔍 [DEBUG][CadastroUsuarios] Dados completos do usuário: {id: 33, nome_completo: 'CICLANO DA SILVA', email: 'ciclano@gmail.com', cpf: '04352451126', telefone: '64984207576', …}
-CadastroUsuarios.js:462 🔍 [DEBUG][CadastroUsuarios] Resolução de unidades: {unidadesIdsResolved: Array(1), unidadeLotacaoResolved: '2', unidadesIdsComLotacao: Array(1)}
-CadastroUsuarios.js:616 Enviando dados do usuário: {nome_completo: 'CICLANO DA SILVA', email: 'ciclano@gmail.com', cpf: '04352451126', telefone: '64984207576', data_nascimento: '2000-12-02', …}
 installHook.js:1 Warning: A component is changing a controlled input to be uncontrolled. This is likely caused by the value changing from a defined to undefined, which should not happen. Decide between using a controlled or uncontrolled input element for the lifetime of the component. More info: https://reactjs.org/link/controlled-components Error Component Stack
     at input (<anonymous>)
     at emotion-element-489459f2.browser.development.esm.js:33:1
@@ -345,428 +322,6 @@ commitMutationEffectsOnFiber @ react-dom.development.js:24471
 commitMutationEffects @ react-dom.development.js:24282
 commitRootImpl @ react-dom.development.js:26849
 commitRoot @ react-dom.development.js:26721
-finishConcurrentRender @ react-dom.development.js:26020
-performConcurrentWorkOnRoot @ react-dom.development.js:25848
-workLoop @ scheduler.development.js:266
-flushWork @ scheduler.development.js:239
-performWorkUntilDeadline @ scheduler.development.js:533
----
-NA TELA DE LOGIN:
-:3003/login:1 Error while trying to use the following icon from the Manifest: http://localhost:3003/logo192.png (Download error or resource isn't a valid image)
-AuthContext.js:68  POST http://localhost:3003/api/auth/login 401 (Unauthorized)
-dispatchXhrRequest @ xhr.js:195
-xhr @ xhr.js:15
-dispatchRequest @ dispatchRequest.js:51
-Promise.then
-_request @ Axios.js:163
-request @ Axios.js:40
-httpMethod @ Axios.js:226
-wrap @ bind.js:5
-login @ AuthContext.js:68
-handleSubmit @ Login.js:70
-callCallback @ react-dom.development.js:4164
-invokeGuardedCallbackDev @ react-dom.development.js:4213
-invokeGuardedCallback @ react-dom.development.js:4277
-invokeGuardedCallbackAndCatchFirstError @ react-dom.development.js:4291
-executeDispatch @ react-dom.development.js:9041
-processDispatchQueueItemsInOrder @ react-dom.development.js:9073
-processDispatchQueue @ react-dom.development.js:9086
-dispatchEventsForPlugins @ react-dom.development.js:9097
-(anonymous) @ react-dom.development.js:9288
-batchedUpdates$1 @ react-dom.development.js:26179
-batchedUpdates @ react-dom.development.js:3991
-dispatchEventForPluginEventSystem @ react-dom.development.js:9287
-dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ react-dom.development.js:6465
-dispatchEvent @ react-dom.development.js:6457
-dispatchDiscreteEvent @ react-dom.development.js:6430
-installHook.js:1 Erro no login: AxiosError {message: 'Request failed with status code 401', name: 'AxiosError', code: 'ERR_BAD_REQUEST', config: {…}, request: XMLHttpRequest, …}
-overrideMethod @ installHook.js:1
-login @ AuthContext.js:83
-await in login
-handleSubmit @ Login.js:70
-callCallback @ react-dom.development.js:4164
-invokeGuardedCallbackDev @ react-dom.development.js:4213
-invokeGuardedCallback @ react-dom.development.js:4277
-invokeGuardedCallbackAndCatchFirstError @ react-dom.development.js:4291
-executeDispatch @ react-dom.development.js:9041
-processDispatchQueueItemsInOrder @ react-dom.development.js:9073
-processDispatchQueue @ react-dom.development.js:9086
-dispatchEventsForPlugins @ react-dom.development.js:9097
-(anonymous) @ react-dom.development.js:9288
-batchedUpdates$1 @ react-dom.development.js:26179
-batchedUpdates @ react-dom.development.js:3991
-dispatchEventForPluginEventSystem @ react-dom.development.js:9287
-dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ react-dom.development.js:6465
-dispatchEvent @ react-dom.development.js:6457
-dispatchDiscreteEvent @ react-dom.development.js:6430
-installHook.js:1 Erro 401 no login: {error: 'Credenciais inválidas'}
-overrideMethod @ installHook.js:1
-login @ AuthContext.js:104
-await in login
-handleSubmit @ Login.js:70
-callCallback @ react-dom.development.js:4164
-invokeGuardedCallbackDev @ react-dom.development.js:4213
-invokeGuardedCallback @ react-dom.development.js:4277
-invokeGuardedCallbackAndCatchFirstError @ react-dom.development.js:4291
-executeDispatch @ react-dom.development.js:9041
-processDispatchQueueItemsInOrder @ react-dom.development.js:9073
-processDispatchQueue @ react-dom.development.js:9086
-dispatchEventsForPlugins @ react-dom.development.js:9097
-(anonymous) @ react-dom.development.js:9288
-batchedUpdates$1 @ react-dom.development.js:26179
-batchedUpdates @ react-dom.development.js:3991
-dispatchEventForPluginEventSystem @ react-dom.development.js:9287
-dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ react-dom.development.js:6465
-dispatchEvent @ react-dom.development.js:6457
-dispatchDiscreteEvent @ react-dom.development.js:6430
-TenantContext.js:37 🏢 TenantContext - Definindo currentUnit...
-TenantContext.js:38 📋 Available units: (2) [{…}, {…}]
-TenantContext.js:39 👤 User: {id: 3, nome: 'EDMUNDO DIAS MORAES NETO', email: 'edmundobop@gmail.com', matricula: '03925', posto_graduacao: 'Cabo', …}
-TenantContext.js:42 💾 Saved unit ID from localStorage: 2
-TenantContext.js:47 ✅ Usando unidade salva: {id: 2, codigo: '16DBM', nome: '16º DBM CAIAPÔNIA', tipo: 'quartel', cidade: 'Caiapônia', …}
-CadastroUsuarios.js:301 🔍 [DEBUG][CadastroUsuarios] Carregando unidades hasRole(Admin/Comandante): true availableUnits: 0
-CadastroUsuarios.js:301 🔍 [DEBUG][CadastroUsuarios] Carregando unidades hasRole(Admin/Comandante): true availableUnits: 0
-CadastroUsuarios.js:305 🔍 [DEBUG][CadastroUsuarios] Unidades via getTodasUnidades: (7) [{…}, {…}, {…}, {…}, {…}, {…}, {…}]
-CadastroUsuarios.js:307 🔍 [DEBUG][CadastroUsuarios] Unidades mapeadas: (7) [{…}, {…}, {…}, {…}, {…}, {…}, {…}]
-CadastroUsuarios.js:305 🔍 [DEBUG][CadastroUsuarios] Unidades via getTodasUnidades: (7) [{…}, {…}, {…}, {…}, {…}, {…}, {…}]
-CadastroUsuarios.js:307 🔍 [DEBUG][CadastroUsuarios] Unidades mapeadas: (7) [{…}, {…}, {…}, {…}, {…}, {…}, {…}]
-CadastroUsuarios.js:414 🔍 [DEBUG][CadastroUsuarios] handleOpenDialog: {type: 'edit', usuarioId: 33, unidadesDisponiveis: 7}
-CadastroUsuarios.js:429 🔍 [DEBUG][CadastroUsuarios] Dados completos do usuário: {id: 33, nome_completo: 'CICLANO DA SILVA', email: 'ciclano@gmail.com', cpf: '04352451126', telefone: '64984207576', …}
-CadastroUsuarios.js:462 🔍 [DEBUG][CadastroUsuarios] Resolução de unidades: {unidadesIdsResolved: Array(1), unidadeLotacaoResolved: '2', unidadesIdsComLotacao: Array(1)}
-CadastroUsuarios.js:616 Enviando dados do usuário: {nome_completo: 'CICLANO DA SILVA', email: 'ciclano@gmail.com', cpf: '04352451126', telefone: '64984207576', data_nascimento: '2000-12-02', …}
-installHook.js:1 Warning: A component is changing a controlled input to be uncontrolled. This is likely caused by the value changing from a defined to undefined, which should not happen. Decide between using a controlled or uncontrolled input element for the lifetime of the component. More info: https://reactjs.org/link/controlled-components Error Component Stack
-    at input (<anonymous>)
-    at emotion-element-489459f2.browser.development.esm.js:33:1
-    at div (<anonymous>)
-    at emotion-element-489459f2.browser.development.esm.js:33:1
-    at InputBase (InputBase.js:216:1)
-    at OutlinedInput (OutlinedInput.js:123:1)
-    at div (<anonymous>)
-    at emotion-element-489459f2.browser.development.esm.js:33:1
-    at FormControl (FormControl.js:84:1)
-    at emotion-element-489459f2.browser.development.esm.js:33:1
-    at TextField (TextField.js:77:1)
-    at div (<anonymous>)
-    at emotion-element-489459f2.browser.development.esm.js:33:1
-    at Grid (Grid.js:367:1)
-    at div (<anonymous>)
-    at emotion-element-489459f2.browser.development.esm.js:33:1
-    at Grid (Grid.js:367:1)
-    at fieldset (<anonymous>)
-    at div (<anonymous>)
-    at emotion-element-489459f2.browser.development.esm.js:33:1
-    at Box (createBox.js:23:1)
-    at div (<anonymous>)
-    at emotion-element-489459f2.browser.development.esm.js:33:1
-    at DialogContent (DialogContent.js:53:1)
-    at div (<anonymous>)
-    at emotion-element-489459f2.browser.development.esm.js:33:1
-    at Paper (Paper.js:62:1)
-    at emotion-element-489459f2.browser.development.esm.js:33:1
-    at div (<anonymous>)
-    at emotion-element-489459f2.browser.development.esm.js:33:1
-    at Transition (Transition.js:113:1)
-    at Fade (Fade.js:29:1)
-    at FocusTrap (FocusTrap.js:79:1)
-    at div (<anonymous>)
-    at emotion-element-489459f2.browser.development.esm.js:33:1
-    at Portal (Portal.js:26:1)
-    at Modal (Modal.js:81:1)
-    at emotion-element-489459f2.browser.development.esm.js:33:1
-    at Dialog (Dialog.js:153:1)
-    at div (<anonymous>)
-    at emotion-element-489459f2.browser.development.esm.js:33:1
-    at Box (createBox.js:23:1)
-    at CadastroUsuarios (CadastroUsuarios.js:113:1)
-    at ProtectedRoute (ProtectedRoute.js:6:1)
-    at RenderedRoute (hooks.tsx:658:1)
-    at Outlet (components.tsx:341:1)
-    at div (<anonymous>)
-    at emotion-element-489459f2.browser.development.esm.js:33:1
-    at Box (createBox.js:23:1)
-    at main (<anonymous>)
-    at emotion-element-489459f2.browser.development.esm.js:33:1
-    at Box (createBox.js:23:1)
-    at div (<anonymous>)
-    at emotion-element-489459f2.browser.development.esm.js:33:1
-    at Box (createBox.js:23:1)
-    at Layout (Layout.js:60:1)
-    at ProtectedRoute (ProtectedRoute.js:6:1)
-    at RenderedRoute (hooks.tsx:658:1)
-    at Routes (components.tsx:512:1)
-    at Router (components.tsx:421:1)
-    at BrowserRouter (index.tsx:789:1)
-    at NotificationProvider (NotificationContext.js:17:1)
-    at TenantProvider (TenantContext.js:15:1)
-    at AuthProvider (AuthContext.js:31:1)
-    at DefaultPropsProvider (DefaultPropsProvider.js:9:1)
-    at RtlProvider (index.js:10:1)
-    at ThemeProvider (ThemeProvider.js:31:1)
-    at ThemeProvider (ThemeProvider.js:46:1)
-    at ThemeProvider (ThemeProvider.js:13:1)
-    at App (<anonymous>)
-overrideMethod @ installHook.js:1
-printWarning @ react-dom.development.js:86
-error @ react-dom.development.js:60
-updateWrapper @ react-dom.development.js:1819
-updateProperties @ react-dom.development.js:10151
-commitUpdate @ react-dom.development.js:11047
-commitMutationEffectsOnFiber @ react-dom.development.js:24428
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24615
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24385
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24385
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24615
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24385
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24615
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24615
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24385
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24615
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24385
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24385
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24385
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24615
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24385
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24385
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24615
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24371
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24385
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24495
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24385
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24615
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24615
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24385
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24385
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24385
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24615
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24615
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24615
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24615
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24615
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24615
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24615
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24615
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24615
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24615
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24615
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24332
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24615
-recursivelyTraverseMutationEffects @ react-dom.development.js:24312
-commitMutationEffectsOnFiber @ react-dom.development.js:24471
-commitMutationEffects @ react-dom.development.js:24282
-commitRootImpl @ react-dom.development.js:26849
-commitRoot @ react-dom.development.js:26721
-finishConcurrentRender @ react-dom.development.js:26020
-performConcurrentWorkOnRoot @ react-dom.development.js:25848
-workLoop @ scheduler.development.js:266
-flushWork @ scheduler.development.js:239
-performWorkUntilDeadline @ scheduler.development.js:533
-AuthContext.js:68  POST http://localhost:3003/api/auth/login 401 (Unauthorized)
-dispatchXhrRequest @ xhr.js:195
-xhr @ xhr.js:15
-dispatchRequest @ dispatchRequest.js:51
-Promise.then
-_request @ Axios.js:163
-request @ Axios.js:40
-httpMethod @ Axios.js:226
-wrap @ bind.js:5
-login @ AuthContext.js:68
-handleSubmit @ Login.js:70
-callCallback @ react-dom.development.js:4164
-invokeGuardedCallbackDev @ react-dom.development.js:4213
-invokeGuardedCallback @ react-dom.development.js:4277
-invokeGuardedCallbackAndCatchFirstError @ react-dom.development.js:4291
-executeDispatch @ react-dom.development.js:9041
-processDispatchQueueItemsInOrder @ react-dom.development.js:9073
-processDispatchQueue @ react-dom.development.js:9086
-dispatchEventsForPlugins @ react-dom.development.js:9097
-(anonymous) @ react-dom.development.js:9288
-batchedUpdates$1 @ react-dom.development.js:26179
-batchedUpdates @ react-dom.development.js:3991
-dispatchEventForPluginEventSystem @ react-dom.development.js:9287
-dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ react-dom.development.js:6465
-dispatchEvent @ react-dom.development.js:6457
-dispatchDiscreteEvent @ react-dom.development.js:6430
-installHook.js:1 Erro no login: AxiosError {message: 'Request failed with status code 401', name: 'AxiosError', code: 'ERR_BAD_REQUEST', config: {…}, request: XMLHttpRequest, …}
-overrideMethod @ installHook.js:1
-login @ AuthContext.js:83
-await in login
-handleSubmit @ Login.js:70
-callCallback @ react-dom.development.js:4164
-invokeGuardedCallbackDev @ react-dom.development.js:4213
-invokeGuardedCallback @ react-dom.development.js:4277
-invokeGuardedCallbackAndCatchFirstError @ react-dom.development.js:4291
-executeDispatch @ react-dom.development.js:9041
-processDispatchQueueItemsInOrder @ react-dom.development.js:9073
-processDispatchQueue @ react-dom.development.js:9086
-dispatchEventsForPlugins @ react-dom.development.js:9097
-(anonymous) @ react-dom.development.js:9288
-batchedUpdates$1 @ react-dom.development.js:26179
-batchedUpdates @ react-dom.development.js:3991
-dispatchEventForPluginEventSystem @ react-dom.development.js:9287
-dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ react-dom.development.js:6465
-dispatchEvent @ react-dom.development.js:6457
-dispatchDiscreteEvent @ react-dom.development.js:6430
-installHook.js:1 Erro 401 no login: {error: 'Credenciais inválidas'}
-overrideMethod @ installHook.js:1
-login @ AuthContext.js:104
-await in login
-handleSubmit @ Login.js:70
-callCallback @ react-dom.development.js:4164
-invokeGuardedCallbackDev @ react-dom.development.js:4213
-invokeGuardedCallback @ react-dom.development.js:4277
-invokeGuardedCallbackAndCatchFirstError @ react-dom.development.js:4291
-executeDispatch @ react-dom.development.js:9041
-processDispatchQueueItemsInOrder @ react-dom.development.js:9073
-processDispatchQueue @ react-dom.development.js:9086
-dispatchEventsForPlugins @ react-dom.development.js:9097
-(anonymous) @ react-dom.development.js:9288
-batchedUpdates$1 @ react-dom.development.js:26179
-batchedUpdates @ react-dom.development.js:3991
-dispatchEventForPluginEventSystem @ react-dom.development.js:9287
-dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ react-dom.development.js:6465
-dispatchEvent @ react-dom.development.js:6457
-dispatchDiscreteEvent @ react-dom.development.js:6430
+performSyncWorkOnRoot @ react-dom.development.js:26156
+flushSyncCallbacks @ react-dom.development.js:12042
+(anonymous) @ react-dom.development.js:25690

@@ -23,6 +23,7 @@ import AprovacaoCadastros from './pages/AprovacaoCadastros';
 import Perfil from './pages/Perfil';
 import Notificacoes from './pages/Notificacoes';
 import DashboardFrota from './pages/DashboardFrota';
+import HistoricoFuncionalManutencao from './pages/HistoricoFuncionalManutencao';
 
 // Tema personalizado para o Corpo de Bombeiros
 const theme = createTheme({
@@ -146,6 +147,12 @@ function App() {
                   <Route path="operacional/*" element={<Operacional />} />
                   
                   {/* Usuários (apenas admin/gestor) */}
+                  {/* Rota específica de Histórico Funcional temporariamente desativada */}
+                  <Route path="usuarios/historico" element={
+                    <ProtectedRoute roles={['Administrador', 'Chefe']}>
+                      <HistoricoFuncionalManutencao />
+                    </ProtectedRoute>
+                  } />
                   <Route path="usuarios/*" element={
                     <ProtectedRoute roles={['Administrador', 'Chefe']}>
                       <Usuarios />
