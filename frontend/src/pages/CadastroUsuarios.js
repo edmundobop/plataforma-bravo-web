@@ -94,7 +94,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
-import { usuariosService } from '../services/api';
+import { usuariosService, userService } from '../services/api';
 import { militaresService } from '../services/militaresService';
 import { 
   validateUsuarioForm, 
@@ -619,7 +619,22 @@ const CadastroUsuarios = () => {
         await usuariosService.createUsuario(sanitizedData);
         setSuccess('Usuário criado com sucesso!');
       } else if (dialogType === 'edit') {
-        await usuariosService.updateUsuario(selectedUsuario.id, sanitizedData);
+        // Se forneceu nova senha no formulário de edição, usar rota dedicada
+        if (sanitizedData.senha && sanitizedData.senha.length >= 6) {
+          try {
+            // Admin/Comandante pode alterar sem senha atual
+            await userService.changePassword(selectedUsuario.id, null, sanitizedData.senha);
+            setSuccess('Senha do usuário atualizada com sucesso!');
+          } catch (errPwd) {
+            console.error('Erro ao alterar senha do usuário:', errPwd);
+            // Não bloquear a atualização de outros campos se senha falhar
+            setError(errPwd.response?.data?.error || 'Erro ao alterar senha do usuário');
+          }
+        }
+
+        // Remover campos de senha do payload principal para evitar ignorância pelo backend
+        const { senha, confirmar_senha, ...restUpdate } = sanitizedData;
+        await usuariosService.updateUsuario(selectedUsuario.id, restUpdate);
         setSuccess('Usuário atualizado com sucesso!');
       }
       

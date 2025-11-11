@@ -473,6 +473,23 @@ const createTables = async () => {
         situacao VARCHAR(20) NOT NULL DEFAULT 'Sem Alteração' CHECK (situacao IN ('Sem Alteração', 'Com Alteração'))
       )
     `);
+    // Recriar constraint de ala_servico com normalização robusta para tolerar variações
+    await query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.constraint_column_usage
+          WHERE table_name = 'checklist_viaturas' AND constraint_name = 'checklist_viaturas_ala_servico_check'
+        ) THEN
+          ALTER TABLE checklist_viaturas DROP CONSTRAINT checklist_viaturas_ala_servico_check;
+        END IF;
+        ALTER TABLE checklist_viaturas
+        ADD CONSTRAINT checklist_viaturas_ala_servico_check
+        CHECK (
+          lower(regexp_replace(trim(ala_servico), '[^a-zA-Z]', '', 'g')) IN ('alpha','bravo','charlie','delta','adm')
+        );
+      END $$;
+    `);
     await query(`
       DO $$
       BEGIN

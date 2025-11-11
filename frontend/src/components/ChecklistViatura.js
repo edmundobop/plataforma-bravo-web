@@ -25,6 +25,7 @@ import {
   StepLabel,
   Alert,
   CircularProgress,
+  LinearProgress,
   Autocomplete,
   ImageList,
   ImageListItem,
@@ -96,6 +97,10 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   const [usuarioAutenticacao, setUsuarioAutenticacao] = useState(user || null);
   const [senhaAutenticacao, setSenhaAutenticacao] = useState('');
   const [observacoesGerais, setObservacoesGerais] = useState('');
+
+  // Paginação por categoria (Step 2)
+  const [categories, setCategories] = useState([]);
+  const [currentCategoryIndex, setCurrentCategoryIndex] = useState(0);
 
   // Função para carregar templates
   const loadTemplates = async () => {
@@ -346,6 +351,18 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         // Atualizar itens do checklist com os itens do template
         if (itensDoTemplate.length > 0) {
           setItensChecklist(itensDoTemplate);
+          // Definir páginas por categoria na ordem do template
+          let cats = [];
+          if (templateCompleto.categorias && templateCompleto.categorias.length > 0) {
+            cats = templateCompleto.categorias
+              .filter(c => Array.isArray(c.itens) && c.itens.length > 0)
+              .map(c => c.nome || 'Sem Categoria');
+          } else {
+            const grouped = groupItemsByCategory(itensDoTemplate);
+            cats = Object.keys(grouped);
+          }
+          setCategories(cats);
+          setCurrentCategoryIndex(0);
         }
         
       } catch (err) {
@@ -356,12 +373,46 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         setLoading(false);
       }
     }
+
+    // Navegação entre categorias dentro do Passo 2
+    if (step === 2) {
+      if (Array.isArray(categories) && categories.length > 0) {
+        const grouped = groupItemsByCategory(itensChecklist);
+        const currentCategory = categories[currentCategoryIndex];
+        const items = grouped[currentCategory] || [];
+
+        // Validação simples: itens obrigatórios com alteração exigem observação
+        const missingObs = items.filter(
+          (it) => it.obrigatorio && it.status === 'com_alteracao' && (!it.observacoes || !it.observacoes.trim())
+        );
+        if (missingObs.length > 0) {
+          setError(
+            `Preencha observações para itens obrigatórios com alteração: ${missingObs
+              .map((i) => i.nome_item)
+              .join(', ')}`
+          );
+          return;
+        }
+
+        // Avançar para próxima categoria ou seguir para autenticação
+        if (currentCategoryIndex < categories.length - 1) {
+          setError('');
+          setCurrentCategoryIndex((idx) => idx + 1);
+          return;
+        }
+      }
+    }
     
     setError('');
     setStep(step + 1);
   };
 
   const handleBack = () => {
+    // Retroceder entre categorias no Passo 2
+    if (step === 2 && currentCategoryIndex > 0) {
+      setCurrentCategoryIndex((idx) => Math.max(0, idx - 1));
+      return;
+    }
     if (step > 1) {
       setStep(step - 1);
     }
@@ -404,17 +455,18 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
       }
 
       // SEGUNDO: Criar ou atualizar checklist (só se as credenciais forem válidas)
-      // Normalizar valores sensíveis a restrições do banco
+      // Normalizar valores sensíveis a restrições do banco (versão robusta, igual ao backend)
       const normalizeAlaServico = (val) => {
-        const v = (val || '').trim();
+        const raw = (val || '').toString().trim();
+        const cleaned = raw.replace(/[^a-zA-Z]/g, '').toLowerCase();
         const map = {
-          'alpha': 'Alpha', 'Alpha': 'Alpha',
-          'bravo': 'Bravo', 'Bravo': 'Bravo',
-          'charlie': 'Charlie', 'Charlie': 'Charlie',
-          'delta': 'Delta', 'Delta': 'Delta',
-          'adm': 'ADM', 'ADM': 'ADM'
+          alpha: 'Alpha',
+          bravo: 'Bravo',
+          charlie: 'Charlie',
+          delta: 'Delta',
+          adm: 'ADM',
         };
-        return map[v] || 'Alpha';
+        return map[cleaned] || 'Alpha';
       };
 
       const checklistData = {
@@ -459,7 +511,11 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         handleClose();
       }, 2000);
     } catch (error) {
-      console.error('Erro ao processar checklist:', error);
+      console.error('Erro ao processar checklist:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+      });
       
       // Tratar especificamente erro de autenticação
       if (error.response?.status === 401) {
@@ -469,6 +525,11 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
       } else {
         const generic = error.response?.data?.error || 'Erro ao processar checklist';
         const details = error.response?.data?.details;
+        const constraint = error.response?.data?.constraint;
+        const detail = error.response?.data?.detail;
+        if (constraint || detail) {
+          console.warn('ℹ️ Detalhes do erro (DB CHECK):', { constraint, detail });
+        }
         setError(details ? `${generic} - ${details}` : generic);
       }
     } finally {
@@ -484,7 +545,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   const renderStep1 = () => (
     <Grid container spacing={3}>
       <Grid item xs={12}>
-        <Typography variant="h6" gutterBottom>
+        <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', letterSpacing: '0.5px' }}>
           Dados Iniciais do Checklist
         </Typography>
       </Grid>
@@ -659,138 +720,108 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
 
   const renderStep2 = () => {
     const groupedItems = groupItemsByCategory(itensChecklist);
-    
+    const totalCategories = categories.length || Object.keys(groupedItems).length;
+    const currentCategoryName = categories.length > 0
+      ? categories[currentCategoryIndex]
+      : Object.keys(groupedItems)[0];
+
+    const items = groupedItems[currentCategoryName] || [];
+
     return (
       <Box>
         <Typography variant="h6" gutterBottom>
           Checklist da Viatura
         </Typography>
         <Typography variant="body2" color="text.secondary" gutterBottom>
-          Verifique cada item e marque como "OK" ou "Com Alteração"
+          Categoria {Math.min(currentCategoryIndex + 1, totalCategories)} de {totalCategories}: {currentCategoryName}
         </Typography>
-        
+
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          {Object.entries(groupedItems).map(([categoria, items], categoryIndex) => (
-            <React.Fragment key={categoria}>
-              {/* Header da Sessão */}
-              <Grid item xs={12}>
-                <Box sx={{ 
-                  my: 2, 
-                  p: 2,
-                  backgroundColor: '#f5f5f5',
-                  borderRadius: 1,
-                  border: '1px solid #e0e0e0'
-                }}>
-                  <Typography 
-                    variant="h6" 
-                    sx={{ 
-                      color: 'primary.main',
-                      fontWeight: 'bold',
-                      textAlign: 'center',
-                      letterSpacing: '0.5px'
-                    }}
-                  >
-                    {categoria.toUpperCase()}
-                  </Typography>
-                </Box>
-              </Grid>
-              
-              {/* Itens da Categoria */}
-              {items.map((item) => (
-                <Grid item xs={12} key={item.originalIndex}>
-                  <Card variant="outlined">
-                    <CardContent>
-                      <Box mb={2}>
-                        <Typography variant="subtitle1" fontWeight="bold">
-                          {item.nome_item}
-                        </Typography>
-                      </Box>
-                      
-                      <RadioGroup
-                        row
-                        value={item.status}
-                        onChange={(e) => handleItemStatusChange(item.originalIndex, e.target.value)}
-                      >
-                        <FormControlLabel 
-                          value="ok" 
-                          control={<Radio color="success" />} 
-                          label={<Box display="flex" alignItems="center"><CheckIcon color="success" sx={{ mr: 1 }} />OK</Box>}
-                        />
-                        <FormControlLabel 
-                          value="com_alteracao" 
-                          control={<Radio color="warning" />} 
-                          label={<Box display="flex" alignItems="center"><WarningIcon color="warning" sx={{ mr: 1 }} />Com Alteração</Box>}
-                        />
-                      </RadioGroup>
-                      
-                      {item.status === 'com_alteracao' && (
-                         <TextField
-                           fullWidth
-                           label="Observações"
-                           multiline
-                           rows={2}
-                           value={item.observacoes}
-                           onChange={(e) => handleItemObservacaoChange(item.originalIndex, e.target.value)}
-                           sx={{ mt: 2 }}
-                           placeholder="Descreva o problema encontrado..."
-                         />
-                       )}
-                       
-                       <Box mt={2}>
-                         <Box display="flex" alignItems="center" mb={1}>
-                           <Typography variant="body2" sx={{ mr: 2 }}>
-                             Fotos:
-                           </Typography>
-                           <input
-                             accept="image/*"
-                             style={{ display: 'none' }}
-                             id={`photo-upload-${item.originalIndex}`}
-                             multiple
-                             type="file"
-                             onChange={(e) => handlePhotoUpload(item.originalIndex, e)}
-                           />
-                           <label htmlFor={`photo-upload-${item.originalIndex}`}>
-                             <IconButton color="primary" component="span">
-                               <PhotoIcon />
-                             </IconButton>
-                           </label>
-                         </Box>
-                         
-                         {item.fotos && item.fotos.length > 0 && (
-                           <ImageList cols={3} rowHeight={100}>
-                             {item.fotos.map((foto, photoIndex) => (
-                               <ImageListItem key={photoIndex}>
-                                 <img
-                                   src={foto.url}
-                                   alt={foto.name}
-                                   loading="lazy"
-                                   style={{ height: 100, objectFit: 'cover' }}
-                                 />
-                                 <ImageListItemBar
-                                   actionIcon={
-                                     <IconButton
-                                       sx={{ color: 'rgba(255, 255, 255, 0.54)' }}
-                                       onClick={() => handleRemovePhoto(item.originalIndex, photoIndex)}
-                                     >
-                                       <DeleteIcon />
-                                     </IconButton>
-                                   }
-                                 />
-                               </ImageListItem>
-                             ))}
-                           </ImageList>
-                         )}
-                       </Box>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ))}
-            </React.Fragment>
+          {/* Header da Categoria */}
+          <Grid item xs={12}>
+            <Box sx={{ my: 2, p: 2, backgroundColor: '#f5f5f5', borderRadius: 1, border: '1px solid #e0e0e0' }}>
+              <Typography variant="h6" sx={{ color: 'primary.main', fontWeight: 'bold', textAlign: 'center', letterSpacing: '1px', textTransform: 'uppercase' }}>
+                {currentCategoryName}
+              </Typography>
+              <Divider sx={{ mt: 1 }} />
+            </Box>
+          </Grid>
+
+          {/* Itens da Categoria Atual */}
+          {items.map((item) => (
+            <Grid item xs={12} key={item.originalIndex}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Box mb={2}>
+                    <Typography variant="subtitle1" fontWeight="bold">
+                      {item.nome_item}
+                    </Typography>
+                  </Box>
+
+                  <RadioGroup row value={item.status} onChange={(e) => handleItemStatusChange(item.originalIndex, e.target.value)}>
+                    <FormControlLabel
+                      value="ok"
+                      control={<Radio color="success" />}
+                      label={<Box display="flex" alignItems="center"><CheckIcon color="success" sx={{ mr: 1 }} />OK</Box>}
+                    />
+                    <FormControlLabel
+                      value="com_alteracao"
+                      control={<Radio color="warning" />}
+                      label={<Box display="flex" alignItems="center"><WarningIcon color="warning" sx={{ mr: 1 }} />Com Alteração</Box>}
+                    />
+                  </RadioGroup>
+
+                  {item.status === 'com_alteracao' && (
+                    <TextField
+                      fullWidth
+                      label="Observações"
+                      multiline
+                      rows={2}
+                      value={item.observacoes}
+                      onChange={(e) => handleItemObservacaoChange(item.originalIndex, e.target.value)}
+                      sx={{ mt: 2 }}
+                      placeholder="Descreva o problema encontrado..."
+                    />
+                  )}
+
+                  <Box mt={2}>
+                    <Box display="flex" alignItems="center" mb={1}>
+                      <Typography variant="body2" sx={{ mr: 2 }}>
+                        Fotos:
+                      </Typography>
+                      <input accept="image/*" style={{ display: 'none' }} id={`photo-upload-${item.originalIndex}`} multiple type="file" onChange={(e) => handlePhotoUpload(item.originalIndex, e)} />
+                      <label htmlFor={`photo-upload-${item.originalIndex}`}>
+                        <IconButton color="primary" component="span">
+                          <PhotoIcon />
+                        </IconButton>
+                      </label>
+                    </Box>
+
+                    {item.fotos && item.fotos.length > 0 && (
+                      <ImageList cols={3} rowHeight={100}>
+                        {item.fotos.map((foto, photoIndex) => (
+                          <ImageListItem key={photoIndex}>
+                            <img src={foto.url} alt={foto.name} loading="lazy" style={{ height: 100, objectFit: 'cover' }} />
+                            <ImageListItemBar
+                              actionIcon={
+                                <IconButton sx={{ color: 'rgba(255, 255, 255, 0.54)' }} onClick={() => handleRemovePhoto(item.originalIndex, photoIndex)}>
+                                  <DeleteIcon />
+                                </IconButton>
+                              }
+                            />
+                          </ImageListItem>
+                        ))}
+                      </ImageList>
+                    )}
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
           ))}
         </Grid>
       </Box>
     );
-   };
+  };
 
   const renderObservacoes = () => (
     <Box>
@@ -813,7 +844,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   const renderStep3 = () => (
     <Grid container spacing={3}>
       <Grid item xs={12}>
-        <Typography variant="h6" gutterBottom>
+        <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', letterSpacing: '0.5px' }}>
           Autenticação para Finalização
         </Typography>
         <Typography variant="body2" color="text.secondary" gutterBottom>
@@ -863,10 +894,36 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle>
-        Checklist de Viatura - Passo {step} de 3
+        {step === 2 && (Array.isArray(categories) && categories.length > 0)
+          ? `Checklist de Viatura - Categoria ${currentCategoryIndex + 1} de ${categories.length}`
+          : `Checklist de Viatura - Passo ${step} de 3`}
       </DialogTitle>
       
       <DialogContent>
+        {/* Barra de Progresso */}
+        {(function() {
+          const grouped = groupItemsByCategory(itensChecklist);
+          const catsCount = (Array.isArray(categories) && categories.length > 0) ? categories.length : Object.keys(grouped).length;
+          const totalPages = 2 + (catsCount || 0);
+          let progressPercent = 0;
+          if (totalPages > 0) {
+            if (step === 1) progressPercent = 0;
+            else if (step === 2) progressPercent = Math.round(((1 + currentCategoryIndex) / totalPages) * 100);
+            else if (step === 3) progressPercent = 100;
+          }
+          return (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="caption" color="text.secondary">Progresso</Typography>
+              <LinearProgress variant="determinate" value={progressPercent} sx={{ height: 8, borderRadius: 1 }} />
+              <Box display="flex" justifyContent="space-between" mt={0.5}>
+                <Typography variant="caption">{progressPercent}%</Typography>
+                <Typography variant="caption">
+                  {step === 2 && catsCount > 0 ? `Categoria ${currentCategoryIndex + 1} de ${catsCount}` : `Passo ${step} de 3`}
+                </Typography>
+              </Box>
+            </Box>
+          );
+        })()}
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {error}
@@ -890,14 +947,12 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         {step > 1 && (
           <Button onClick={handleBack}>Voltar</Button>
         )}
-        
+
         {step < 3 ? (
-          <Button 
-            onClick={handleNext} 
-            variant="contained"
-            startIcon={<SaveIcon />}
-          >
-            Próximo
+          <Button onClick={handleNext} variant="contained" startIcon={<SaveIcon />}>
+            {step === 2 && (Array.isArray(categories) && categories.length > 0) && currentCategoryIndex < categories.length - 1
+              ? 'Próxima Categoria'
+              : 'Próximo'}
           </Button>
         ) : (
           <Button 

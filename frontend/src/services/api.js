@@ -78,7 +78,8 @@ export const authService = {
   verify: () => api.get('/auth/verify'),
   logout: () => api.post('/auth/logout'),
   changePassword: (senhaAtual, novaSenha) => 
-    api.put('/auth/alterar-senha', { senha_atual: senhaAtual, nova_senha: novaSenha }),
+    // Envia payload com camelCase e snake_case para compatibilidade
+    api.put('/auth/change-password', { senhaAtual, novaSenha, senha_atual: senhaAtual, nova_senha: novaSenha }),
 };
 
 // Serviços de usuários

@@ -15,6 +15,22 @@ const bcrypt = require('bcryptjs');
 
 const router = express.Router();
 
+// Normalizador robusto para ala_servico: remove pontuação, espaços, normaliza caso
+// e mapeia para valores aceitos pelo banco. Default para 'Alpha' se inválido.
+const normalizeAlaServico = (val) => {
+  const raw = (val || '').toString().trim();
+  // remove caracteres não alfabéticos (ex.: 'ADM.' -> 'ADM') e normaliza para minúsculas
+  const cleaned = raw.replace(/[^a-zA-Z]/g, '').toLowerCase();
+  const map = {
+    alpha: 'Alpha',
+    bravo: 'Bravo',
+    charlie: 'Charlie',
+    delta: 'Delta',
+    adm: 'ADM',
+  };
+  return map[cleaned] || 'Alpha';
+};
+
 // Rota de validação de credenciais (sem autenticação)
 router.post('/validar-credenciais', [
   body('usuario_autenticacao').notEmpty().withMessage('Nome do usuário é obrigatório'),
@@ -234,7 +250,7 @@ router.get('/automacoes', async (req, res) => {
 router.post('/automacoes', [
   body('horario').notEmpty().withMessage('Horário é obrigatório'),
   body('dias_semana').isArray({ min: 1 }).withMessage('Informe ao menos um dia da semana'),
-  body('ala_servico').isIn(['Alpha', 'Bravo', 'Charlie', 'Delta', 'ADM']).withMessage('Ala de serviço inválida'),
+  body('ala_servico').customSanitizer(normalizeAlaServico).isIn(['Alpha', 'Bravo', 'Charlie', 'Delta', 'ADM']).withMessage('Ala de serviço inválida'),
   body('viaturas').isArray({ min: 1 }).withMessage('Selecione ao menos uma viatura'),
   body('template_id').isInt().withMessage('Template é obrigatório'),
   body('tipo_checklist').notEmpty().withMessage('Tipo de checklist é obrigatório')
@@ -279,7 +295,7 @@ router.put('/automacoes/:id', [
   param('id').isInt(),
   body('horario').optional().notEmpty(),
   body('dias_semana').optional().isArray({ min: 1 }),
-  body('ala_servico').optional().isIn(['Alpha', 'Bravo', 'Charlie', 'Delta', 'ADM']),
+  body('ala_servico').optional().customSanitizer(normalizeAlaServico).isIn(['Alpha', 'Bravo', 'Charlie', 'Delta', 'ADM']),
   body('viaturas').optional().isArray({ min: 1 }),
   body('template_id').optional().isInt(),
   body('tipo_checklist').optional().notEmpty(),
@@ -397,7 +413,7 @@ router.post('/solicitacoes', [
   body('viatura_id').isInt().withMessage('ID da viatura é obrigatório'),
   body('template_id').optional().isInt(),
   body('tipo_checklist').notEmpty().withMessage('Tipo de checklist é obrigatório'),
-  body('ala_servico').isIn(['Alpha', 'Bravo', 'Charlie', 'Delta', 'ADM']).withMessage('Ala de serviço inválida'),
+  body('ala_servico').customSanitizer(normalizeAlaServico).isIn(['Alpha', 'Bravo', 'Charlie', 'Delta', 'ADM']).withMessage('Ala de serviço inválida'),
   body('data_prevista').optional().isISO8601().withMessage('Data prevista inválida')
 ], async (req, res) => {
   try {
@@ -713,7 +729,7 @@ router.post('/viaturas', [
   body('template_id').optional().isInt().withMessage('ID do template deve ser um número'),
   body('km_inicial').isInt({ min: 0 }).withMessage('KM inicial deve ser um número positivo'),
   body('combustivel_percentual').isInt({ min: 0, max: 100 }).withMessage('Percentual de combustível deve estar entre 0 e 100'),
-  body('ala_servico').isIn(['Alpha', 'Bravo', 'Charlie', 'Delta', 'ADM']).withMessage('Ala de serviço deve ser Alpha, Bravo, Charlie, Delta ou ADM'),
+  body('ala_servico').customSanitizer(normalizeAlaServico).isIn(['Alpha', 'Bravo', 'Charlie', 'Delta', 'ADM']).withMessage('Ala de serviço deve ser Alpha, Bravo, Charlie, Delta ou ADM'),
   body('tipo_checklist').notEmpty().withMessage('Tipo de checklist é obrigatório'),
   body('data_hora').isISO8601().withMessage('Data e hora devem estar em formato válido'),
   body('itens').isArray().withMessage('Itens do checklist são obrigatórios'),
@@ -728,11 +744,28 @@ router.post('/viaturas', [
   let viatura_id, template_id, km_inicial, combustivel_percentual, ala_servico, tipo_checklist, data_hora, observacoes_gerais, itens;
   
   try {
+    // DEBUG: Exibir payload recebido já com sanitização aplicada pelos validadores
+    console.log('🧪 [DEBUG] Payload recebido em /api/checklist/viaturas:', {
+      viatura_id: req.body?.viatura_id,
+      template_id: req.body?.template_id,
+      km_inicial: req.body?.km_inicial,
+      combustivel_percentual: req.body?.combustivel_percentual,
+      ala_servico: req.body?.ala_servico, // já sanitizado pelo customSanitizer(normalizeAlaServico)
+      tipo_checklist: req.body?.tipo_checklist,
+      data_hora: req.body?.data_hora,
+      itens_len: Array.isArray(req.body?.itens) ? req.body.itens.length : 0
+    });
+
     if (!req.user || !req.user.id) {
       return res.status(401).json({ error: 'Não autenticado' });
     }
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      // DEBUG: Detalhar falhas de validação e valor sanitizado de ala_servico
+      console.warn('❌ [DEBUG] Validação falhou em /api/checklist/viaturas:', {
+        erros: errors.array(),
+        ala_servico_sanitizado: req.body?.ala_servico
+      });
       return res.status(400).json({ errors: errors.array() });
     }
 
@@ -748,18 +781,7 @@ router.post('/viaturas', [
       itens
     } = req.body);
 
-    // Normalizar ala_servico para evitar violação de CHECK no banco
-    const normalizeAlaServico = (val) => {
-      const v = (val || '').trim();
-      const map = {
-        'alpha': 'Alpha', 'Alpha': 'Alpha',
-        'bravo': 'Bravo', 'Bravo': 'Bravo',
-        'charlie': 'Charlie', 'Charlie': 'Charlie',
-        'delta': 'Delta', 'Delta': 'Delta',
-        'adm': 'ADM', 'ADM': 'ADM'
-      };
-      return map[v] || 'Alpha';
-    };
+    // Normalizar ala_servico usando a função global robusta (redundância defensiva)
     ala_servico = normalizeAlaServico(ala_servico);
 
     const usuario_id = req.user.id;
@@ -794,7 +816,34 @@ router.post('/viaturas', [
         viatura_id, template_id, usuario_id, unidade_id, km_inicial, combustivel_percentual, ala_servico, tipo_checklist, data_hora, observacoes_gerais, situacao
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *
-    `, [viatura_id, template_id || null, usuario_id, viatura.unidade_id, km_inicial, combustivel_percentual, ala_servico, tipo_checklist, data_hora, observacoes_gerais, situacao]);
+    `, [
+      viatura_id,
+      template_id || null,
+      usuario_id,
+      viatura.unidade_id,
+      km_inicial,
+      combustivel_percentual,
+      ala_servico,
+      tipo_checklist,
+      data_hora,
+      observacoes_gerais,
+      situacao
+    ]);
+
+    // DEBUG: Confirmar parâmetros usados no INSERT
+    console.log('🧪 [DEBUG] INSERT checklist_viaturas parametros:', {
+      viatura_id,
+      template_id: template_id || null,
+      usuario_id,
+      unidade_id: viatura.unidade_id,
+      km_inicial,
+      combustivel_percentual,
+      ala_servico,
+      tipo_checklist,
+      data_hora,
+      observacoes_gerais,
+      situacao
+    });
 
     const checklist_id = checklistResult.rows[0].id;
 
@@ -824,6 +873,16 @@ router.post('/viaturas', [
     console.error('=== ERRO AO CRIAR CHECKLIST ===');
     console.error('Erro:', error.message);
     console.error('Stack trace:', error.stack);
+    // DEBUG: Detalhes adicionais do erro do banco (quando disponíveis)
+    if (error && typeof error === 'object') {
+      console.error('[DEBUG] Detalhes do erro DB:', {
+        code: error.code,
+        detail: error.detail,
+        constraint: error.constraint,
+        table: error.table,
+        column: error.column,
+      });
+    }
     console.error('Dados recebidos completos:', JSON.stringify({
       viatura_id,
       template_id,
@@ -836,9 +895,38 @@ router.post('/viaturas', [
       itens
     }, null, 2));
     console.error('=== FIM DO ERRO ===');
-    // Tratar violação de CHECK (PostgreSQL code 23514) para erro amigável
+    // Tratar violação de CHECK (PostgreSQL code 23514) com mensagem específica
     if (error.code === '23514') {
-      return res.status(400).json({ error: 'Ala de serviço inválida. Permitidos: Alpha, Bravo, Charlie, Delta, ADM.' });
+      const constraint = error.constraint || '';
+      const detail = error.detail || '';
+      // Identificar qual CHECK falhou para responder corretamente
+      if (constraint.includes('ala_servico') || detail.includes('ala_servico')) {
+        return res.status(400).json({ 
+          error: 'Ala de serviço inválida. Permitidos: Alpha, Bravo, Charlie, Delta, ADM.',
+          constraint,
+          detail
+        });
+      }
+      if (constraint.includes('combustivel_percentual') || detail.includes('combustivel_percentual')) {
+        return res.status(400).json({ 
+          error: 'Percentual de combustível deve estar entre 0 e 100.',
+          constraint,
+          detail
+        });
+      }
+      if (constraint.includes('situacao') || detail.includes('situacao')) {
+        return res.status(400).json({ 
+          error: 'Situação inválida. Permitidos: "Sem Alteração" ou "Com Alteração".',
+          constraint,
+          detail
+        });
+      }
+      // Fallback genérico para outras violações de CHECK
+      return res.status(400).json({ 
+        error: 'Violação de regra do banco (CHECK).',
+        constraint,
+        detail
+      });
     }
     res.status(500).json({ 
       error: 'Erro interno do servidor',

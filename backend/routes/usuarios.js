@@ -1323,7 +1323,8 @@ router.post('/',
         add('funcoes', JSON.stringify(funcoesArray), '::jsonb');
       }
       add('perfil_id', perfil_id);
-      add('senha', hashedPassword);
+      // Armazenar hash de senha na coluna correta
+      add('senha_hash', hashedPassword);
 
       const insertSql = `
         INSERT INTO usuarios (${fields.join(', ')}, ativo, created_by)
@@ -1363,6 +1364,75 @@ router.post('/',
     }
   }
 );
+
+/**
+ * @route PUT /api/usuarios/:id/senha
+ * @desc Alterar senha do usuário (autoatendimento ou por admin)
+ * @access Próprio usuário ou Administrador/Comandante
+ */
+router.put('/:id/senha', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const requesterId = req.user?.id;
+    const requesterPerfil = req.user?.perfil_nome;
+
+    const isAdmin = ['Administrador', 'Comandante'].includes(requesterPerfil);
+    const isSelf = parseInt(id, 10) === parseInt(requesterId, 10);
+
+    const { senha_atual, nova_senha } = req.body;
+
+    if (!nova_senha || String(nova_senha).length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: 'Nova senha deve ter pelo menos 6 caracteres'
+      });
+    }
+
+    if (!isAdmin && !isSelf) {
+      return res.status(403).json({
+        success: false,
+        error: 'Acesso negado'
+      });
+    }
+
+    // Buscar senha atual do usuário alvo
+    const result = await query('SELECT id, senha_hash FROM usuarios WHERE id = $1 AND ativo = true', [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Usuário não encontrado' });
+    }
+
+    const usuarioAlvo = result.rows[0];
+
+    // Se não for admin, validar senha atual obrigatória
+    if (!isAdmin) {
+      if (!senha_atual) {
+        return res.status(400).json({ success: false, error: 'Senha atual é obrigatória' });
+      }
+      const ok = await bcrypt.compare(senha_atual, usuarioAlvo.senha_hash);
+      if (!ok) {
+        return res.status(400).json({ success: false, error: 'Senha atual incorreta' });
+      }
+    } else {
+      // Se admin forneceu senha_atual, validar por segurança opcional
+      if (senha_atual) {
+        const ok = await bcrypt.compare(senha_atual, usuarioAlvo.senha_hash);
+        if (!ok) {
+          return res.status(400).json({ success: false, error: 'Senha atual incorreta' });
+        }
+      }
+    }
+
+    const saltRounds = parseInt(process.env.BCRYPT_ROUNDS, 10) || 12;
+    const hashed = await bcrypt.hash(nova_senha, saltRounds);
+
+    await query('UPDATE usuarios SET senha_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [hashed, id]);
+
+    return res.json({ success: true, message: 'Senha alterada com sucesso' });
+  } catch (error) {
+    console.error('Erro ao alterar senha do usuário:', error);
+    return res.status(500).json({ success: false, error: 'Erro interno do servidor' });
+  }
+});
 
 // =====================================================
 // ROTAS AUXILIARES DE DADOS
