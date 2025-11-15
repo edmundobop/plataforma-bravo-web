@@ -173,7 +173,6 @@ const Operacional = () => {
   const [selectedAlas, setSelectedAlas] = useState([...VALID_ALAS]);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [escalaParticipantsCache, setEscalaParticipantsCache] = useState({});
-  const [swapConflictNotice, setSwapConflictNotice] = useState('');
   const [selectedColleagueId, setSelectedColleagueId] = useState(null);
   const [colleagueShifts, setColleagueShifts] = useState([]);
   const [pagarAgora, setPagarAgora] = useState(false);
@@ -742,36 +741,6 @@ const Operacional = () => {
     return shifts;
   }, [decorateEscalas, user]);
 
-  useEffect(() => {
-    if (dialogType === 'swap' && formData.data_servico_original && formData.solicitante_id) {
-      const key = getDateKey(formData.data_servico_original);
-      const conflict = key && userShifts.some((shift) => shift.data_servico === key);
-      setSwapConflictNotice(conflict ? 'Você já está escalado nesse dia.' : '');
-    } else {
-      setSwapConflictNotice('');
-    }
-  }, [dialogType, formData.data_servico_original, formData.solicitante_id, userShifts]);
-
-  const userShifts = useMemo(() => {
-    if (!user?.id) return [];
-    const shifts = [];
-    decorateEscalas.forEach((escala) => {
-      const participantes = escala.participantes || [];
-      participantes.forEach((participante) => {
-        if (participante.usuario_id !== user.id) return;
-        const data = getDateKey(participante.data_servico || escala.data_inicio) || escala.dataKey;
-        if (!data) return;
-        shifts.push({
-          escala_usuario_id: participante.id,
-          escala_id: escala.id,
-          data_servico: data,
-          label: `${format(parseISO(data), 'dd/MM/yyyy', { locale: ptBR })} · Ala ${escala.ala}`,
-        });
-      });
-    });
-    return shifts;
-  }, [decorateEscalas, user]);
-
   const filteredEscalas = useMemo(() => (
     decorateEscalas.filter((escala) => selectedAlas.includes(escala.ala))
   ), [decorateEscalas, selectedAlas]);
@@ -798,35 +767,6 @@ const Operacional = () => {
     }
     return weeks;
   }, [calendarMonth]);
-
-  const scheduleByUser = useMemo(() => {
-    const mapa = {};
-    decorateEscalas.forEach((escala) => {
-      const dias = escala.participantes || [];
-      dias.forEach((participante) => {
-        const usuarioId = participante.usuario_id;
-        if (!usuarioId) return;
-        const dataKey = getDateKey(participante.data_servico || escala.data_inicio) || escala.dataKey;
-        if (!mapa[usuarioId]) {
-          mapa[usuarioId] = new Set();
-        }
-        if (dataKey) {
-          mapa[usuarioId].add(dataKey);
-        }
-      });
-    });
-    return mapa;
-  }, [decorateEscalas]);
-
-  useEffect(() => {
-    if (dialogType === 'swap' && formData.data_servico_original && formData.solicitante_id) {
-      const key = getDateKey(formData.data_servico_original);
-      const conflict = key && scheduleByUser[formData.solicitante_id]?.has(key);
-      setSwapConflictNotice(conflict ? 'Você já está escalado neste dia.' : '');
-    } else {
-      setSwapConflictNotice('');
-    }
-  }, [dialogType, formData.data_servico_original, formData.solicitante_id, scheduleByUser]);
 
   const renderCalendarView = () => {
     if (escalasLoading) {
@@ -1846,7 +1786,7 @@ const Operacional = () => {
                   ))}
                 </Select>
               </FormControl>
-              <FormControl fullWidth sx={{ mb: 2 }}>
+              <FormControl fullWidth sx={{ mb: 1 }}>
                 <InputLabel>Escolha o turno que deseja trocar</InputLabel>
                 <Select
                   value={formData.escala_original_id || ''}
@@ -1856,8 +1796,8 @@ const Operacional = () => {
                     if (!selected) return;
                     handleFormChange('escala_original_id', selected.escala_usuario_id);
                     handleFormChange('data_servico_original', selected.data_servico);
+                    handleFormChange('data_servico_troca', selected.data_servico);
                   }}
-                  InputLabelProps={{ shrink: true }}
                 >
                   {userShifts.map((shift) => (
                     <MenuItem key={shift.escala_usuario_id} value={shift.escala_usuario_id}>
@@ -1867,30 +1807,6 @@ const Operacional = () => {
                 </Select>
                 <Typography variant="caption" color="textSecondary">
                   Escolha um dos dias em que você está programado para trabalhar.
-                </Typography>
-              </FormControl>
-              <TextField
-                label="Data do serviço do militar selecionado"
-                value={formData.data_servico_troca || ''}
-                fullWidth
-                disabled
-                sx={{ mb: 1 }}
-              />
-              <FormControl fullWidth sx={{ mb: 1 }}>
-                <InputLabel>Data em que o militar que irá trabalhar assumirá seu serviço</InputLabel>
-                <Select
-                  value={formData.data_servico_troca || ''}
-                  label="Data em que o militar que irá trabalhar assumirá seu serviço"
-                  onChange={(e) => handleFormChange('data_servico_troca', e.target.value)}
-                >
-                  {userShifts.map((shift) => (
-                    <MenuItem key={shift.escala_usuario_id} value={shift.data_servico}>
-                      {shift.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-                <Typography variant="caption" color="textSecondary">
-                  Escolha um dos dias em que você foi escalado (Eduardo).
                 </Typography>
               </FormControl>
               <FormControlLabel
@@ -1940,11 +1856,6 @@ const Operacional = () => {
                   </FormControl>
                 </Box>
               )}
-              {swapConflictNotice && (
-                <Alert severity="warning" variant="outlined">
-                  {swapConflictNotice}
-                </Alert>
-              )}
               <TextField
                 label="Observações"
                 multiline
@@ -1962,23 +1873,13 @@ const Operacional = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog}>Cancelar</Button>
-          {dialogType === 'swap' ? (
-            <Tooltip title="Funcionalidade em desenvolvimento" placement="top">
-              <span>
-                <Button variant="contained" disabled>
-                  Enviar Solicitação
-                </Button>
-              </span>
-            </Tooltip>
-          ) : (
-            <Button
-              onClick={handleSubmit}
-              variant="contained"
-              disabled={loading}
-            >
-              {loading ? <CircularProgress size={20} /> : 'Salvar'}
-            </Button>
-          )}
+          <Button
+            onClick={handleSubmit}
+            variant="contained"
+            disabled={loading}
+          >
+            {loading ? <CircularProgress size={20} /> : dialogType === 'swap' ? 'Enviar Solicitação' : 'Salvar'}
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>
