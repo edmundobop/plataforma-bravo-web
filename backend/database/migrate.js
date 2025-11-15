@@ -367,8 +367,21 @@ const createTables = async () => {
         turno VARCHAR(20),
         funcao VARCHAR(100),
         status VARCHAR(50) DEFAULT 'agendado',
-        observacoes TEXT
+        observacoes TEXT,
+        troca_id INTEGER REFERENCES trocas_servico(id)
       )
+    `);
+
+    await query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='escala_usuarios' AND column_name='troca_id') THEN
+          ALTER TABLE escala_usuarios ADD COLUMN troca_id INTEGER REFERENCES trocas_servico(id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trocas_servico' AND column_name='data_servico_compensacao') THEN
+          ALTER TABLE trocas_servico ADD COLUMN data_servico_compensacao DATE;
+        END IF;
+      END $$;
     `);
 
     await query(`
@@ -379,6 +392,7 @@ const createTables = async () => {
         escala_original_id INTEGER REFERENCES escala_usuarios(id),
         data_servico_original DATE,
         data_servico_troca DATE,
+        data_servico_compensacao DATE,
         motivo TEXT,
         status VARCHAR(50) DEFAULT 'pendente',
         aprovado_por INTEGER REFERENCES usuarios(id),

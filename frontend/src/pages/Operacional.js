@@ -65,6 +65,7 @@ import {
   CalendarMonth as CalendarMonthIcon,
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
+  FileDownload as FileDownloadIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { operacionalService } from '../services/api';
@@ -172,6 +173,10 @@ const Operacional = () => {
   const [selectedAlas, setSelectedAlas] = useState([...VALID_ALAS]);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [escalaParticipantsCache, setEscalaParticipantsCache] = useState({});
+  const [swapConflictNotice, setSwapConflictNotice] = useState('');
+  const [selectedColleagueId, setSelectedColleagueId] = useState(null);
+  const [colleagueShifts, setColleagueShifts] = useState([]);
+  const [pagarAgora, setPagarAgora] = useState(false);
   
   // Estados para diálogos
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -352,22 +357,34 @@ const Operacional = () => {
         loadEscalas();
       } else if (dialogType === 'troca') {
         if (selectedItem) {
-          // Aprovar/rejeitar troca
           await operacionalService.updateTroca(selectedItem.id, formData);
         } else {
           await operacionalService.createTroca(formData);
         }
         loadTrocas();
+      } else if (dialogType === 'swap') {
+        if (!formData.escala_original_id || !formData.substituto_id) {
+          throw new Error('Dados da troca incompletos');
+        }
+        await operacionalService.solicitarTroca({
+          escala_original_id: formData.escala_original_id,
+          usuario_substituto_id: formData.substituto_id,
+          data_servico_original: formData.data_servico_original,
+          data_servico_troca: formData.data_servico_troca,
+          data_servico_compensacao: formData.data_servico_compensacao || null,
+          motivo: formData.observacoes || 'Troca solicitada via calendário'
+        });
+        setSuccessMessage('Solicitação de troca registrada. Aguarde resposta do colega.');
+        loadEscalas();
       } else if (dialogType === 'extra') {
         if (selectedItem) {
-          // Aprovar/rejeitar extra
           await operacionalService.updateExtra(selectedItem.id, formData);
         } else {
           await operacionalService.createExtra(formData);
         }
         loadExtras();
       }
-      
+
       handleCloseDialog();
     } catch (err) {
       console.error('Erro ao salvar:', err);
@@ -544,20 +561,65 @@ const Operacional = () => {
     setAlasForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  const getShiftsForUser = (userId) => {
+    const shifts = [];
+    decorateEscalas.forEach((escala) => {
+      const participantes = escala.participantes || [];
+      participantes.forEach((participante) => {
+        if (participante.usuario_id !== userId) return;
+        const data = getDateKey(participante.data_servico || escala.data_inicio) || escala.dataKey;
+        if (!data) return;
+        shifts.push({
+          escala_usuario_id: participante.id,
+          escala_id: escala.id,
+          data_servico: data,
+          label: `${format(parseISO(data), 'dd/MM/yyyy', { locale: ptBR })} · Ala ${escala.ala}`,
+        });
+      });
+    });
+    return shifts;
+  };
+
+  const handleColleagueChange = (participantId) => {
+    const entry = selectedItem?.escala?.participantes?.find((p) => p.id === participantId);
+    if (!entry) return;
+    const dataSubstituto = getDateKey(entry.data_servico || selectedItem.escala.data_inicio) || '';
+    setColleagueShifts(getShiftsForUser(entry.usuario_id));
+    setSelectedColleagueId(participantId);
+    setFormData((prev) => ({
+      ...prev,
+      substituto_nome: entry.nome,
+      substituto_id: entry.usuario_id,
+      data_servico_troca: dataSubstituto,
+    }));
+  };
+
   const handleOpenSwapDialog = (participante, escala) => {
     if (!participante || !escala) return;
     setError('');
+    const shifts = userShifts;
+    if (shifts.length === 0) {
+      setError('Você não possui turnos cadastrados para solicitar uma troca.');
+      return;
+    }
+    const defaultShift = shifts[0];
     const dataSubstituto = getDateKey(participante.data_servico || escala.data_inicio) || '';
     setDialogType('swap');
     setSelectedItem({ participante, escala });
+    setColleagueShifts(getShiftsForUser(participante.usuario_id));
+    setSelectedColleagueId(participante.id);
     setFormData({
       solicitante_nome: user?.nome || '',
       solicitante_id: user?.id,
+      escala_original_id: defaultShift.escala_usuario_id,
       substituto_nome: participante.nome,
       substituto_id: participante.usuario_id,
-      data_substituto: dataSubstituto,
-      data_solicitante: '',
+      data_servico_original: defaultShift.data_servico,
+      data_servico_troca: dataSubstituto,
+      data_servico_compensacao: '',
+      observacoes: ''
     });
+    setPagarAgora(false);
     setDialogOpen(true);
   };
 
@@ -616,6 +678,37 @@ const Operacional = () => {
     setCalendarMonth((prev) => addMonths(prev, direction));
   };
 
+  const handleExportList = () => {
+    if (filteredEscalas.length === 0) return;
+    const lines = [
+      ['Data', 'Ala', 'Nome', 'Matrícula', 'Posto'].join(','),
+    ];
+    filteredEscalas.forEach((escala) => {
+      const dataText = escala.dataKey
+        ? format(parseISO(escala.dataKey), 'dd/MM/yyyy', { locale: ptBR })
+        : '';
+      const participantes = escala.participantes || [];
+      participantes.forEach((participante) => {
+        const row = [
+          dataText,
+          escala.ala,
+          `"${participante.nome}"`,
+          participante.matricula || '',
+          participante.posto || '',
+        ];
+        lines.push(row.join(','));
+      });
+    });
+    const csvContent = lines.join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const tempLink = document.createElement('a');
+    tempLink.href = url;
+    tempLink.setAttribute('download', 'escalas_operacionais.csv');
+    tempLink.click();
+    URL.revokeObjectURL(url);
+  };
+
   const decorateEscalas = useMemo(() => (
     escalas.map((escala) => {
       const ala = getEscalaAla(escala);
@@ -628,6 +721,56 @@ const Operacional = () => {
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ), [escalas, usuariosMap]);
+
+  const userShifts = useMemo(() => {
+    if (!user?.id) return [];
+    const shifts = [];
+    decorateEscalas.forEach((escala) => {
+      const participantes = escala.participantes || [];
+      participantes.forEach((participante) => {
+        if (participante.usuario_id !== user.id) return;
+        const data = getDateKey(participante.data_servico || escala.data_inicio) || escala.dataKey;
+        if (!data) return;
+        shifts.push({
+          escala_usuario_id: participante.id,
+          escala_id: escala.id,
+          data_servico: data,
+          label: `${format(parseISO(data), 'dd/MM/yyyy', { locale: ptBR })} · Ala ${escala.ala}`,
+        });
+      });
+    });
+    return shifts;
+  }, [decorateEscalas, user]);
+
+  useEffect(() => {
+    if (dialogType === 'swap' && formData.data_servico_original && formData.solicitante_id) {
+      const key = getDateKey(formData.data_servico_original);
+      const conflict = key && userShifts.some((shift) => shift.data_servico === key);
+      setSwapConflictNotice(conflict ? 'Você já está escalado nesse dia.' : '');
+    } else {
+      setSwapConflictNotice('');
+    }
+  }, [dialogType, formData.data_servico_original, formData.solicitante_id, userShifts]);
+
+  const userShifts = useMemo(() => {
+    if (!user?.id) return [];
+    const shifts = [];
+    decorateEscalas.forEach((escala) => {
+      const participantes = escala.participantes || [];
+      participantes.forEach((participante) => {
+        if (participante.usuario_id !== user.id) return;
+        const data = getDateKey(participante.data_servico || escala.data_inicio) || escala.dataKey;
+        if (!data) return;
+        shifts.push({
+          escala_usuario_id: participante.id,
+          escala_id: escala.id,
+          data_servico: data,
+          label: `${format(parseISO(data), 'dd/MM/yyyy', { locale: ptBR })} · Ala ${escala.ala}`,
+        });
+      });
+    });
+    return shifts;
+  }, [decorateEscalas, user]);
 
   const filteredEscalas = useMemo(() => (
     decorateEscalas.filter((escala) => selectedAlas.includes(escala.ala))
@@ -655,6 +798,35 @@ const Operacional = () => {
     }
     return weeks;
   }, [calendarMonth]);
+
+  const scheduleByUser = useMemo(() => {
+    const mapa = {};
+    decorateEscalas.forEach((escala) => {
+      const dias = escala.participantes || [];
+      dias.forEach((participante) => {
+        const usuarioId = participante.usuario_id;
+        if (!usuarioId) return;
+        const dataKey = getDateKey(participante.data_servico || escala.data_inicio) || escala.dataKey;
+        if (!mapa[usuarioId]) {
+          mapa[usuarioId] = new Set();
+        }
+        if (dataKey) {
+          mapa[usuarioId].add(dataKey);
+        }
+      });
+    });
+    return mapa;
+  }, [decorateEscalas]);
+
+  useEffect(() => {
+    if (dialogType === 'swap' && formData.data_servico_original && formData.solicitante_id) {
+      const key = getDateKey(formData.data_servico_original);
+      const conflict = key && scheduleByUser[formData.solicitante_id]?.has(key);
+      setSwapConflictNotice(conflict ? 'Você já está escalado neste dia.' : '');
+    } else {
+      setSwapConflictNotice('');
+    }
+  }, [dialogType, formData.data_servico_original, formData.solicitante_id, scheduleByUser]);
 
   const renderCalendarView = () => {
     if (escalasLoading) {
@@ -698,6 +870,9 @@ const Operacional = () => {
                 const hasEscala = dayEscalas.length > 0;
                 const ala = hasEscala ? dayEscalas[0].ala : null;
                 const style = ala ? ALA_STYLES[ala] : { border: theme.palette.divider, bg: theme.palette.background.default };
+                const approvedSwap = dayEscalas.some((escala) =>
+                  escala.participantes?.some((p) => p.troca_status === 'aprovada')
+                );
 
                 return (
                   <Grid item xs={1} key={dateKey}>
@@ -740,6 +915,18 @@ const Operacional = () => {
                                 {participante.nome}
                               </Typography>
                             ))}
+                            {approvedSwap && (
+                              <Chip
+                                label="Troca confirmada"
+                                size="small"
+                                sx={{
+                                  mt: 0.5,
+                                  bgcolor: theme.palette.success.light,
+                                  color: theme.palette.success.dark,
+                                  fontWeight: 600,
+                                }}
+                              />
+                            )}
                           </Box>
                         ))
                       ) : (
@@ -788,6 +975,20 @@ const Operacional = () => {
 
     return (
       <Stack spacing={2}>
+        <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Typography variant="subtitle1" color="textSecondary">
+            {filteredEscalas.length} turno(s) visíveis
+          </Typography>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<FileDownloadIcon fontSize="small" />}
+            onClick={handleExportList}
+            disabled={filteredEscalas.length === 0}
+          >
+            Exportar CSV
+          </Button>
+        </Box>
         {diasOrdenados.map((dia) => (
           <Card key={`lista-${dia}`}>
             <CardContent>
@@ -802,6 +1003,7 @@ const Operacional = () => {
 
               {agrupadas[dia].map((escala) => {
                 const style = ALA_STYLES[escala.ala] || { border: theme.palette.primary.main, bg: 'transparent' };
+                const hasApprovedSwap = escala.participantes?.some((p) => p.troca_status === 'aprovada');
                 return (
                   <Box key={`escala-lista-${escala.id}`} mb={2}>
                     <Box
@@ -821,6 +1023,18 @@ const Operacional = () => {
                     >
                       {`Ala ${escala.ala}`}
                     </Box>
+                    {hasApprovedSwap && (
+                      <Chip
+                        label="Troca confirmada"
+                        size="small"
+                        sx={{
+                          bgcolor: theme.palette.success.light,
+                          color: theme.palette.success.dark,
+                          fontWeight: 600,
+                          mt: 1,
+                        }}
+                      />
+                    )}
                     <Stack direction="row" flexWrap="wrap" gap={1}>
                       {(escala.participantes || []).map((participante) => (
                         <Button
@@ -1612,31 +1826,125 @@ const Operacional = () => {
                 Escolha o dia em que você deseja que o colega selecionado cubra seu serviço. Em breve a solicitação será enviada automaticamente para aprovação.
               </Alert>
               <TextField
-                label="Militar que solicita"
+                label="Nome do militar que irá folgar"
                 value={formData.solicitante_nome || ''}
                 fullWidth
                 disabled
+                sx={{ mb: 1 }}
               />
-              <TextField
-                label="Militar selecionado"
-                value={formData.substituto_nome || ''}
-                fullWidth
-                disabled
-              />
+              <FormControl fullWidth sx={{ mb: 1 }}>
+                <InputLabel>Nome do militar que irá trabalhar</InputLabel>
+                <Select
+                  value={selectedColleagueId || ''}
+                  label="Nome do militar que irá trabalhar"
+                  onChange={(e) => handleColleagueChange(e.target.value)}
+                >
+                  {selectedItem?.escala?.participantes?.map((participante) => (
+                    <MenuItem key={participante.id} value={participante.id}>
+                      {participante.nome}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Escolha o turno que deseja trocar</InputLabel>
+                <Select
+                  value={formData.escala_original_id || ''}
+                  label="Escolha o turno que deseja trocar"
+                  onChange={(e) => {
+                    const selected = userShifts.find((shift) => shift.escala_usuario_id === e.target.value);
+                    if (!selected) return;
+                    handleFormChange('escala_original_id', selected.escala_usuario_id);
+                    handleFormChange('data_servico_original', selected.data_servico);
+                  }}
+                  InputLabelProps={{ shrink: true }}
+                >
+                  {userShifts.map((shift) => (
+                    <MenuItem key={shift.escala_usuario_id} value={shift.escala_usuario_id}>
+                      {shift.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+                <Typography variant="caption" color="textSecondary">
+                  Escolha um dos dias em que você está programado para trabalhar.
+                </Typography>
+              </FormControl>
               <TextField
                 label="Data do serviço do militar selecionado"
-                value={formData.data_substituto || ''}
+                value={formData.data_servico_troca || ''}
                 fullWidth
                 disabled
+                sx={{ mb: 1 }}
               />
-              <TextField
-                label="Data em que você precisa de cobertura"
-                type="date"
-                value={formData.data_solicitante || ''}
-                onChange={(e) => handleFormChange('data_solicitante', e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                helperText="Selecione o dia que você deseja trocar."
+              <FormControl fullWidth sx={{ mb: 1 }}>
+                <InputLabel>Data em que o militar que irá trabalhar assumirá seu serviço</InputLabel>
+                <Select
+                  value={formData.data_servico_troca || ''}
+                  label="Data em que o militar que irá trabalhar assumirá seu serviço"
+                  onChange={(e) => handleFormChange('data_servico_troca', e.target.value)}
+                >
+                  {userShifts.map((shift) => (
+                    <MenuItem key={shift.escala_usuario_id} value={shift.data_servico}>
+                      {shift.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+                <Typography variant="caption" color="textSecondary">
+                  Escolha um dos dias em que você foi escalado (Eduardo).
+                </Typography>
+              </FormControl>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={pagarAgora}
+                    onChange={(e) => setPagarAgora(e.target.checked)}
+                  />
+                }
+                label="Definir agora a data de pagamento"
               />
+              {pagarAgora && (
+                <Box sx={{ border: '1px dashed', borderColor: 'divider', p: 2, borderRadius: 2, mb: 1 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Fase de compensação
+                  </Typography>
+                  <TextField
+                    label="Nome do militar que irá trabalhar"
+                    value={user?.nome || ''}
+                    fullWidth
+                    disabled
+                    sx={{ mb: 1 }}
+                  />
+                  <TextField
+                    label="Nome do militar que irá folgar"
+                    value={formData.substituto_nome || ''}
+                    fullWidth
+                    disabled
+                    sx={{ mb: 1 }}
+                  />
+                  <FormControl fullWidth>
+                    <InputLabel>Data em que o colega folgará</InputLabel>
+                    <Select
+                      value={formData.data_servico_compensacao || ''}
+                      label="Data em que o colega folgará"
+                      onChange={(e) => handleFormChange('data_servico_compensacao', e.target.value)}
+                    >
+                      {colleagueShifts.map((shift) => (
+                        <MenuItem key={shift.escala_usuario_id} value={shift.data_servico}>
+                          {shift.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    <Typography variant="caption" color="textSecondary">
+                      Escolha um dia em que a Luciana originalmente trabalharia.
+                    </Typography>
+                  </FormControl>
+                </Box>
+              )}
+              {swapConflictNotice && (
+                <Alert severity="warning" variant="outlined">
+                  {swapConflictNotice}
+                </Alert>
+              )}
               <TextField
                 label="Observações"
                 multiline

@@ -464,9 +464,12 @@ router.get('/escalas/:id', async (req, res) => {
 
     // Buscar usuários da escala
     const usuariosResult = await query(
-      `SELECT eu.*, u.nome, u.matricula, u.posto_graduacao
+      `SELECT eu.*, u.nome, u.matricula, u.posto_graduacao,
+              t.id as troca_id, t.status as troca_status, t.usuario_substituto_id,
+              t.data_servico_original, t.data_servico_troca, t.data_servico_compensacao
        FROM escala_usuarios eu
        JOIN usuarios u ON eu.usuario_id = u.id
+       LEFT JOIN trocas_servico t ON eu.troca_id = t.id
        WHERE eu.escala_id = $1
        ORDER BY eu.data_servico, u.nome`,
       [id]
@@ -636,6 +639,7 @@ router.post('/trocas', [
   body('usuario_substituto_id').isInt().withMessage('ID do usuário substituto é obrigatório'),
   body('data_servico_original').isISO8601().withMessage('Data do serviço original inválida'),
   body('data_servico_troca').isISO8601().withMessage('Data do serviço de troca inválida'),
+  body('data_servico_compensacao').optional().isISO8601().withMessage('Data de pagamento inválida'),
   body('motivo').notEmpty().withMessage('Motivo da troca é obrigatório')
 ], async (req, res) => {
   try {
@@ -646,7 +650,7 @@ router.post('/trocas', [
 
     const {
       escala_original_id, usuario_substituto_id, data_servico_original,
-      data_servico_troca, motivo
+      data_servico_troca, data_servico_compensacao, motivo
     } = req.body;
 
     // Verificar se a escala original existe e pertence ao usuário
@@ -666,6 +670,27 @@ router.post('/trocas', [
        RETURNING *`,
       [req.user.id, usuario_substituto_id, escala_original_id, data_servico_original, data_servico_troca, motivo]
     );
+
+    if (data_servico_compensacao) {
+      await query(
+        'UPDATE trocas_servico SET data_servico_compensacao = $1 WHERE id = $2',
+        [data_servico_compensacao, result.rows[0].id]
+      );
+    }
+    await query(
+      'UPDATE escala_usuarios SET troca_id = $1 WHERE id = $2',
+      [result.rows[0].id, escala_original_id]
+    );
+    const substitutoRow = await query(
+      'SELECT id FROM escala_usuarios WHERE usuario_id = $1 AND data_servico = $2 LIMIT 1',
+      [usuario_substituto_id, data_servico_troca]
+    );
+    if (substitutoRow.rows.length > 0) {
+      await query(
+        'UPDATE escala_usuarios SET troca_id = $1 WHERE id = $2',
+        [result.rows[0].id, substitutoRow.rows[0].id]
+      );
+    }
 
     // Criar notificação para o substituto
     await query(
@@ -687,6 +712,86 @@ router.post('/trocas', [
     });
   } catch (error) {
     console.error('Erro ao solicitar troca:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Confirmar troca de serviço (usuario substituto ou admin)
+router.post('/trocas/:id/confirmar', [
+  body('data_servico_compensacao').optional().isISO8601().withMessage('Data de compensação inválida')
+], async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data_servico_compensacao } = req.body;
+
+    const trocaResult = await query('SELECT * FROM trocas_servico WHERE id = $1', [id]);
+    if (trocaResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Troca não encontrada' });
+    }
+
+    const troca = trocaResult.rows[0];
+    if (troca.status !== 'pendente') {
+      return res.status(400).json({ error: 'Troca já foi processada' });
+    }
+    if (req.user.id !== troca.usuario_substituto_id && req.user.perfil_nome !== 'Administrador') {
+      return res.status(403).json({ error: 'Você não pode confirmar esta troca' });
+    }
+
+    const compensacao = data_servico_compensacao ||
+      troca.data_servico_compensacao ||
+      troca.data_servico_original;
+
+    await transaction(async (client) => {
+      const substitutoRow = await client.query(
+        'SELECT id FROM escala_usuarios WHERE usuario_id = $1 AND data_servico = $2 LIMIT 1',
+        [troca.usuario_substituto_id, troca.data_servico_troca]
+      );
+
+      if (substitutoRow.rows.length === 0) {
+        throw new Error('Escala do substituto não encontrada');
+      }
+
+      await client.query(
+        'UPDATE escala_usuarios SET data_servico = $1, troca_id = $2 WHERE id = $3',
+        [troca.data_servico_troca, troca.id, troca.escala_original_id]
+      );
+      await client.query(
+        'UPDATE escala_usuarios SET data_servico = $1, troca_id = $2 WHERE id = $3',
+        [compensacao, troca.id, substitutoRow.rows[0].id]
+      );
+      await client.query(
+        `UPDATE trocas_servico
+         SET status = $1, aprovado_por = $2, data_aprovacao = CURRENT_TIMESTAMP, data_servico_compensacao = $3
+         WHERE id = $4`,
+        ['aprovada', req.user.id, compensacao, id]
+      );
+
+      const admins = await client.query(`
+        SELECT u.id
+        FROM usuarios u
+        JOIN perfis p ON u.perfil_id = p.id
+        WHERE p.nome = 'Administrador'
+      `);
+
+      for (const admin of admins.rows) {
+        await client.query(
+          `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            admin.id,
+            'Troca confirmada',
+            `Troca de serviço #${id} confirmada pelo substituto.`,
+            'info',
+            'operacional',
+            id
+          ]
+        );
+      }
+    });
+
+    res.json({ message: 'Troca confirmada com sucesso' });
+  } catch (error) {
+    console.error('Erro ao confirmar troca:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
