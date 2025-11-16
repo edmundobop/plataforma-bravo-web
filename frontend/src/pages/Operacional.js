@@ -365,14 +365,17 @@ const Operacional = () => {
         if (!formData.escala_original_id || !formData.substituto_id) {
           throw new Error('Dados da troca incompletos');
         }
-        await operacionalService.solicitarTroca({
+        const swapPayload = {
           escala_original_id: formData.escala_original_id,
           usuario_substituto_id: formData.substituto_id,
           data_servico_original: formData.data_servico_original,
           data_servico_troca: formData.data_servico_troca,
-          data_servico_compensacao: formData.data_servico_compensacao || null,
           motivo: formData.observacoes || 'Troca solicitada via calendário'
-        });
+        };
+        if (formData.data_servico_compensacao) {
+          swapPayload.data_servico_compensacao = formData.data_servico_compensacao;
+        }
+        await operacionalService.solicitarTroca(swapPayload);
         setSuccessMessage('Solicitação de troca registrada. Aguarde resposta do colega.');
         loadEscalas();
       } else if (dialogType === 'extra') {
