@@ -422,8 +422,8 @@ const createTables = async () => {
     // ==========================
     // NOTIFICAÇÕES
     // ==========================
-    await query(`
-      CREATE TABLE IF NOT EXISTS notificacoes (
+  await query(`
+    CREATE TABLE IF NOT EXISTS notificacoes (
         id SERIAL PRIMARY KEY,
         usuario_id INTEGER REFERENCES usuarios(id),
         titulo VARCHAR(255) NOT NULL,
@@ -433,6 +433,17 @@ const createTables = async () => {
         referencia_id INTEGER,
         lida BOOLEAN DEFAULT false,
         data_leitura TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS trocas_historico (
+        id SERIAL PRIMARY KEY,
+        troca_id INTEGER REFERENCES trocas_servico(id),
+        escala_usuario_id INTEGER REFERENCES escala_usuarios(id),
+        acao VARCHAR(50) NOT NULL,
+        criado_por INTEGER REFERENCES usuarios(id),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);

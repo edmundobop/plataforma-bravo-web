@@ -135,6 +135,7 @@ const Operacional = () => {
     pages: 0,
     current_page: 1,
   });
+  const [trocaActionLoading, setTrocaActionLoading] = useState(null);
   
   // Estados para serviços extras
   const [extras, setExtras] = useState([]);
@@ -184,7 +185,9 @@ const Operacional = () => {
   const [anchorEl, setAnchorEl] = useState(null);
   
   // Estados para formulários
-  const [formData, setFormData] = useState({});
+  const [formData, setFormData] = useState({
+    data_servico_substituto: '',
+  });
 
   useEffect(() => {
     loadData();
@@ -390,28 +393,29 @@ const Operacional = () => {
       handleCloseDialog();
     } catch (err) {
       console.error('Erro ao salvar:', err);
-      setError('Erro ao salvar dados');
+      const errorMessage = err.response?.data?.error || 'Erro ao salvar dados';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAprovarRejeitar = async (tipo, id, acao) => {
+  const handleTrocaAction = async (troca, action) => {
     try {
-      setLoading(true);
-      
-      if (tipo === 'troca') {
-        await operacionalService.updateTroca(id, { status: acao });
-        loadTrocas();
-      } else if (tipo === 'extra') {
-        await operacionalService.updateExtra(id, { status: acao });
-        loadExtras();
+      setTrocaActionLoading(troca.id);
+      setError('');
+      if (action === 'accept') {
+        await operacionalService.confirmarTroca(troca.id, {});
+      } else {
+        await operacionalService.rejeitarTroca(troca.id);
       }
+      setSuccessMessage(action === 'accept' ? 'Troca confirmada com sucesso.' : 'Troca rejeitada com sucesso.');
+      loadTrocas();
     } catch (err) {
-      console.error('Erro ao atualizar status:', err);
-      setError('Erro ao atualizar status');
+      console.error('Erro ao responder troca:', err);
+      setError(err.response?.data?.error || 'Erro ao processar a troca');
     } finally {
-      setLoading(false);
+      setTrocaActionLoading(null);
     }
   };
 
@@ -445,6 +449,19 @@ const Operacional = () => {
   };
 
   const isAdmin = user?.perfil_nome === 'Administrador';
+
+  const getTrocaBg = (status) => {
+    switch (status) {
+      case 'pendente':
+        return theme.palette.warning.light;
+      case 'aprovado':
+        return theme.palette.success.light;
+      case 'rejeitado':
+        return theme.palette.error.light;
+      default:
+        return theme.palette.background.paper;
+    }
+  };
 
   const buildAlaPayload = () => {
     const payload = {};
@@ -606,6 +623,7 @@ const Operacional = () => {
     }
     const defaultShift = shifts[0];
     const dataSubstituto = getDateKey(participante.data_servico || escala.data_inicio) || '';
+    const dataColleague = getDateKey(escala.data_inicio) || '';
     setDialogType('swap');
     setSelectedItem({ participante, escala });
     setColleagueShifts(getShiftsForUser(participante.usuario_id));
@@ -618,6 +636,7 @@ const Operacional = () => {
       substituto_id: participante.usuario_id,
       data_servico_original: defaultShift.data_servico,
       data_servico_troca: dataSubstituto,
+      data_servico_substituto: dataColleague,
       data_servico_compensacao: '',
       observacoes: ''
     });
@@ -640,7 +659,31 @@ const Operacional = () => {
     return parsed ? format(parsed, 'yyyy-MM-dd') : null;
   };
 
+  const parseAlaFromName = (name) => {
+    if (!name) return null;
+    const byAla = name.match(/Ala\s+([A-Za-z]+)/i);
+    if (byAla) {
+      const candidate = byAla[1].charAt(0).toUpperCase() + byAla[1].slice(1).toLowerCase();
+      if (VALID_ALAS.includes(candidate)) {
+        return candidate;
+      }
+    }
+    const byDash = name.match(/-\s*([A-Za-z]+)\s*-/);
+    if (byDash) {
+      const candidate = byDash[1].charAt(0).toUpperCase() + byDash[1].slice(1).toLowerCase();
+      if (VALID_ALAS.includes(candidate)) {
+        return candidate;
+      }
+    }
+    return null;
+  };
+
   const getEscalaAla = (escala) => {
+    if (escala.ala && VALID_ALAS.includes(escala.ala)) {
+      return escala.ala;
+    }
+    const parsed = parseAlaFromName(escala.nome);
+    if (parsed) return parsed;
     const participantes = escala.participantes || [];
     for (const participante of participantes) {
       const referencia = usuariosMap[participante.usuario_id];
@@ -651,15 +694,13 @@ const Operacional = () => {
         return participante.ala;
       }
     }
-    const match = escala.nome?.match(/Ala\s+([A-Za-z]+)/i);
-    if (match) {
-      const candidate = match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase();
-      if (VALID_ALAS.includes(candidate)) {
-        return candidate;
-      }
-    }
     return VALID_ALAS[0];
   };
+
+  const isSwappedParticipant = (participante) => (
+    participante.troca_status === 'aprovada' &&
+    participante.usuario_id === participante.usuario_substituto_id
+  );
 
   const handleToggleViewMode = (event, newValue) => {
     if (newValue) {
@@ -855,21 +896,31 @@ const Operacional = () => {
                                 variant="caption"
                                 display="block"
                               >
-                                {participante.nome}
+                                {isSwappedParticipant(participante) ? (
+                                  <Box component="span" display="inline-flex" alignItems="center" gap={0.25}>
+                                    <span aria-hidden="true">🔁</span>
+                                    {participante.nome}
+                                  </Box>
+                                ) : (
+                                  participante.nome
+                                )}
                               </Typography>
                             ))}
-                            {approvedSwap && (
-                              <Chip
-                                label="Troca confirmada"
-                                size="small"
-                                sx={{
-                                  mt: 0.5,
-                                  bgcolor: theme.palette.success.light,
-                                  color: theme.palette.success.dark,
-                                  fontWeight: 600,
-                                }}
-                              />
-                            )}
+                    {approvedSwap && (
+                      <Typography
+                        variant="caption"
+                        color="textSecondary"
+                        sx={{
+                          mt: 0.5,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 0.5,
+                        }}
+                      >
+                        <span aria-hidden="true">🔁</span>
+                        Troca confirmada
+                      </Typography>
+                    )}
                           </Box>
                         ))
                       ) : (
@@ -967,16 +1018,19 @@ const Operacional = () => {
                       {`Ala ${escala.ala}`}
                     </Box>
                     {hasApprovedSwap && (
-                      <Chip
-                        label="Troca confirmada"
-                        size="small"
+                      <Typography
+                        variant="caption"
+                        color="textSecondary"
                         sx={{
-                          bgcolor: theme.palette.success.light,
-                          color: theme.palette.success.dark,
-                          fontWeight: 600,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 0.5,
                           mt: 1,
                         }}
-                      />
+                      >
+                        <span aria-hidden="true">🔁</span>
+                        Troca confirmada
+                      </Typography>
                     )}
                     <Stack direction="row" flexWrap="wrap" gap={1}>
                       {(escala.participantes || []).map((participante) => (
@@ -991,7 +1045,14 @@ const Operacional = () => {
                             color: style.border,
                           }}
                         >
-                          {participante.nome}
+                          {isSwappedParticipant(participante) ? (
+                            <Box display="inline-flex" alignItems="center" gap={0.25}>
+                              <span aria-hidden="true">🔁</span>
+                              {participante.nome}
+                            </Box>
+                          ) : (
+                            participante.nome
+                          )}
                         </Button>
                       ))}
                     </Stack>
@@ -1154,10 +1215,10 @@ const Operacional = () => {
           ) : (
             trocas.map((troca, index) => (
               <React.Fragment key={troca.id}>
-                <ListItem>
-                  <ListItemAvatar>
-                    <Avatar>
-                      <SwapIcon />
+              <ListItem sx={{ bg: getTrocaBg(troca.status), borderRadius: 1, mb: 1 }}>
+                <ListItemAvatar>
+                  <Avatar>
+                    <SwapIcon />
                     </Avatar>
                   </ListItemAvatar>
                   <ListItemText
@@ -1193,23 +1254,32 @@ const Operacional = () => {
                     }
                   />
                   <Box display="flex" gap={1}>
-                    {troca.status === 'pendente' && (
+                    {troca.status === 'pendente' && user?.id === troca.usuario_substituto_id && (
                       <>
-                        <IconButton
+                        <Button
+                          size="small"
+                          variant="contained"
                           color="success"
-                          onClick={() => handleAprovarRejeitar('troca', troca.id, 'aprovado')}
-                          disabled={loading}
+                          onClick={() => handleTrocaAction(troca, 'accept')}
+                          disabled={trocaActionLoading === troca.id}
                         >
-                          <CheckIcon />
-                        </IconButton>
-                        <IconButton
+                          Aceitar
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
                           color="error"
-                          onClick={() => handleAprovarRejeitar('troca', troca.id, 'rejeitado')}
-                          disabled={loading}
+                          onClick={() => handleTrocaAction(troca, 'reject')}
+                          disabled={trocaActionLoading === troca.id}
                         >
-                          <CloseIcon />
-                        </IconButton>
+                          Rejeitar
+                        </Button>
                       </>
+                    )}
+                    {troca.status === 'pendente' && isAdmin && (
+                      <Typography variant="caption" color="textSecondary">
+                        Aguarda confirmação do substituto
+                      </Typography>
                     )}
                     <IconButton
                       onClick={() => handleOpenDialog('troca', troca)}

@@ -175,6 +175,86 @@ const loadCurrentAlaAssignments = async (unidadeId = null) => {
 
 const determineUnidadeId = (req) => req.unidade?.id || req.user?.unidade_lotacao_id || req.user?.unidade_id || null;
 
+const criarNotificacao = async (client, usuarioId, titulo, mensagem, tipo, modulo, referenciaId = null) => {
+  await client.query(
+    `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [usuarioId, titulo, mensagem, tipo, modulo, referenciaId]
+  );
+};
+
+const confirmarTrocaComTransacao = async (client, troca, aprovadorId, compensacao) => {
+  const escalaRow = await client.query(
+    'SELECT * FROM escala_usuarios WHERE id = $1',
+    [troca.escala_original_id]
+  );
+
+  if (escalaRow.rows.length === 0) {
+    throw new Error('Escala do solicitante não encontrada');
+  }
+
+  const targetDate = troca.data_servico_troca || escalaRow.rows[0].data_servico;
+  await client.query(
+    'UPDATE escala_usuarios SET usuario_id = $1, data_servico = $2, troca_id = $3 WHERE id = $4',
+    [troca.usuario_substituto_id, targetDate, troca.id, troca.escala_original_id]
+  );
+  await client.query(
+    `UPDATE trocas_servico
+     SET status = $1, aprovado_por = $2, data_aprovacao = CURRENT_TIMESTAMP, data_servico_compensacao = $3
+     WHERE id = $4`,
+    ['aprovada', aprovadorId, compensacao, troca.id]
+  );
+
+  const admins = await client.query(`
+    SELECT u.id
+    FROM usuarios u
+    JOIN perfis p ON u.perfil_id = p.id
+    WHERE p.nome = 'Administrador'
+  `);
+
+  for (const admin of admins.rows) {
+    await criarNotificacao(
+      client,
+      admin.id,
+      'Troca confirmada',
+      `Troca de serviço #${troca.id} confirmada pelo substituto.`,
+      'info',
+      'operacional',
+      troca.id
+    );
+  }
+};
+
+const rejeitarTrocaComTransacao = async (client, troca, rejeitadoPor) => {
+  await client.query(
+    'UPDATE trocas_servico SET status = $1, aprovado_por = $2, data_aprovacao = CURRENT_TIMESTAMP WHERE id = $3',
+    ['rejeitada', rejeitadoPor, troca.id]
+  );
+  await client.query(
+    'UPDATE escala_usuarios SET troca_id = NULL WHERE id = $1',
+    [troca.escala_original_id]
+  );
+
+  await criarNotificacao(
+    client,
+    troca.usuario_solicitante_id,
+    'Troca rejeitada',
+    'Sua solicitação de troca de serviço foi rejeitada.',
+    'warning',
+    'operacional',
+    troca.id
+  );
+  await criarNotificacao(
+    client,
+    troca.usuario_substituto_id,
+    'Troca rejeitada',
+    'Você rejeitou a solicitação de troca de serviço.',
+    'warning',
+    'operacional',
+    troca.id
+  );
+};
+
 // Aplicar autenticação em todas as rotas
 router.use(authenticateToken);
 router.use(optionalTenant);
@@ -655,7 +735,10 @@ router.post('/trocas', [
 
     // Verificar se a escala original existe e pertence ao usuário
     const escalaResult = await query(
-      'SELECT id FROM escala_usuarios WHERE id = $1 AND usuario_id = $2',
+      `SELECT eu.id
+       FROM escala_usuarios eu
+       LEFT JOIN trocas_servico t ON eu.troca_id = t.id AND t.status = 'pendente'
+       WHERE eu.id = $1 AND eu.usuario_id = $2 AND t.id IS NULL`,
       [escala_original_id, req.user.id]
     );
 
@@ -681,16 +764,11 @@ router.post('/trocas', [
       'UPDATE escala_usuarios SET troca_id = $1 WHERE id = $2',
       [result.rows[0].id, escala_original_id]
     );
-    const substitutoRow = await query(
-      'SELECT id FROM escala_usuarios WHERE usuario_id = $1 AND data_servico = $2 LIMIT 1',
-      [usuario_substituto_id, data_servico_troca]
+    await query(
+      `INSERT INTO trocas_historico (troca_id, escala_usuario_id, acao, criado_por)
+       VALUES ($1, $2, 'solicitado', $3)`,
+      [result.rows[0].id, escala_original_id, req.user.id]
     );
-    if (substitutoRow.rows.length > 0) {
-      await query(
-        'UPDATE escala_usuarios SET troca_id = $1 WHERE id = $2',
-        [result.rows[0].id, substitutoRow.rows[0].id]
-      );
-    }
 
     // Criar notificação para o substituto
     await query(
@@ -741,57 +819,72 @@ router.post('/trocas/:id/confirmar', [
       troca.data_servico_compensacao ||
       troca.data_servico_original;
 
-    await transaction(async (client) => {
-      const substitutoRow = await client.query(
-        'SELECT id FROM escala_usuarios WHERE usuario_id = $1 AND data_servico = $2 LIMIT 1',
-        [troca.usuario_substituto_id, troca.data_servico_troca]
-      );
-
-      if (substitutoRow.rows.length === 0) {
-        throw new Error('Escala do substituto não encontrada');
+    try {
+      await transaction(async (client) => {
+        await confirmarTrocaComTransacao(client, troca, req.user.id, compensacao);
+      });
+    } catch (error) {
+      if ([
+        'Escala do solicitante não encontrada',
+        'Escala do substituto não encontrada',
+        'Registro do substituto ausente'
+      ].includes(error.message)) {
+        return res.status(400).json({ error: error.message });
       }
-
-      await client.query(
-        'UPDATE escala_usuarios SET data_servico = $1, troca_id = $2 WHERE id = $3',
-        [troca.data_servico_troca, troca.id, troca.escala_original_id]
-      );
-      await client.query(
-        'UPDATE escala_usuarios SET data_servico = $1, troca_id = $2 WHERE id = $3',
-        [compensacao, troca.id, substitutoRow.rows[0].id]
-      );
-      await client.query(
-        `UPDATE trocas_servico
-         SET status = $1, aprovado_por = $2, data_aprovacao = CURRENT_TIMESTAMP, data_servico_compensacao = $3
-         WHERE id = $4`,
-        ['aprovada', req.user.id, compensacao, id]
-      );
-
-      const admins = await client.query(`
-        SELECT u.id
-        FROM usuarios u
-        JOIN perfis p ON u.perfil_id = p.id
-        WHERE p.nome = 'Administrador'
-      `);
-
-      for (const admin of admins.rows) {
-        await client.query(
-          `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [
-            admin.id,
-            'Troca confirmada',
-            `Troca de serviço #${id} confirmada pelo substituto.`,
-            'info',
-            'operacional',
-            id
-          ]
-        );
-      }
-    });
+      throw error;
+    }
 
     res.json({ message: 'Troca confirmada com sucesso' });
   } catch (error) {
     console.error('Erro ao confirmar troca:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Responder troca de serviço (substituto)
+router.put('/trocas/:id/responder', [
+  body('resposta').isIn(['aceitar', 'rejeitar']).withMessage('Resposta inválida'),
+  body('data_servico_compensacao').optional().isISO8601().withMessage('Data de compensação inválida'),
+], async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { resposta, data_servico_compensacao } = req.body;
+
+    const trocaResult = await query('SELECT * FROM trocas_servico WHERE id = $1', [id]);
+    if (trocaResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Troca não encontrada' });
+    }
+
+    const troca = trocaResult.rows[0];
+    if (troca.status !== 'pendente') {
+      return res.status(400).json({ error: 'Troca já foi processada' });
+    }
+    if (req.user.id !== troca.usuario_substituto_id) {
+      return res.status(403).json({ error: 'Você não pode responder esta troca' });
+    }
+
+    if (resposta === 'aceitar') {
+      const compensacao = data_servico_compensacao ||
+        troca.data_servico_compensacao ||
+        troca.data_servico_original;
+
+      await transaction(async (client) => {
+        await confirmarTrocaComTransacao(client, troca, req.user.id, compensacao);
+      });
+
+      return res.json({ message: 'Troca confirmada com sucesso' });
+    }
+
+    await transaction(async (client) => {
+      await rejeitarTrocaComTransacao(client, troca, req.user.id);
+    });
+
+    res.json({ message: 'Troca rejeitada com sucesso' });
+  } catch (error) {
+    if (error.message.includes('Escala do solicitante não encontrada')) {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error('Erro ao responder troca:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });

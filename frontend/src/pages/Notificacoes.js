@@ -66,7 +66,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
-import { notificacoesService, usuariosService } from '../services/api';
+import { notificacoesService, usuariosService, operacionalService } from '../services/api';
 
 const Notificacoes = () => {
   const theme = useTheme();
@@ -93,6 +93,7 @@ const Notificacoes = () => {
     current_page: 1,
     nao_lidas: 0,
   });
+  const [respostaLoading, setRespostaLoading] = useState(null);
   
   // Estados para estatísticas
   const [estatisticas, setEstatisticas] = useState(null);
@@ -319,6 +320,54 @@ const Notificacoes = () => {
     } catch (err) {
       console.error('Erro ao excluir notificações lidas:', err);
       setError('Erro ao excluir notificações lidas');
+    }
+  };
+
+  const isSwapRequestNotification = (notification) => (
+    notification.modulo === 'operacional' &&
+    notification.titulo === 'Solicitação de Troca' &&
+    notification.referencia_id
+  );
+
+  const handleAcceptSwapNotification = async (event, notification) => {
+    event.stopPropagation();
+    if (!notification?.referencia_id) return;
+    setError('');
+    setSuccess('');
+    setRespostaLoading(notification.id);
+
+    try {
+      await operacionalService.confirmarTroca(notification.referencia_id, {});
+      await handleMarkAsRead(notification.id);
+      setSuccess('Troca confirmada com sucesso.');
+      loadNotificacoes();
+      loadEstatisticas();
+    } catch (err) {
+      console.error('Erro ao aceitar troca:', err);
+      setError(err.response?.data?.error || 'Erro ao aceitar troca');
+    } finally {
+      setRespostaLoading(null);
+    }
+  };
+
+  const handleRejectSwapNotification = async (event, notification) => {
+    event.stopPropagation();
+    if (!notification?.referencia_id) return;
+    setError('');
+    setSuccess('');
+    setRespostaLoading(notification.id);
+
+    try {
+      await operacionalService.responderTroca(notification.referencia_id, { resposta: 'rejeitar' });
+      await handleMarkAsRead(notification.id);
+      setSuccess('Troca rejeitada com sucesso.');
+      loadNotificacoes();
+      loadEstatisticas();
+    } catch (err) {
+      console.error('Erro ao rejeitar troca:', err);
+      setError(err.response?.data?.error || 'Erro ao rejeitar troca');
+    } finally {
+      setRespostaLoading(null);
     }
   };
 
@@ -549,26 +598,62 @@ const Notificacoes = () => {
                     }
                   />
                   <ListItemSecondaryAction>
-                    <Box display="flex" gap={1}>
-                      {!notificacao.lida && (
-                        <Tooltip title="Marcar como lida">
-                          <IconButton
+                    <Box display="flex" flexDirection="column" alignItems="flex-end" gap={1}>
+                      <Box display="flex" gap={1}>
+                        {!notificacao.lida && (
+                          <Tooltip title="Marcar como lida">
+                            <IconButton
+                              size="small"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleMarkAsRead(notificacao.id);
+                              }}
+                            >
+                              <MarkReadIcon />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                        <IconButton
+                          size="small"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setAnchorEl(event.currentTarget);
+                            setSelectedNotification(notificacao);
+                          }}
+                        >
+                          <MoreVertIcon />
+                        </IconButton>
+                      </Box>
+                      {isSwapRequestNotification(notificacao) && (
+                        <Box display="flex" gap={0.5}>
+                          <Button
                             size="small"
-                            onClick={() => handleMarkAsRead(notificacao.id)}
+                            variant="contained"
+                            color="success"
+                            onClick={(event) => handleAcceptSwapNotification(event, notificacao)}
+                            disabled={respostaLoading === notificacao.id}
                           >
-                            <MarkReadIcon />
-                          </IconButton>
-                        </Tooltip>
+                            {respostaLoading === notificacao.id ? (
+                              <CircularProgress size={16} color="inherit" />
+                            ) : (
+                              'Aceitar'
+                            )}
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="error"
+                            onClick={(event) => handleRejectSwapNotification(event, notificacao)}
+                            disabled={respostaLoading === notificacao.id}
+                          >
+                            {respostaLoading === notificacao.id ? (
+                              <CircularProgress size={16} color="inherit" />
+                            ) : (
+                              'Recusar'
+                            )}
+                          </Button>
+                        </Box>
                       )}
-                      <IconButton
-                        size="small"
-                        onClick={(e) => {
-                          setAnchorEl(e.currentTarget);
-                          setSelectedNotification(notificacao);
-                        }}
-                      >
-                        <MoreVertIcon />
-                      </IconButton>
                     </Box>
                   </ListItemSecondaryAction>
                 </ListItem>
