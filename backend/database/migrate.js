@@ -89,6 +89,7 @@ const createTables = async () => {
         perfil_id INTEGER REFERENCES perfis(id),
         unidade_id INTEGER REFERENCES unidades(id),
         unidade_lotacao_id INTEGER REFERENCES unidades(id),
+        ala VARCHAR(20),
         setor VARCHAR(100),
         funcao VARCHAR(100),
         status_solicitacao VARCHAR(20) DEFAULT 'pendente',
@@ -130,9 +131,14 @@ const createTables = async () => {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='unidade_lotacao_id') THEN
           ALTER TABLE usuarios ADD COLUMN unidade_lotacao_id INTEGER REFERENCES unidades(id);
         END IF;
-        -- Garantir coluna de setor (texto)
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='setor') THEN
-          ALTER TABLE usuarios ADD COLUMN setor VARCHAR(100);
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='ala') THEN
+          ALTER TABLE usuarios ADD COLUMN ala VARCHAR(20);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='setor_id') THEN
+          ALTER TABLE usuarios ADD COLUMN setor_id INTEGER REFERENCES setores(id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='funcao_id') THEN
+          ALTER TABLE usuarios ADD COLUMN funcao_id INTEGER REFERENCES funcoes(id);
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='status_solicitacao') THEN
           ALTER TABLE usuarios ADD COLUMN status_solicitacao VARCHAR(20) DEFAULT 'pendente';
@@ -320,8 +326,8 @@ const createTables = async () => {
         id SERIAL PRIMARY KEY,
         nome VARCHAR(255) NOT NULL,
         tipo VARCHAR(50) NOT NULL,
-        data_inicio DATE NOT NULL,
-        data_fim DATE NOT NULL,
+        data_inicio TIMESTAMP NOT NULL,
+        data_fim TIMESTAMP NOT NULL,
         turno VARCHAR(20),
         setor VARCHAR(100),
         observacoes TEXT,
@@ -330,6 +336,23 @@ const createTables = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         unidade_id INTEGER REFERENCES unidades(id)
       )
+    `);
+    await query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='escalas' AND column_name='data_inicio' AND data_type='date'
+        ) THEN
+          ALTER TABLE escalas ALTER COLUMN data_inicio TYPE TIMESTAMP USING data_inicio::timestamp;
+        END IF;
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='escalas' AND column_name='data_fim' AND data_type='date'
+        ) THEN
+          ALTER TABLE escalas ALTER COLUMN data_fim TYPE TIMESTAMP USING data_fim::timestamp;
+        END IF;
+      END $$;
     `);
 
     await query(`
@@ -341,8 +364,21 @@ const createTables = async () => {
         turno VARCHAR(20),
         funcao VARCHAR(100),
         status VARCHAR(50) DEFAULT 'agendado',
-        observacoes TEXT
+        observacoes TEXT,
+        troca_id INTEGER REFERENCES trocas_servico(id)
       )
+    `);
+
+    await query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='escala_usuarios' AND column_name='troca_id') THEN
+          ALTER TABLE escala_usuarios ADD COLUMN troca_id INTEGER REFERENCES trocas_servico(id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trocas_servico' AND column_name='data_servico_compensacao') THEN
+          ALTER TABLE trocas_servico ADD COLUMN data_servico_compensacao DATE;
+        END IF;
+      END $$;
     `);
 
     await query(`
@@ -353,6 +389,7 @@ const createTables = async () => {
         escala_original_id INTEGER REFERENCES escala_usuarios(id),
         data_servico_original DATE,
         data_servico_troca DATE,
+        data_servico_compensacao DATE,
         motivo TEXT,
         status VARCHAR(50) DEFAULT 'pendente',
         aprovado_por INTEGER REFERENCES usuarios(id),
@@ -382,8 +419,8 @@ const createTables = async () => {
     // ==========================
     // NOTIFICAÇÕES
     // ==========================
-    await query(`
-      CREATE TABLE IF NOT EXISTS notificacoes (
+  await query(`
+    CREATE TABLE IF NOT EXISTS notificacoes (
         id SERIAL PRIMARY KEY,
         usuario_id INTEGER REFERENCES usuarios(id),
         titulo VARCHAR(255) NOT NULL,
@@ -393,6 +430,17 @@ const createTables = async () => {
         referencia_id INTEGER,
         lida BOOLEAN DEFAULT false,
         data_leitura TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS trocas_historico (
+        id SERIAL PRIMARY KEY,
+        troca_id INTEGER REFERENCES trocas_servico(id),
+        escala_usuario_id INTEGER REFERENCES escala_usuarios(id),
+        acao VARCHAR(50) NOT NULL,
+        criado_por INTEGER REFERENCES usuarios(id),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);

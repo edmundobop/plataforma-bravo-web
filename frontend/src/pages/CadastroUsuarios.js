@@ -643,6 +643,7 @@ const CadastroUsuarios = () => {
         loadUsuarios();
       }
     } catch (err) {
+      // Log detalhado para debug: mostra response.data (corpo retornado pelo servidor)
       console.error('Erro ao salvar usuário:', err);
       // Mostrar mensagem específica do backend quando disponível
       setError(
