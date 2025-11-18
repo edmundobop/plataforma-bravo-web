@@ -253,8 +253,17 @@ const Operacional = () => {
     try {
       setTrocasLoading(true);
       const response = await operacionalService.getTrocas(trocasFilters);
-      setTrocas(response.data.trocas || []);
-      setTrocasPagination(response.data.pagination || {});
+      const trocasResponse = response.data || [];
+      const lista = Array.isArray(trocasResponse) ? trocasResponse : (trocasResponse.trocas || []);
+      setTrocas(lista);
+      const limit = Number(trocasFilters.limit) || 10;
+      const pages = Math.max(1, Math.ceil(lista.length / limit));
+      setTrocasPagination({
+        total: lista.length,
+        pages,
+        current_page: trocasFilters.page || 1,
+        nao_lidas: 0
+      });
     } catch (err) {
       console.error('Erro ao carregar trocas:', err);
       setError('Erro ao carregar trocas de serviço');
@@ -423,10 +432,12 @@ const Operacional = () => {
     switch (status?.toLowerCase()) {
       case 'ativa':
       case 'aprovado':
+      case 'aprovada':
         return 'success';
       case 'pendente':
         return 'warning';
       case 'rejeitado':
+      case 'rejeitada':
       case 'cancelado':
         return 'error';
       case 'finalizada':
@@ -434,6 +445,12 @@ const Operacional = () => {
       default:
         return 'default';
     }
+  };
+
+  const formatTrocaStatusLabel = (status) => {
+    if (!status) return 'Sem status';
+    const cleaned = status.toLowerCase().replace(/_/g, ' ');
+    return cleaned.replace(/\b\w/g, (char) => char.toUpperCase());
   };
 
   const formatDate = (dateString) => {
@@ -451,12 +468,15 @@ const Operacional = () => {
   const isAdmin = user?.perfil_nome === 'Administrador';
 
   const getTrocaBg = (status) => {
-    switch (status) {
+    switch (status?.toLowerCase()) {
       case 'pendente':
         return theme.palette.warning.light;
       case 'aprovado':
+      case 'aprovada':
         return theme.palette.success.light;
       case 'rejeitado':
+      case 'rejeitada':
+      case 'cancelado':
         return theme.palette.error.light;
       default:
         return theme.palette.background.paper;
@@ -1175,10 +1195,10 @@ const Operacional = () => {
                   onChange={(e) => setTrocasFilters(prev => ({ ...prev, status: e.target.value }))}
                   label="Status"
                 >
-                  <MenuItem key="todos-status-troca" value="">Todos</MenuItem>
-                  <MenuItem key="pendente-troca" value="pendente">Pendente</MenuItem>
-                  <MenuItem key="aprovado-troca" value="aprovado">Aprovado</MenuItem>
-                  <MenuItem key="rejeitado-troca" value="rejeitado">Rejeitado</MenuItem>
+                  <MenuItem value="">Todos</MenuItem>
+                  <MenuItem value="pendente">Pendente</MenuItem>
+                  <MenuItem value="aprovada">Aprovada</MenuItem>
+                  <MenuItem value="rejeitada">Rejeitada</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -1196,7 +1216,6 @@ const Operacional = () => {
         </CardContent>
       </Card>
 
-      {/* Lista de trocas */}
       <Paper>
         <List>
           {trocasLoading ? (
@@ -1213,89 +1232,106 @@ const Operacional = () => {
               />
             </ListItem>
           ) : (
-            trocas.map((troca, index) => (
-              <React.Fragment key={troca.id}>
-              <ListItem sx={{ bg: getTrocaBg(troca.status), borderRadius: 1, mb: 1 }}>
-                <ListItemAvatar>
-                  <Avatar>
-                    <SwapIcon />
-                    </Avatar>
-                  </ListItemAvatar>
-                  <ListItemText
-                    primary={
-                      <Box display="flex" alignItems="center" gap={1}>
-                        <Typography variant="subtitle1">
-                          {troca.solicitante_nome} → {troca.destinatario_nome}
-                        </Typography>
-                        <Chip
-                          label={troca.status}
-                          color={getStatusColor(troca.status)}
-                          size="small"
-                        />
-                      </Box>
-                    }
-                    secondary={
-                      <Box>
-                        <Typography variant="body2" color="textSecondary">
-                          Data Original: {formatDate(troca.data_original)} ({troca.turno_original})
-                        </Typography>
-                        <Typography variant="body2" color="textSecondary">
-                          Data Troca: {formatDate(troca.data_troca)} ({troca.turno_troca})
-                        </Typography>
-                        {troca.motivo && (
-                          <Typography variant="body2" color="textSecondary">
-                            Motivo: {troca.motivo}
+            trocas.map((troca, index) => {
+              const statusLabel = formatTrocaStatusLabel(troca.status);
+              const isPending = troca.status?.toLowerCase() === 'pendente';
+              const isApproved = troca.status?.toLowerCase() === 'aprovada';
+              const solicitante = troca.solicitante_nome || 'Solicitante';
+              const substituto = troca.substituto_nome || 'Substituto';
+              return (
+                <React.Fragment key={troca.id}>
+                  <ListItem sx={{ bg: getTrocaBg(troca.status), borderRadius: 1, mb: 1 }}>
+                    <ListItemAvatar>
+                      <Avatar>
+                        <SwapIcon />
+                      </Avatar>
+                    </ListItemAvatar>
+                    <ListItemText
+                      primary={
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <Typography variant="subtitle1">
+                            {solicitante} → {substituto}
                           </Typography>
-                        )}
+                          <Chip
+                            label={statusLabel}
+                            color={getStatusColor(troca.status)}
+                            size="small"
+                          />
+                        </Box>
+                      }
+                      secondary={
+                        <Box display="flex" flexDirection="column" gap={0.5}>
+                          <Typography variant="body2" color="textSecondary">
+                            Data solicitada: {formatDate(troca.data_solicitacao)}
+                          </Typography>
+                          <Typography variant="body2" color="textSecondary">
+                            Serviço original: {formatDate(troca.data_servico_original)}
+                          </Typography>
+                          <Typography variant="body2" color="textSecondary">
+                            Serviço trocado: {formatDate(troca.data_servico_troca)}
+                          </Typography>
+                          {troca.data_servico_compensacao && (
+                            <Typography variant="body2" color="textSecondary">
+                              Compensação: {formatDate(troca.data_servico_compensacao)}
+                            </Typography>
+                          )}
+                          {troca.motivo && (
+                            <Typography variant="body2" color="textSecondary">
+                              Motivo: {troca.motivo}
+                            </Typography>
+                          )}
+                          {isApproved && troca.aprovado_por_nome && (
+                            <Typography variant="caption" color="textSecondary">
+                              Aprovado por {troca.aprovado_por_nome} em {formatDateTime(troca.data_aprovacao)}
+                            </Typography>
+                          )}
+                          <Typography variant="caption" color="textSecondary">
+                            Solicitação efetuada em {formatDateTime(troca.data_solicitacao)}
+                          </Typography>
+                        </Box>
+                      }
+                    />
+                    <Box display="flex" gap={1}>
+                      {isPending && user?.id === troca.usuario_substituto_id && (
+                        <>
+                          <Button
+                            size="small"
+                            variant="contained"
+                            color="success"
+                            onClick={() => handleTrocaAction(troca, 'accept')}
+                            disabled={trocaActionLoading === troca.id}
+                          >
+                            Aceitar
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="error"
+                            onClick={() => handleTrocaAction(troca, 'reject')}
+                            disabled={trocaActionLoading === troca.id}
+                          >
+                            Rejeitar
+                          </Button>
+                        </>
+                      )}
+                      {isPending && isAdmin && (
                         <Typography variant="caption" color="textSecondary">
-                          Solicitado em: {formatDateTime(troca.created_at)}
+                          Aguarda confirmação do substituto
                         </Typography>
-                      </Box>
-                    }
-                  />
-                  <Box display="flex" gap={1}>
-                    {troca.status === 'pendente' && user?.id === troca.usuario_substituto_id && (
-                      <>
-                        <Button
-                          size="small"
-                          variant="contained"
-                          color="success"
-                          onClick={() => handleTrocaAction(troca, 'accept')}
-                          disabled={trocaActionLoading === troca.id}
-                        >
-                          Aceitar
-                        </Button>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          color="error"
-                          onClick={() => handleTrocaAction(troca, 'reject')}
-                          disabled={trocaActionLoading === troca.id}
-                        >
-                          Rejeitar
-                        </Button>
-                      </>
-                    )}
-                    {troca.status === 'pendente' && isAdmin && (
-                      <Typography variant="caption" color="textSecondary">
-                        Aguarda confirmação do substituto
-                      </Typography>
-                    )}
-                    <IconButton
-                      onClick={() => handleOpenDialog('troca', troca)}
-                    >
-                      <ViewIcon />
-                    </IconButton>
-                  </Box>
-                </ListItem>
-                {index < trocas.length - 1 && <Divider />}
-              </React.Fragment>
-            ))
+                      )}
+                      <IconButton onClick={() => handleOpenDialog('troca', troca)}>
+                        <ViewIcon />
+                      </IconButton>
+                    </Box>
+                  </ListItem>
+                  {index < trocas.length - 1 && <Divider />}
+                </React.Fragment>
+              );
+            })
           )}
         </List>
       </Paper>
 
-      {/* Paginação */}
       {trocasPagination.pages > 1 && (
         <Box display="flex" justifyContent="center" mt={3}>
           <Pagination
