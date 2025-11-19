@@ -46,16 +46,6 @@ const createTemplatesTables = async () => {
       )
     `);
 
-    // Adicionar coluna imagem_url nos itens, se não existir
-    await query(`
-      DO $$
-      BEGIN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='template_itens' AND column_name='imagem_url') THEN
-          ALTER TABLE template_itens ADD COLUMN imagem_url VARCHAR(500);
-        END IF;
-      END $$;
-    `);
-
     // Adicionar coluna template_id na tabela checklist_viaturas (nome correto da tabela)
     await query(`
       DO $$

@@ -36,8 +36,7 @@ import {
   AccordionDetails,
   Snackbar,
   Divider,
-  Tooltip,
-  LinearProgress
+  Tooltip
 } from '@mui/material';
 import {
   PhotoCamera,
@@ -66,9 +65,6 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [step, setStep] = useState(1); // 1: Dados iniciais, 2: Checklist, 3: Autenticação
-  // Paginação por categoria no Passo 2 e visualização de imagens
-  const [categoryIndex, setCategoryIndex] = useState(0);
-  const [imagePreview, setImagePreview] = useState({ open: false, url: '', title: '' });
   
   // Estados para dados iniciais
   const [viaturas, setViaturas] = useState(viaturasProps || []);
@@ -81,7 +77,6 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   const [templates, setTemplates] = useState([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [dataHora] = useState(new Date());
-  const [templateModelo, setTemplateModelo] = useState(null);
   
   // Itens do checklist
   const [itensChecklist, setItensChecklist] = useState([
@@ -188,7 +183,6 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   useEffect(() => {
     if (!open) {
       setStep(1);
-      setCategoryIndex(0);
       setKmInicial('');
       setCombustivelPercentual('');
       setAlaServico('');
@@ -213,16 +207,8 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         { nome_item: 'Extintor', categoria: 'Segurança', status: 'ok', observacoes: '', fotos: [], ordem: 9 },
         { nome_item: 'Triângulo', categoria: 'Segurança', status: 'ok', observacoes: '', fotos: [], ordem: 10 },
       ]);
-      setImagePreview({ open: false, url: '', title: '' });
     }
   }, [open]);
-
-  // Ao entrar no Passo 2, iniciar na primeira categoria
-  useEffect(() => {
-    if (step === 2) {
-      setCategoryIndex(0);
-    }
-  }, [step]);
 
   const loadViaturas = async () => {
     try {
@@ -327,8 +313,6 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
     setItensChecklist(newItens);
   };
 
-  // Removido: upload/remoção de fotos de categoria (gerenciadas no Template)
-
   const handleNext = async () => {
     if (step === 1) {
       if (!selectedViatura || !kmInicial || !combustivelPercentual || !alaServico || !tipoChecklist || !selectedTemplate) {
@@ -340,7 +324,6 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
       try {
         setLoading(true);
         const templateCompleto = await templateService.getTemplate(selectedTemplate.id);
-        setTemplateModelo(templateCompleto);
         
         // Converter categorias e itens do template para o formato do checklist
         const itensDoTemplate = [];
@@ -358,8 +341,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
                   fotos: [],
                   ordem: ordem++,
                   obrigatorio: item.obrigatorio || false,
-                  tipo: item.tipo || 'checkbox',
-                  modelo_imagem_url: item.imagem_url || ''
+                  tipo: item.tipo || 'checkbox'
                 });
               });
             }
@@ -593,24 +575,11 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         <TextField
           fullWidth
           label="KM Inicial"
-          type="text"
+          type="number"
           value={kmInicial}
-          onChange={(e) => {
-            // Permitir apenas números
-            const value = e.target.value.replace(/[^0-9]/g, '');
-            setKmInicial(value);
-          }}
+          onChange={(e) => setKmInicial(e.target.value)}
           required
-          inputProps={{ 
-            inputMode: 'numeric',
-            pattern: '[0-9]*'
-          }}
-          onKeyPress={(e) => {
-            // Bloquear caracteres não numéricos
-            if (!/[0-9]/.test(e.key) && e.key !== 'Backspace' && e.key !== 'Delete' && e.key !== 'Tab' && e.key !== 'Enter') {
-              e.preventDefault();
-            }
-          }}
+          inputProps={{ min: 0 }}
         />
       </Grid>
       
@@ -618,31 +587,18 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         <TextField
           fullWidth
           label="Combustível (%)"
-          type="text"
+          type="number"
           value={combustivelPercentual}
           onChange={(e) => {
-            // Permitir apenas números
-            const numericValue = e.target.value.replace(/[^0-9]/g, '');
-            const value = parseInt(numericValue);
-            
-            // Manter as regras existentes do campo de combustível
-            if (!isNaN(value) && value >= 0 && value <= 100) {
-              setCombustivelPercentual(numericValue);
-            } else if (numericValue === '') {
+            const value = parseInt(e.target.value);
+            if (value >= 0 && value <= 100) {
+              setCombustivelPercentual(e.target.value);
+            } else if (e.target.value === '') {
               setCombustivelPercentual('');
             }
           }}
           required
-          inputProps={{ 
-            inputMode: 'numeric',
-            pattern: '[0-9]*'
-          }}
-          onKeyPress={(e) => {
-            // Bloquear caracteres não numéricos
-            if (!/[0-9]/.test(e.key) && e.key !== 'Backspace' && e.key !== 'Delete' && e.key !== 'Tab' && e.key !== 'Enter') {
-              e.preventDefault();
-            }
-          }}
+          inputProps={{ min: 0, max: 100 }}
           helperText="Digite um valor entre 0 e 100"
         />
       </Grid>
@@ -866,7 +822,6 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
       </Box>
     );
   };
-  };
 
   const renderObservacoes = () => (
     <Box>
@@ -1011,23 +966,6 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
           </Button>
         )}
       </DialogActions>
-
-      {/* Visualização de imagem ampliada */}
-      <Dialog open={imagePreview.open} onClose={() => setImagePreview({ open: false, url: '', title: '' })} maxWidth="md" fullWidth>
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Typography variant="subtitle1">{imagePreview.title}</Typography>
-            <IconButton onClick={() => setImagePreview({ open: false, url: '', title: '' })}><CloseIcon /></IconButton>
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          {imagePreview.url && (
-            <Box sx={{ width: '100%', textAlign: 'center' }}>
-              <img src={imagePreview.url} alt={imagePreview.title} style={{ maxWidth: '100%', borderRadius: 8 }} />
-            </Box>
-          )}
-        </DialogContent>
-      </Dialog>
     </Dialog>
   );
 };

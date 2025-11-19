@@ -153,7 +153,7 @@ export const frotaService = {
   getViaturaById: (id) => api.get(`/frota/viaturas/${id}`),
   createViatura: (viaturaData) => api.post('/frota/viaturas', viaturaData),
   updateViatura: (id, viaturaData) => api.put(`/frota/viaturas/${id}`, viaturaData),
-  deleteViatura: (id, data) => api.delete(`/frota/viaturas/${id}`, { data }),
+  deleteViatura: (id) => api.delete(`/frota/viaturas/${id}`),
   
   
   // Manutenções
@@ -211,8 +211,8 @@ export const operacionalService = {
   // Trocas de serviço
   getTrocas: (params) => api.get('/operacional/trocas', { params }),
   solicitarTroca: (trocaData) => api.post('/operacional/trocas', trocaData),
-  responderTroca: (id, payload) => api.put(`/operacional/trocas/${id}/responder`, payload),
-  confirmarTroca: (id, payload) => api.post(`/operacional/trocas/${id}/confirmar`, payload),
+  responderTroca: (id, resposta, observacoes) => 
+    api.put(`/operacional/trocas/${id}/responder`, { resposta, observacoes }),
   
   // Serviços extra
   getServicosExtra: (params) => api.get('/operacional/extras', { params }),
@@ -222,11 +222,6 @@ export const operacionalService = {
   
   // Usuários
   getUsuarios: (params) => api.get('/usuarios', { params }),
-
-  // Alas operacionais
-  getAlasConfiguracao: () => api.get('/operacional/alas/usuarios'),
-  salvarAlas: (payload) => api.put('/operacional/alas/usuarios', payload),
-  gerarEscalasAutomaticas: (payload) => api.post('/operacional/alas/escalas', payload),
   
   // Relatórios
   getRelatorioOperacional: () => api.get('/operacional/relatorio'),
