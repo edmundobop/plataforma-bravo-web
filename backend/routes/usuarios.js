@@ -1174,11 +1174,17 @@ router.get('/:id', async (req, res) => {
     params.push(id);
 
     const result = await query(queryText, params);
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Usuário não encontrado'
+      });
+    }
 
     res.json({
       success: true,
       message: 'Usuário atualizado com sucesso',
-      data: result.rows[0]
+      usuario: result.rows[0]
     });
   } catch (error) {
     // Log detalhado para facilitar diagnóstico em produção/desenvolvimento
@@ -1193,14 +1199,14 @@ router.get('/:id', async (req, res) => {
     console.error('💥 [Usuarios] Erro ao atualizar usuário:', dbInfo, '\nStack:', error?.stack);
     res.status(500).json({
       success: false,
-      error: 'Erro interno do servidor' 
+      error: 'Erro interno do servidor'
     });
   }
 });
 
 /**
- * @route DELETE /api/usuarios/:id
- * @desc Remover usuário (soft delete)
+ * @route POST /api/usuarios
+ * @desc Criar novo usuário
  * @access Administrador, Comandante
  */
 router.post('/', 
@@ -1507,10 +1513,10 @@ router.get('/data/unidades', authorizeRoles(['Administrador', 'Comandante']), as
 
     res.json({
       success: true,
-      message: 'Usuário removido com sucesso'
+      unidades: unidadesResult.rows
     });
   } catch (error) {
-    console.error('Erro ao remover usuário:', error);
+    console.error('Erro ao listar unidades:', error);
     res.status(500).json({ 
       success: false,
       error: 'Erro interno do servidor' 
@@ -1518,4 +1524,287 @@ router.get('/data/unidades', authorizeRoles(['Administrador', 'Comandante']), as
   }
 });
 
+/**
+ * @route GET /api/usuarios/data/setores
+ * @desc Listar setores disponíveis
+ * @access Administrador, Comandante
+ */
+router.get('/data/setores', authorizeRoles(['Administrador', 'Comandante']), async (req, res) => {
+  try {
+    // ATENÇÃO: Lista fixa de setores do Corpo de Bombeiros/organização.
+    // Não buscar do banco de dados. Mantida aqui por padronização e
+    // previsibilidade no frontend. Se precisar atualizar, altere esta
+    // lista e mantenha sincronizada com o endpoint /config/setores.
+    const setores = [
+      'Comando',
+      'Subcomando', 
+      'SAAD',
+      'SOP',
+      'SEC',
+      'SAT',
+      'PROEBOM',
+      'Operacional',
+    ];
+
+    res.json({
+      success: true,
+      setores: setores
+    });
+  } catch (error) {
+    console.error('Erro ao listar setores:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro interno do servidor' 
+    });
+  }
+});
+
+/**
+ * @route GET /api/usuarios/data/funcoes
+ * @desc Listar funções disponíveis
+ * @access Administrador, Comandante
+ */
+router.get('/data/funcoes', authorizeRoles(['Administrador', 'Comandante']), async (req, res) => {
+  try {
+    // ATENÇÃO: Lista fixa de funções/papéis na organização.
+    // Não dinamizar via banco. Se alterar, sincronize com o frontend
+    // e documentação para evitar inconsistência.
+    const funcoes = [
+      'Comandante',
+      'Subcomandante',
+      'Administrativo',
+      'Chefe de Seção',
+      'Auxiliar de Seção',
+      'Adjunto',
+      'Socorrista/Combatente',
+      'Motorista',
+      'Motorista D',
+      'Vistoriador',
+      'Instrutor',
+      'CIPA',
+      'Síndico Dengueiro',
+    ];
+
+    res.json({
+      success: true,
+      funcoes: funcoes
+    });
+  } catch (error) {
+    console.error('Erro ao listar funções:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro interno do servidor' 
+    });
+  }
+});
+
+// =====================================================
+// ROTAS DE PERFIL DO USUÁRIO
+// =====================================================
+
+/**
+ * @route GET /api/usuarios/me/perfil
+ * @desc Obter perfil do usuário logado
+ * @access Usuário autenticado
+ */
+router.get('/me/perfil', async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Seleções dinâmicas para colunas opcionais em perfis
+    const selectPerfilNivel = (await columnExists('perfis', 'nivel_hierarquia')) ? 'p.nivel_hierarquia' : 'NULL as nivel_hierarquia';
+
+    const usuarioResult = await query(`
+      SELECT 
+        u.id,
+        u.nome_completo as nome,
+        u.nome_guerra,
+        u.email,
+        u.matricula,
+        u.telefone,
+        u.tipo,
+        u.posto_graduacao,
+        u.ativo,
+        u.created_at as data_criacao,
+        u.ultimo_login,
+        
+        -- Informações do perfil
+        p.nome as perfil_nome,
+        ${selectPerfilNivel},
+        p.permissoes,
+        
+        -- Informações da unidade
+        un.nome as unidade_nome,
+        un.sigla as unidade_sigla,
+        
+        -- Informações do setor
+        s.nome as setor_nome,
+        s.sigla as setor_sigla,
+        
+        -- Informações da função
+        f.nome as funcao_nome
+        
+      FROM usuarios u
+      LEFT JOIN perfis p ON u.perfil_id = p.id
+      LEFT JOIN unidades un ON u.unidade_id = un.id
+      LEFT JOIN setores s ON u.setor_id = s.id
+      LEFT JOIN funcoes f ON u.funcao_id = f.id
+      WHERE u.id = $1
+    `, [userId]);
+
+    if (usuarioResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const usuarioRaw = usuarioResult.rows[0];
+    
+    // Mapear campos para compatibilidade com frontend
+    const usuario = {
+      ...usuarioRaw,
+      papel: usuarioRaw.perfil_nome, // Mapear perfil para papel
+      setor: usuarioRaw.setor_nome,  // Mapear setor_nome para setor
+      unidade: usuarioRaw.unidade_nome, // Adicionar unidade
+      funcao: usuarioRaw.funcao_nome // Adicionar função
+    };
+
+    // Estatísticas de atividade do usuário
+    const estatisticas = await query(`
+      SELECT 
+        (SELECT COUNT(*) FROM movimentacoes_estoque WHERE usuario_id = $1) as total_movimentacoes,
+        (SELECT COUNT(*) FROM emprestimos WHERE usuario_solicitante_id = $1) as total_emprestimos,
+        (SELECT COUNT(*) FROM servicos_extra WHERE usuario_id = $1 AND status = 'aprovado') as total_extras,
+        (SELECT COUNT(*) FROM notificacoes WHERE usuario_id = $1 AND lida = false) as notificacoes_nao_lidas
+    `, [userId]);
+
+    usuario.estatisticas = estatisticas.rows[0];
+
+    res.json(usuario);
+  } catch (error) {
+    console.error('Erro ao buscar perfil:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+/**
+ * @route GET /api/usuarios/config/setores
+ * @desc Listar setores disponíveis para configuração
+ * @access Usuário autenticado
+ */
+router.get('/config/setores', async (req, res) => {
+  try {
+    // ATENÇÃO: Endpoint de configuração usando a MESMA lista fixa de setores.
+    // Mantido acessível para qualquer usuário autenticado (sem restrição de
+    // perfil), diferente do /data/setores que exige Administrador/Comandante.
+    // A duplicidade existe por controle de acesso e formato de resposta.
+    const setores = [
+      'Comando',
+      'Subcomando', 
+      'SAAD',
+      'SOP',
+      'SEC',
+      'SAT',
+      'PROEBOM',
+      'Operacional',
+    ];
+
+    res.json({ setores });
+  } catch (error) {
+    console.error('Erro ao listar setores:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+/**
+ * @route GET /api/usuarios/config/unidades
+ * @desc Listar unidades disponíveis para configuração, filtradas por acesso do usuário
+ * @access Usuário autenticado
+ *
+ * RELACIONAMENTOS/REGRA:
+ * - Tabela `usuarios` possui coluna de lotação (pode ser `unidade_id`, `unidade_lotacao_id` ou `unidades_id`).
+ * - Tabela `membros_unidade` relaciona acessos adicionais: (`usuario_id`, `unidade_id`, `ativo`, `role_unidade`).
+ * - Tabela `unidades` lista todas as unidades e seu status (`ativa`).
+ *
+ * SELEÇÃO:
+ * - Administrador: vê todas as unidades ativas.
+ * - Demais perfis: vê a unidade de lotação e as unidades onde é membro ativo.
+ *
+ * IMPLEMENTAÇÃO:
+ * - Reutiliza o middleware centralizado de tenant `getUserUnits` que monta
+ *   `req.user.unidades_disponiveis` com base nas regras acima.
+ */
+router.get('/config/unidades', getUserUnits, async (req, res) => {
+  try {
+    const unidadesDisponiveis = req.user.unidades_disponiveis || [];
+
+    // Mapear para o formato esperado pelo frontend (compatibilidade)
+    const unidades = unidadesDisponiveis.map(u => ({
+      id: u.id,
+      nome: u.nome,
+      sigla: u.sigla || null,
+      // Campos mantidos por compatibilidade; não usados no dropdown atual
+      endereco: u.endereco || null,
+      telefone: u.telefone || null,
+      ativo: true,
+      // Metadados úteis para UI (seleção, badges, etc.)
+      role_unidade: u.role_unidade || null,
+      eh_lotacao: !!u.eh_lotacao,
+    }));
+
+    res.json({
+      success: true,
+      unidades,
+    });
+  } catch (error) {
+    console.error('Erro ao listar unidades (filtradas por usuário):', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro interno do servidor' 
+    });
+  }
+});
+
+// =====================================================
+// ROTAS ADICIONAIS PARA FRONTEND
+// =====================================================
+
 module.exports = router;
+
+// =====================================================
+// DOCUMENTAÇÃO DE USO
+// =====================================================
+//
+// EXEMPLOS DE USO:
+//
+// 1. Listar todos os usuários:
+//    GET /api/usuarios
+//
+// 2. Listar apenas militares ativos:
+//    GET /api/usuarios?tipo=militar&ativo=true
+//
+// 3. Buscar usuários por nome:
+//    GET /api/usuarios?busca=João
+//
+// 4. Listar usuários de uma unidade:
+//    GET /api/usuarios?unidade_id=1
+//
+// 5. Criar novo militar:
+//    POST /api/usuarios
+//    {
+//      "nome_completo": "João Silva",
+//      "email": "joao@email.com",
+//      "tipo": "militar",
+//      "posto_graduacao": "Sargento",
+//      "matricula": "123456",
+//      "perfil_id": 5
+//    }
+//
+// 6. Criar novo civil:
+//    POST /api/usuarios
+//    {
+//      "nome_completo": "Maria Santos",
+//      "email": "maria@email.com",
+//      "tipo": "civil",
+//      "perfil_id": 5
+//    }
+//
+// =====================================================
