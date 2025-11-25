@@ -93,8 +93,8 @@ export const militaresService = {
         'Content-Type': 'application/json',
       },
     });
-    // Nova rota pública dedicada às unidades
-    return publicApi.get('/militares/unidades-publicas');
+    
+    return publicApi.get('/usuarios/config/unidades');
   },
   
   // Buscar setores disponíveis
@@ -104,7 +104,7 @@ export const militaresService = {
   getFuncoes: () => api.get('/usuarios/data/funcoes'),
   
   // Buscar postos e graduações
-  getPostosGraduacoes: () => api.get('/militares/postos-graduacoes'),
+  getPostosGraduacoes: () => api.get('/usuarios/postos-graduacoes'),
   
   // Validar CPF único
   validateCPF: (cpf, excludeId = null) => api.post('/usuarios/validate-cpf', { cpf, excludeId }),
@@ -148,35 +148,9 @@ export const militaresService = {
         'Content-Type': 'application/json',
       },
     });
-    // Normalizar payload para compatibilizar com o backend (/usuarios/solicitar-cadastro)
-    const normalizeDate = (value) => {
-      if (!value) return value;
-      // Converter dd/mm/yyyy -> yyyy-mm-dd
-      const m = String(value).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-      if (m) return `${m[3]}-${m[2]}-${m[1]}`;
-      return value; // já deve estar em yyyy-mm-dd
-    };
-
-    const {
-      identidade_militar,
-      unidade_id,
-      data_nascimento,
-      data_incorporacao,
-      ...rest
-    } = dadosMilitar;
-
-    const payload = {
-      ...rest,
-      tipo: 'militar',
-      // Backend espera 'matricula' para militares
-      matricula: identidade_militar ?? rest.matricula ?? '',
-      // Enviar unidade_id como string/numero conforme disponível
-      unidade_id: unidade_id ?? rest.unidade_id ?? null,
-      data_nascimento: normalizeDate(data_nascimento ?? rest.data_nascimento ?? ''),
-      data_incorporacao: normalizeDate(data_incorporacao ?? rest.data_incorporacao ?? ''),
-    };
-
-    return publicApi.post('/usuarios/solicitar-cadastro', payload);
+    
+    const dadosComTipo = { ...dadosMilitar, tipo: 'militar' };
+    return publicApi.post('/usuarios/solicitar-cadastro', dadosComTipo);
   },
 
   // Métodos para administração de solicitações

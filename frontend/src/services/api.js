@@ -1,9 +1,8 @@
 import axios from 'axios';
 
 // Configuração base da API
-// Em desenvolvimento, forçar uso de '/api' para aproveitar o proxy/local host
-const IS_DEV = !process.env.NODE_ENV || process.env.NODE_ENV === 'development';
-const API_BASE_URL = IS_DEV ? '/api' : (process.env.REACT_APP_API_BASE_URL || '/api');
+// Permitir configurar a API pelo ambiente e evitar dependência do proxy do dev server
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -78,8 +77,7 @@ export const authService = {
   verify: () => api.get('/auth/verify'),
   logout: () => api.post('/auth/logout'),
   changePassword: (senhaAtual, novaSenha) => 
-    // Envia payload com camelCase e snake_case para compatibilidade
-    api.put('/auth/change-password', { senhaAtual, novaSenha, senha_atual: senhaAtual, nova_senha: novaSenha }),
+    api.put('/auth/alterar-senha', { senha_atual: senhaAtual, nova_senha: novaSenha }),
 };
 
 // Serviços de usuários
@@ -122,9 +120,6 @@ export const usuariosService = {
   getSolicitacoesPendentes: (params = {}) => {
     return api.get('/usuarios/solicitacoes-pendentes', { params });
   },
-  aprovarSolicitacao: (id, data) => {
-    return api.post(`/usuarios/aprovar-cadastro/${id}`, data);
-  },
   
   getPerfis: () => {
     return api.get('/usuarios/perfis');
@@ -153,7 +148,7 @@ export const frotaService = {
   getViaturaById: (id) => api.get(`/frota/viaturas/${id}`),
   createViatura: (viaturaData) => api.post('/frota/viaturas', viaturaData),
   updateViatura: (id, viaturaData) => api.put(`/frota/viaturas/${id}`, viaturaData),
-  deleteViatura: (id) => api.delete(`/frota/viaturas/${id}`),
+  deleteViatura: (id, data) => api.delete(`/frota/viaturas/${id}`, { data }),
   
   
   // Manutenções
@@ -211,8 +206,8 @@ export const operacionalService = {
   // Trocas de serviço
   getTrocas: (params) => api.get('/operacional/trocas', { params }),
   solicitarTroca: (trocaData) => api.post('/operacional/trocas', trocaData),
-  responderTroca: (id, resposta, observacoes) => 
-    api.put(`/operacional/trocas/${id}/responder`, { resposta, observacoes }),
+  responderTroca: (id, payload) => api.put(`/operacional/trocas/${id}/responder`, payload),
+  confirmarTroca: (id, payload) => api.post(`/operacional/trocas/${id}/confirmar`, payload),
   
   // Serviços extra
   getServicosExtra: (params) => api.get('/operacional/extras', { params }),
@@ -222,6 +217,11 @@ export const operacionalService = {
   
   // Usuários
   getUsuarios: (params) => api.get('/usuarios', { params }),
+
+  // Alas operacionais
+  getAlasConfiguracao: () => api.get('/operacional/alas/usuarios'),
+  salvarAlas: (payload) => api.put('/operacional/alas/usuarios', payload),
+  gerarEscalasAutomaticas: (payload) => api.post('/operacional/alas/escalas', payload),
   
   // Relatórios
   getRelatorioOperacional: () => api.get('/operacional/relatorio'),
