@@ -194,6 +194,7 @@ const CadastroUsuarios = () => {
     // unidade_lotacao_id: unidade de lotação oficial do usuário (coluna usuarios.unidade_lotacao_id)
     unidade_lotacao_id: '',
     setor: '',
+    categoria_cnh: '',
     funcoes: [],
     perfil_id: 5, // Operador por padrão
     
@@ -488,6 +489,7 @@ const CadastroUsuarios = () => {
         tipo: tipoDetectado,
         posto_graduacao: postoResolvido,
         nome_guerra: userData.nome_guerra || '',
+        categoria_cnh: userData.categoria_cnh || '',
         matricula: userData.matricula || '',
         data_incorporacao: toInputDate(userData.data_incorporacao) || '',
         antiguidade: userData.antiguidade ?? '',
@@ -1082,6 +1084,23 @@ const CadastroUsuarios = () => {
                     {setores.map((nome) => (
                       <MenuItem key={nome} value={nome}>
                         {nome}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Categoria CNH</InputLabel>
+                  <Select
+                    value={formData.categoria_cnh}
+                    onChange={(e) => handleInputChange('categoria_cnh', e.target.value)}
+                    label="Categoria CNH"
+                  >
+                    {['A','B','AB','C','D','E'].map((cat) => (
+                      <MenuItem key={cat} value={cat}>
+                        {cat}
                       </MenuItem>
                     ))}
                   </Select>

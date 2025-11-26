@@ -487,7 +487,7 @@ router.get('/', authorizeRoles(['Administrador', 'Comandante', 'Chefe']), checkT
     const funcaoJoin = hasUsuariosFuncaoId ? 'LEFT JOIN funcoes f ON u.funcao_id = f.id' : '';
     const selectFuncaoNome = hasUsuariosFuncaoId ? 'f.nome as funcao_nome' : 'NULL as funcao_nome';
 
-    const selectFuncoes = hasUsuariosFuncoes ? "COALESCE(u.funcoes, '[]'::jsonb) as funcoes" : 'NULL as funcoes';
+    const selectFuncoes = hasUsuariosFuncoes ? 'COALESCE(u.funcoes, \'[]\'::jsonb) as funcoes' : 'NULL as funcoes';
 
     const usuariosQuery = `
       SELECT 
@@ -606,7 +606,7 @@ router.get('/solicitacoes-pendentes', authorizeRoles(['Administrador', 'Comandan
     const { page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;
     
-  const result = await query(`
+    const result = await query(`
       SELECT 
         id,
         nome_completo,
@@ -698,7 +698,7 @@ router.post('/aprovar-cadastro/:id', authorizeRoles(['Administrador', 'Comandant
       try {
         const pr = await query('SELECT id FROM perfis WHERE LOWER(nome) = LOWER($1) LIMIT 1', [role]);
         perfilIdToSet = pr.rows[0]?.id;
-      } catch (_) {}
+      } catch (_) { console.warn('resolve perfil_id from role failed'); }
     }
     if (isAprovado && perfilIdToSet) {
       fields.push(`perfil_id = $${pIdx}`);
@@ -713,7 +713,7 @@ router.post('/aprovar-cadastro/:id', authorizeRoles(['Administrador', 'Comandant
       try {
         const sr = await query('SELECT id FROM setores WHERE LOWER(nome) = LOWER($1) LIMIT 1', [setor]);
         setorIdToSet = sr.rows[0]?.id;
-      } catch (_) {}
+      } catch (_) { console.warn('resolve setor_id from nome failed'); }
     }
     if (isAprovado && hasSetorId && setorIdToSet) {
       fields.push(`setor_id = $${pIdx}`);
@@ -727,7 +727,7 @@ router.post('/aprovar-cadastro/:id', authorizeRoles(['Administrador', 'Comandant
       try {
         const fr = await query('SELECT id FROM funcoes WHERE LOWER(nome) = LOWER($1) LIMIT 1', [funcao]);
         funcaoIdToSet = fr.rows[0]?.id;
-      } catch (_) {}
+      } catch (_) { console.warn('resolve funcao_id from nome failed'); }
     }
     if (isAprovado && hasFuncaoId && funcaoIdToSet) {
       fields.push(`funcao_id = $${pIdx}`);
@@ -744,7 +744,7 @@ router.post('/aprovar-cadastro/:id', authorizeRoles(['Administrador', 'Comandant
       pIdx++;
     }
     if (hasAprovadoEm) {
-      fields.push(`aprovado_em = CURRENT_TIMESTAMP`);
+      fields.push('aprovado_em = CURRENT_TIMESTAMP');
     }
     if (hasObservacoesAprovacao && observacoes) {
       fields.push(`observacoes_aprovacao = $${pIdx}`);
@@ -796,7 +796,7 @@ router.post('/aprovar-cadastro/:id', authorizeRoles(['Administrador', 'Comandant
         aprovado: isAprovado,
         message,
       });
-    } catch (_) {}
+    } catch (_) { console.warn('socket notify failed'); }
 
     return res.json({
       success: true,
@@ -830,7 +830,10 @@ router.get('/:id', async (req, res) => {
 
     // Include funcoes (JSONB) if column exists
     const hasUsuariosFuncoes = await columnExists('usuarios', 'funcoes');
-    const funcoesCampo = hasUsuariosFuncoes ? "COALESCE(u.funcoes, '[]'::jsonb) as funcoes" : 'NULL as funcoes';
+    const funcoesCampo = hasUsuariosFuncoes ? 'COALESCE(u.funcoes, \'[]\'::jsonb) as funcoes' : 'NULL as funcoes';
+
+    const hasCategoriaCnh = await columnExists('usuarios', 'categoria_cnh');
+    const selectCategoriaCnh = hasCategoriaCnh ? 'u.categoria_cnh' : 'NULL as categoria_cnh';
 
     // Seleções dinâmicas para colunas opcionais em perfis
     const hasPerfilDescricao = await columnExists('perfis', 'descricao');
@@ -842,14 +845,20 @@ router.get('/:id', async (req, res) => {
     const hasUsuariosSetorText = await columnExists('usuarios', 'setor');
     const hasSetorSigla = await columnExists('setores', 'sigla');
     const setorJoin = hasUsuariosSetorId ? 'LEFT JOIN setores s ON u.setor_id = s.id' : '';
-    // Preferir texto direto em u.setor quando existir (e não vazio), mesmo que haja setor_id
-    const selectSetorNome = hasUsuariosSetorId
-      ? (hasUsuariosSetorText
-          ? "COALESCE(NULLIF(u.setor, ''), s.nome) as setor_nome"
-          : "s.nome as setor_nome")
-      : (hasUsuariosSetorText
-          ? "u.setor as setor_nome"
-          : "NULL as setor_nome");
+    let selectSetorNome;
+    if (hasUsuariosSetorId) {
+      if (hasUsuariosSetorText) {
+        selectSetorNome = 'COALESCE(NULLIF(u.setor, \'\'), s.nome) as setor_nome';
+      } else {
+        selectSetorNome = 's.nome as setor_nome';
+      }
+    } else {
+      if (hasUsuariosSetorText) {
+        selectSetorNome = 'u.setor as setor_nome';
+      } else {
+        selectSetorNome = 'NULL as setor_nome';
+      }
+    }
     const selectSetorSigla = (hasUsuariosSetorId && hasSetorSigla) ? 's.sigla as setor_sigla' : 'NULL as setor_sigla';
 
     const hasUsuariosFuncaoId = await columnExists('usuarios', 'funcao_id');
@@ -879,6 +888,7 @@ router.get('/:id', async (req, res) => {
         u.updated_at,
         u.perfil_id,
         u.${lotacaoCol} as unidade_lotacao_id,
+        ${selectCategoriaCnh},
         
         -- Informações do perfil
         p.nome as perfil_nome,
@@ -895,6 +905,8 @@ router.get('/:id', async (req, res) => {
         
         -- Informações da função
         ${selectFuncaoNome}
+        ,
+        ${funcoesCampo}
         
       FROM usuarios u
       LEFT JOIN perfis p ON u.perfil_id = p.id
@@ -961,7 +973,7 @@ router.get('/:id', async (req, res) => {
  * @desc Atualizar usuário existente
  * @access Usuário (próprio) ou Administrador/Comandante
  */
-  router.put('/:id', async (req, res) => {
+router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
@@ -984,23 +996,24 @@ router.get('/:id', async (req, res) => {
     // Campos permitidos (base), substituindo a coluna de lotação detectada
     const allowedFields = isAdmin
       ? [
-          'nome_completo',
-          'email',
-          'cpf',
-          'telefone',
-          'tipo',
-          'posto_graduacao',
-          'nome_guerra',
-          'matricula',
-          'data_nascimento',
-          'data_incorporacao',
-          'antiguidade',
-          lotacaoCol,
-          'setor_id',
-          'setor',
-          'perfil_id',
-          'ativo'
-        ]
+        'nome_completo',
+        'email',
+        'cpf',
+        'telefone',
+        'tipo',
+        'posto_graduacao',
+        'nome_guerra',
+        'categoria_cnh',
+        'matricula',
+        'data_nascimento',
+        'data_incorporacao',
+        'antiguidade',
+        lotacaoCol,
+        'setor_id',
+        'setor',
+        'perfil_id',
+        'ativo'
+      ]
       : ['nome_completo', 'email', 'telefone'];
 
     // Normalizações leves no corpo (tipos e datas) para evitar erros de tipo
@@ -1161,7 +1174,7 @@ router.get('/:id', async (req, res) => {
     // Atualizar updated_at apenas se a coluna existir
     const hasUpdatedAt = await columnExists('usuarios', 'updated_at');
     if (hasUpdatedAt) {
-      updates.push(`updated_at = NOW()`);
+      updates.push('updated_at = NOW()');
     }
 
     const queryText = `
@@ -1245,9 +1258,9 @@ router.post('/',
         nome_completo, email, cpf, telefone, tipo,
         posto_graduacao, nome_guerra, matricula,
         data_nascimento, data_incorporacao,
-        unidade_id, unidade_lotacao_id, unidades_ids, setor_id, funcao_id, perfil_id,
+        unidade_id, unidade_lotacao_id, _unidades_ids, setor_id, funcao_id, perfil_id,
         antiguidade,
-        senha = 'senha123' // Senha padrão
+        senha = 'senha123'
       } = req.body;
 
       // Verificar se email já existe
@@ -1283,6 +1296,7 @@ router.post('/',
       const hasCreatedBy = await columnExists('usuarios', 'created_by');
       const hasSenhaHash = await columnExists('usuarios', 'senha_hash');
       const hasSenhaCol = await columnExists('usuarios', 'senha');
+      const hasCategoriaCnh = await columnExists('usuarios', 'categoria_cnh');
 
       let fields = [];
       let placeholders = [];
@@ -1295,6 +1309,10 @@ router.post('/',
         idx++;
       };
 
+      const hasNomeCol = await columnExists('usuarios', 'nome');
+      if (hasNomeCol) {
+        add('nome', nome_completo);
+      }
       add('nome_completo', nome_completo);
       add('email', email);
       add('cpf', cpf);
@@ -1333,20 +1351,19 @@ router.post('/',
         created_by: hasCreatedBy,
         senha_hash: hasSenhaHash,
         senha: hasSenhaCol,
+        nome: hasNomeCol,
+        categoria_cnh: hasCategoriaCnh,
       };
-      // Persistir setor de forma compatível com o schema atual
+      // Persistir setor priorizando texto quando disponível
+      if (hasSetorText) {
+        const setorNome = typeof req.body.setor === 'string' ? req.body.setor.trim() : '';
+        if (setorNome) add('setor', setorNome);
+      }
       if (hasSetorId) {
-        // Se houver apenas nome do setor, tentar usar diretamente o texto
-        // ou manter null quando setor_id não for fornecido.
         const setorIdValue = (setor_id !== undefined && setor_id !== '')
           ? parseInt(String(setor_id), 10)
           : null;
-        add('setor_id', !isNaN(setorIdValue) && setorIdValue > 0 ? setorIdValue : null);
-      } else if (hasSetorText) {
-        const setorNome = typeof req.body.setor === 'string' ? req.body.setor.trim() : '';
-        if (setorNome) {
-          add('setor', setorNome);
-        }
+        if (!isNaN(setorIdValue) && setorIdValue > 0) add('setor_id', setorIdValue);
       }
       if (hasFuncaoId) {
         add('funcao_id', funcao_id || null);
@@ -1356,6 +1373,10 @@ router.post('/',
           ? req.body.funcoes
           : (req.body.funcoes ? [req.body.funcoes] : []);
         add('funcoes', JSON.stringify(funcoesArray), '::jsonb');
+      }
+      if (hasCategoriaCnh) {
+        const cnh = typeof req.body.categoria_cnh === 'string' ? req.body.categoria_cnh.trim() : '';
+        if (cnh) add('categoria_cnh', cnh);
       }
       add('perfil_id', perfil_id);
       // Armazenar senha na coluna disponível
@@ -1769,42 +1790,4 @@ router.get('/config/unidades', getUserUnits, async (req, res) => {
 
 module.exports = router;
 
-// =====================================================
-// DOCUMENTAÇÃO DE USO
-// =====================================================
-//
-// EXEMPLOS DE USO:
-//
-// 1. Listar todos os usuários:
-//    GET /api/usuarios
-//
-// 2. Listar apenas militares ativos:
-//    GET /api/usuarios?tipo=militar&ativo=true
-//
-// 3. Buscar usuários por nome:
-//    GET /api/usuarios?busca=João
-//
-// 4. Listar usuários de uma unidade:
-//    GET /api/usuarios?unidade_id=1
-//
-// 5. Criar novo militar:
-//    POST /api/usuarios
-//    {
-//      "nome_completo": "João Silva",
-//      "email": "joao@email.com",
-//      "tipo": "militar",
-//      "posto_graduacao": "Sargento",
-//      "matricula": "123456",
-//      "perfil_id": 5
-//    }
-//
-// 6. Criar novo civil:
-//    POST /api/usuarios
-//    {
-//      "nome_completo": "Maria Santos",
-//      "email": "maria@email.com",
-//      "tipo": "civil",
-//      "perfil_id": 5
-//    }
-//
 // =====================================================

@@ -409,6 +409,24 @@ const Operacional = () => {
     }
   };
 
+  const handleAprovarRejeitar = async (tipo, id, novoStatus) => {
+    try {
+      setLoading(true);
+      setError('');
+      if (tipo === 'extra') {
+        const aprovado = String(novoStatus).toLowerCase() === 'aprovado';
+        await operacionalService.aprovarExtra(id, aprovado, '');
+        setSuccessMessage(aprovado ? 'Serviço extra aprovado.' : 'Serviço extra rejeitado.');
+        await loadExtras();
+      }
+    } catch (err) {
+      console.error('Erro ao atualizar status:', err);
+      setError(err.response?.data?.error || 'Erro ao atualizar status');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleTrocaAction = async (troca, action) => {
     try {
       setTrocaActionLoading(troca.id);
