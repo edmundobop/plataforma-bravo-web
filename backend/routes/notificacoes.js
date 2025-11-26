@@ -335,16 +335,16 @@ router.get('/estatisticas', async (req, res) => {
         COUNT(CASE WHEN modulo = 'operacional' THEN 1 END) as operacional
       FROM notificacoes 
       WHERE usuario_id = $1
-    `, [parseInt(req.user.id)]);
+    `, [req.user.id]);
 
     // Notificações recentes (últimos 7 dias)
     const recentesResult = await query(`
-      SELECT DATE(created_at) as data, COUNT(*) as quantidade
+      SELECT created_at::date as data, COUNT(*) as quantidade
       FROM notificacoes 
-      WHERE usuario_id = $1 AND created_at >= CURRENT_DATE - INTERVAL '7 days'
-      GROUP BY DATE(created_at)
+      WHERE usuario_id = $1 AND created_at >= NOW() - INTERVAL '7 days'
+      GROUP BY created_at::date
       ORDER BY data DESC
-    `, [parseInt(req.user.id)]);
+    `, [req.user.id]);
 
     res.json({
       resumo: result.rows[0],
@@ -376,10 +376,10 @@ router.get('/stats/resumo', async (req, res) => {
 
     // Notificações recentes (últimos 7 dias)
     const recentesResult = await query(`
-      SELECT DATE(created_at) as data, COUNT(*) as quantidade
+      SELECT created_at::date as data, COUNT(*) as quantidade
       FROM notificacoes 
-      WHERE usuario_id = $1 AND created_at >= CURRENT_DATE - INTERVAL '7 days'
-      GROUP BY DATE(created_at)
+      WHERE usuario_id = $1 AND created_at >= NOW() - INTERVAL '7 days'
+      GROUP BY created_at::date
       ORDER BY data DESC
     `, [req.user.id]);
 

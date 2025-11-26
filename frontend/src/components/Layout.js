@@ -189,6 +189,7 @@ const Layout = () => {
               icon: <SecurityIcon />,
               path: '/usuarios/perfis',
               roles: ['Administrador'],
+              show: false,
             },
             {
               text: 'Histórico Funcional',
@@ -469,7 +470,9 @@ const Layout = () => {
                         {subItem.hasSubmenu && subItem.text === 'Usuários' && (
                           <Collapse in={usuariosExpanded} timeout="auto" unmountOnExit>
                             <List component="div" disablePadding>
-                              {subItem.submenu.map((subSubItem) => (
+                              {subItem.submenu
+                                .filter((s) => s.show !== false)
+                                .map((subSubItem) => (
                                 <ListItem key={subSubItem.text} disablePadding>
                                   <ListItemButton
                                     onClick={() => {

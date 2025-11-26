@@ -206,8 +206,8 @@ export const operacionalService = {
   // Trocas de serviço
   getTrocas: (params) => api.get('/operacional/trocas', { params }),
   solicitarTroca: (trocaData) => api.post('/operacional/trocas', trocaData),
-  responderTroca: (id, resposta, observacoes) => 
-    api.put(`/operacional/trocas/${id}/responder`, { resposta, observacoes }),
+  responderTroca: (id, payload) => api.put(`/operacional/trocas/${id}/responder`, payload),
+  confirmarTroca: (id, payload) => api.post(`/operacional/trocas/${id}/confirmar`, payload),
   
   // Serviços extra
   getServicosExtra: (params) => api.get('/operacional/extras', { params }),
@@ -217,6 +217,11 @@ export const operacionalService = {
   
   // Usuários
   getUsuarios: (params) => api.get('/usuarios', { params }),
+
+  // Alas operacionais
+  getAlasConfiguracao: () => api.get('/operacional/alas/usuarios'),
+  salvarAlas: (payload) => api.put('/operacional/alas/usuarios', payload),
+  gerarEscalasAutomaticas: (payload) => api.post('/operacional/alas/escalas', payload),
   
   // Relatórios
   getRelatorioOperacional: () => api.get('/operacional/relatorio'),

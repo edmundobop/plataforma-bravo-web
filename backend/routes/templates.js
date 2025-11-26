@@ -71,8 +71,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
             'nome', i.nome,
             'tipo', i.tipo,
             'obrigatorio', i.obrigatorio,
-            'ordem', i.ordem,
-            'imagem_url', i.imagem_url
+            'ordem', i.ordem
           ) ORDER BY i.ordem
         ) as itens
       FROM template_categorias c
@@ -142,9 +141,9 @@ router.post('/', authenticateToken, checkTemplatePermissions, async (req, res) =
             const item = categoria.itens[j];
             
             await client.query(`
-              INSERT INTO template_itens (categoria_id, nome, tipo, obrigatorio, ordem, imagem_url)
-              VALUES ($1, $2, $3, $4, $5, $6)
-            `, [categoriaId, item.nome, item.tipo || 'checkbox', item.obrigatorio || false, j + 1, item.imagem_url || null]);
+              INSERT INTO template_itens (categoria_id, nome, tipo, obrigatorio, ordem)
+              VALUES ($1, $2, $3, $4, $5)
+            `, [categoriaId, item.nome, item.tipo || 'checkbox', item.obrigatorio || false, j + 1]);
           }
         }
       }
@@ -233,9 +232,9 @@ router.put('/:id', authenticateToken, checkTemplatePermissions, async (req, res)
             const item = categoria.itens[j];
             
             await client.query(`
-              INSERT INTO template_itens (categoria_id, nome, tipo, obrigatorio, ordem, imagem_url)
-              VALUES ($1, $2, $3, $4, $5, $6)
-            `, [categoriaId, item.nome, item.tipo || 'checkbox', item.obrigatorio || false, j + 1, item.imagem_url || null]);
+              INSERT INTO template_itens (categoria_id, nome, tipo, obrigatorio, ordem)
+              VALUES ($1, $2, $3, $4, $5)
+            `, [categoriaId, item.nome, item.tipo || 'checkbox', item.obrigatorio || false, j + 1]);
           }
         }
       }

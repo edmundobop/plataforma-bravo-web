@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Grid,
@@ -69,9 +70,10 @@ import { useNotifications } from '../contexts/NotificationContext';
 import { notificacoesService, usuariosService } from '../services/api';
 
 const Notificacoes = () => {
+  const navigate = useNavigate();
   const theme = useTheme();
   const { user, hasRole } = useAuth();
-  const { markAsRead, markAllAsRead } = useNotifications();
+  const { markAsRead, markAllAsRead, markAsUnread } = useNotifications();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -118,11 +120,17 @@ const Notificacoes = () => {
 
   useEffect(() => {
     loadNotificacoes();
-    loadEstatisticas();
     if (hasRole(['Administrador', 'Chefe'])) {
       loadUsuarios();
     }
   }, []);
+
+  // Carregar estatísticas apenas quando a aba correspondente estiver ativa
+  useEffect(() => {
+    if (activeTab === 1) {
+      loadEstatisticas();
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     loadNotificacoes();
@@ -266,7 +274,9 @@ const Notificacoes = () => {
       await notificacoesService.markAsRead(notificationId);
       markAsRead(notificationId);
       loadNotificacoes();
-      loadEstatisticas();
+      if (activeTab === 1) {
+        loadEstatisticas();
+      }
     } catch (err) {
       console.error('Erro ao marcar como lida:', err);
       setError('Erro ao marcar notificação como lida');
@@ -276,8 +286,13 @@ const Notificacoes = () => {
   const handleMarkAsUnread = async (notificationId) => {
     try {
       await notificacoesService.markAsUnread(notificationId);
+      // Atualiza imediatamente o contexto para refletir no badge
+      await markAsUnread(notificationId);
+      // Recarrega listas/estatísticas para manter consistência visual
       loadNotificacoes();
-      loadEstatisticas();
+      if (activeTab === 1) {
+        loadEstatisticas();
+      }
       setSuccess('Notificação marcada como não lida');
     } catch (err) {
       console.error('Erro ao marcar como não lida:', err);
@@ -290,7 +305,9 @@ const Notificacoes = () => {
       await notificacoesService.markAllAsRead();
       markAllAsRead();
       loadNotificacoes();
-      loadEstatisticas();
+      if (activeTab === 1) {
+        loadEstatisticas();
+      }
       setSuccess('Todas as notificações foram marcadas como lidas');
     } catch (err) {
       console.error('Erro ao marcar todas como lidas:', err);
@@ -302,7 +319,9 @@ const Notificacoes = () => {
     try {
       await notificacoesService.deleteNotificacao(notificationId);
       loadNotificacoes();
-      loadEstatisticas();
+      if (activeTab === 1) {
+        loadEstatisticas();
+      }
       setSuccess('Notificação excluída com sucesso');
     } catch (err) {
       console.error('Erro ao excluir notificação:', err);
@@ -314,7 +333,9 @@ const Notificacoes = () => {
     try {
       await notificacoesService.deleteReadNotificacoes();
       loadNotificacoes();
-      loadEstatisticas();
+      if (activeTab === 1) {
+        loadEstatisticas();
+      }
       setSuccess('Notificações lidas excluídas com sucesso');
     } catch (err) {
       console.error('Erro ao excluir notificações lidas:', err);
@@ -507,6 +528,8 @@ const Notificacoes = () => {
                     </Badge>
                   </ListItemAvatar>
                   <ListItemText
+                    primaryTypographyProps={{ component: 'span' }}
+                    secondaryTypographyProps={{ component: 'span' }}
                     primary={
                       <Box display="flex" alignItems="center" gap={1}>
                         <Typography
@@ -884,6 +907,40 @@ const Notificacoes = () => {
               <Typography variant="body1" paragraph>
                 {selectedNotification.mensagem}
               </Typography>
+              {(() => {
+                const moduleRoutes = {
+                  usuarios: '/gestao-pessoas/aprovacao-cadastros',
+                  frota: '/frota',
+                  almoxarifado: '/almoxarifado',
+                  emprestimos: '/emprestimos',
+                  operacional: '/operacional',
+                  dashboard: '/dashboard',
+                };
+                const moduloRaw = (selectedNotification.modulo || '').toLowerCase();
+                const modulo = ['usuarios','usuario','gestao-pessoas'].find(m => m === moduloRaw) ? 'usuarios' : moduloRaw;
+                const titulo = (selectedNotification.titulo || '').toLowerCase();
+                const mensagem = (selectedNotification.mensagem || '').toLowerCase();
+                const fallbackToUsuarios = [titulo, mensagem].some(t => (
+                  t.includes('solicitação de cadastro') ||
+                  t.includes('solicitacao de cadastro') ||
+                  t.includes('cadastro') ||
+                  t.includes('aprovação') ||
+                  t.includes('aprovacao')
+                ));
+                const route = moduleRoutes[modulo] || (fallbackToUsuarios ? moduleRoutes['usuarios'] : null);
+                return route ? (
+                  <Box sx={{ mb: 2 }}>
+                    <Button
+                      variant="contained"
+                      onClick={() => navigate(route)}
+                    >
+                      {modulo === 'usuarios' || fallbackToUsuarios
+                        ? 'Ir para aprovação de cadastros'
+                        : `Ir para módulo ${modulo}`}
+                    </Button>
+                  </Box>
+                ) : null;
+              })()}
               <Box display="flex" gap={1} mb={2}>
                 <Chip
                   label={selectedNotification.tipo}

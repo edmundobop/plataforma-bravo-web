@@ -290,6 +290,15 @@ export const validateUsuarioForm = (formData) => {
     isValid = false;
   }
 
+  // Validação opcional de antiguidade (inteiro >= 1)
+  if (formData.antiguidade !== undefined && formData.antiguidade !== '') {
+    const n = parseInt(String(formData.antiguidade), 10);
+    if (isNaN(n) || n < 1) {
+      errors.antiguidade = 'Antiguidade deve ser um número inteiro maior ou igual a 1';
+      isValid = false;
+    }
+  }
+
   return { isValid, errors };
 };
 
@@ -307,6 +316,31 @@ export const sanitizeUsuarioData = (formData) => {
   
   if (sanitized.telefone) {
     sanitized.telefone = sanitized.telefone.replace(/\D/g, '');
+  }
+  // Normaliza email (trim + lower-case) para consistência e comparação
+  if (sanitized.email) {
+    sanitized.email = String(sanitized.email).trim().toLowerCase();
+  }
+
+  // Normaliza datas para formato ISO (YYYY-MM-DD)
+  const normalizeDate = (value) => {
+    if (!value) return value;
+    const s = String(value);
+    const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); // dd/mm/yyyy
+    if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+    // ISO ou semelhante -> limitar aos 10 primeiros caracteres
+    return s.includes('-') ? s.substring(0, 10) : s;
+  };
+  if (sanitized.data_nascimento) {
+    sanitized.data_nascimento = normalizeDate(sanitized.data_nascimento);
+  }
+  if (sanitized.data_incorporacao) {
+    sanitized.data_incorporacao = normalizeDate(sanitized.data_incorporacao);
+  }
+
+  // Normaliza campos booleanos
+  if (sanitized.ativo !== undefined) {
+    sanitized.ativo = !!sanitized.ativo;
   }
   
   // Remove campos vazios ou nulos
@@ -334,6 +368,28 @@ export const sanitizeUsuarioData = (formData) => {
     delete sanitized.matricula;
     delete sanitized.data_incorporacao;
   }
+
+  // Normaliza antiguidade para inteiro, remove se inválido
+  if (sanitized.antiguidade !== undefined && sanitized.antiguidade !== '') {
+    const n = parseInt(String(sanitized.antiguidade), 10);
+    if (!isNaN(n) && n >= 1) {
+      sanitized.antiguidade = n;
+    } else {
+      delete sanitized.antiguidade;
+    }
+  }
+
+  // Converter IDs numéricos para inteiros válidos
+  ['perfil_id', 'setor_id', 'unidade_id', 'unidade_lotacao_id'].forEach((field) => {
+    if (sanitized[field] !== undefined) {
+      const v = parseInt(String(sanitized[field]), 10);
+      if (!isNaN(v) && v > 0) {
+        sanitized[field] = v;
+      } else {
+        delete sanitized[field];
+      }
+    }
+  });
   
   return sanitized;
 };

@@ -111,7 +111,25 @@ router.post('/solicitar-cadastro',
     body('data_nascimento').isDate().withMessage('Data de nascimento deve ser válida'),
   ],
   async (req, res) => {
+    // Contexto de debug para rastrear colunas detectadas e campos usados
+    let debugCtx = { detectedCols: {}, fieldsUsed: [] };
     try {
+      // Debug inicial do payload recebido (sanitizado)
+      const debugBody = {
+        nome_completo: req.body?.nome_completo,
+        email: req.body?.email,
+        cpf: String(req.body?.cpf || '').replace(/\D/g, '').slice(-4), // últimos 4 dígitos
+        telefone: req.body?.telefone,
+        tipo: req.body?.tipo,
+        posto_graduacao: req.body?.posto_graduacao,
+        nome_guerra: req.body?.nome_guerra,
+        matricula: req.body?.matricula || req.body?.identidade_militar,
+        data_nascimento: req.body?.data_nascimento,
+        data_incorporacao: req.body?.data_incorporacao,
+        unidade_id: req.body?.unidade_id,
+      };
+      console.log('📥 [Usuarios] /solicitar-cadastro - payload recebido:', debugBody);
+
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         return res.status(400).json({ 
@@ -164,34 +182,99 @@ router.post('/solicitar-cadastro',
         }
       }
       
+      // Validar existência da unidade (se enviada) para evitar erro de FK
+      let unidadeIdResolved = unidade_id ?? null;
+      if (unidadeIdResolved) {
+        try {
+          const unitExists = await query('SELECT id FROM unidades WHERE id = $1', [unidadeIdResolved]);
+          if (unitExists.rows.length === 0) {
+            console.warn(`⚠️ [Usuarios] Unidade informada (${unidadeIdResolved}) não existe. Prosseguindo com unidade_id = NULL.`);
+            unidadeIdResolved = null;
+          }
+        } catch (unitErr) {
+          console.warn('⚠️ [Usuarios] Falha ao verificar unidade_id:', { unidadeIdResolved, message: unitErr?.message });
+          unidadeIdResolved = null;
+        }
+      }
+
       // Inserir solicitação de cadastro (usuário inativo até aprovação)
-      const result = await query(`
-        INSERT INTO usuarios (
+      // Ajuste: usar coluna 'senha_hash' (compatível com schema atual) e permitir data_incorporacao opcional
+      // Compatibilizar com esquemas antigos que têm coluna 'nome' obrigatória
+      let result;
+      const hasNomeCol = await columnExists('usuarios', 'nome');
+      if (hasNomeCol) {
+        // Inserir com 'nome' e 'nome_completo'
+        result = await query(`
+          INSERT INTO usuarios (
+            nome, nome_completo, email, cpf, telefone, tipo,
+            posto_graduacao, nome_guerra, matricula,
+            data_nascimento, data_incorporacao, unidade_id,
+            perfil_id, ativo, senha_hash
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, false, $14)
+          RETURNING id, nome_completo, email, tipo
+        `, [
+          nome_completo, nome_completo, email, cpf, telefone, tipo,
+          posto_graduacao, nome_guerra, matricula,
+          data_nascimento, data_incorporacao || null, unidadeIdResolved,
+          5, // Perfil Operador por padrão
+          '$2b$10$defaulthashedpassword' // Senha temporária (hash dummy)
+        ]);
+      } else {
+        // Esquema novo: apenas 'nome_completo'
+        result = await query(`
+          INSERT INTO usuarios (
+            nome_completo, email, cpf, telefone, tipo,
+            posto_graduacao, nome_guerra, matricula,
+            data_nascimento, data_incorporacao, unidade_id,
+            perfil_id, ativo, senha_hash
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, false, $13)
+          RETURNING id, nome_completo, email, tipo
+        `, [
           nome_completo, email, cpf, telefone, tipo,
           posto_graduacao, nome_guerra, matricula,
-          data_nascimento, data_incorporacao, unidade_id,
-          perfil_id, ativo, senha
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, false, $13)
-        RETURNING id, nome_completo, email, tipo
-      `, [
-        nome_completo, email, cpf, telefone, tipo,
-        posto_graduacao, nome_guerra, matricula,
-        data_nascimento, data_incorporacao, unidade_id,
-        5, // Perfil Operador por padrão
-        '$2b$10$defaulthashedpassword' // Senha temporária
-      ]);
+          data_nascimento, data_incorporacao || null, unidadeIdResolved,
+          5, // Perfil Operador por padrão
+          '$2b$10$defaulthashedpassword' // Senha temporária (hash dummy)
+        ]);
+      }
 
-      // Criar notificação para administradores
-      await query(`
-        INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo)
-        SELECT u.id, $1, $2, 'info', 'sistema'
-        FROM usuarios u 
+      // Opcional: marcar status_solicitacao = 'pendente' se coluna existir
+      try {
+        const hasStatusCol = await columnExists('usuarios', 'status_solicitacao');
+        if (hasStatusCol) {
+          await query('UPDATE usuarios SET status_solicitacao = $1 WHERE id = $2', ['pendente', result.rows[0].id]);
+        }
+      } catch (statusErr) {
+        console.warn('⚠️ [Usuarios] Não foi possível atualizar status_solicitacao:', statusErr?.message);
+      }
+
+      // Criar notificação para administradores (uma por usuário) e emitir via Socket.io
+      const adminsResult = await query(`
+        SELECT u.id
+        FROM usuarios u
         JOIN perfis p ON u.perfil_id = p.id
         WHERE p.nome = 'Administrador' AND u.ativo = true
-      `, [
-        'Nova Solicitação de Cadastro',
-        `${nome_completo} (${tipo}) solicitou cadastro no sistema.`
-      ]);
+      `);
+
+      for (const admin of adminsResult.rows) {
+        const notifResult = await query(`
+          INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          RETURNING *
+        `, [
+          admin.id,
+          'Nova Solicitação de Cadastro',
+          `${nome_completo} (${tipo}) solicitou cadastro no sistema.`,
+          'info',
+          'usuarios',
+          result.rows[0].id
+        ]);
+
+        // Emitir evento em tempo real (se disponível)
+        if (req.io) {
+          req.io.to(`user_${admin.id}`).emit('nova_notificacao', notifResult.rows[0]);
+        }
+      }
 
       res.status(201).json({
         success: true,
@@ -200,15 +283,48 @@ router.post('/solicitar-cadastro',
       });
 
     } catch (error) {
-      console.error('Erro ao solicitar cadastro:', error);
+      // Log detalhado do erro para facilitar diagnóstico
+      const dbInfo = {
+        code: error?.code,
+        detail: error?.detail,
+        constraint: error?.constraint,
+        table: error?.table,
+        column: error?.column,
+        message: error?.message,
+      };
+      console.error('💥 [Usuarios] Erro ao solicitar cadastro:', dbInfo, '\nStack:', error?.stack);
       res.status(500).json({
         success: false,
-        message: 'Erro interno do servidor'
+        message: 'Erro interno do servidor',
+        details: process.env.NODE_ENV !== 'production' ? dbInfo : undefined
       });
     }
   }
 );
 
+// =====================================================
+// ROTAS PÚBLICAS (SEM AUTENTICAÇÃO)
+// =====================================================
+
+/**
+ * @route GET /api/usuarios/postos-graduacoes
+ * @desc Lista padronizada de postos/graduações (público)
+ * @access Public
+ */
+router.get('/postos-graduacoes', async (req, res) => {
+  try {
+    const lista = [
+      'Coronel', 'Tenente-Coronel', 'Major',
+      'Capitão', '1º Tenente', '2º Tenente', 'Aspirante a Oficial',
+      'Subtenente', '1º Sargento', '2º Sargento', '3º Sargento',
+      'Cabo', 'Soldado'
+    ];
+    res.json({ success: true, data: lista });
+  } catch (error) {
+    console.error('Erro ao listar postos/graduações:', error);
+    res.status(500).json({ success: false, error: 'Erro interno do servidor' });
+  }
+});
 // =====================================================
 // ROTAS PÚBLICAS (SEM AUTENTICAÇÃO)
 // =====================================================
@@ -371,7 +487,7 @@ router.get('/', authorizeRoles(['Administrador', 'Comandante', 'Chefe']), checkT
     const funcaoJoin = hasUsuariosFuncaoId ? 'LEFT JOIN funcoes f ON u.funcao_id = f.id' : '';
     const selectFuncaoNome = hasUsuariosFuncaoId ? 'f.nome as funcao_nome' : 'NULL as funcao_nome';
 
-    const selectFuncoes = hasUsuariosFuncoes ? "COALESCE(u.funcoes, '[]'::jsonb) as funcoes" : 'NULL as funcoes';
+    const selectFuncoes = hasUsuariosFuncoes ? 'COALESCE(u.funcoes, \'[]\'::jsonb) as funcoes' : 'NULL as funcoes';
 
     const usuariosQuery = `
       SELECT 
@@ -386,6 +502,7 @@ router.get('/', authorizeRoles(['Administrador', 'Comandante', 'Chefe']), checkT
         u.posto_graduacao,
         u.nome_guerra,
         u.matricula,
+        u.antiguidade,
         u.ativo,
         u.ultimo_login,
         u.created_at,
@@ -501,6 +618,7 @@ router.get('/solicitacoes-pendentes', authorizeRoles(['Administrador', 'Comandan
         cpf,
         telefone,
         data_nascimento,
+        data_incorporacao,
         unidade_id,
         created_at,
         status_solicitacao
@@ -536,6 +654,162 @@ router.get('/solicitacoes-pendentes', authorizeRoles(['Administrador', 'Comandan
 });
 
 /**
+ * @route POST /api/usuarios/aprovar-cadastro/:id
+ * @desc Aprovar ou rejeitar uma solicitação de cadastro
+ * @access Administrador, Comandante
+ */
+router.post('/aprovar-cadastro/:id', authorizeRoles(['Administrador', 'Comandante']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { aprovado, acao, observacoes, perfil_id, role, setor_id, setor, funcao_id, funcao, funcoes } = req.body || {};
+
+    // Verificar existência do usuário
+    const usuarioSel = await query('SELECT * FROM usuarios WHERE id = $1', [id]);
+    if (usuarioSel.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Usuário não encontrado' });
+    }
+    const usuario = usuarioSel.rows[0];
+
+    // Verificar se existe coluna status_solicitacao
+    const hasStatusSolicitacao = await columnExists('usuarios', 'status_solicitacao');
+    const hasAprovadoPor = await columnExists('usuarios', 'aprovado_por');
+    const hasAprovadoEm = await columnExists('usuarios', 'aprovado_em');
+    const hasObservacoesAprovacao = await columnExists('usuarios', 'observacoes_aprovacao');
+    const hasSetorId = await columnExists('usuarios', 'setor_id');
+    const hasFuncoes = await columnExists('usuarios', 'funcoes');
+
+    const isAprovado = (aprovado === true) || (acao === 'aprovar');
+    const novoStatus = isAprovado ? 'aprovado' : 'rejeitado';
+    const ativo = !!isAprovado;
+
+    // Montar query dinâmica de update
+    const fields = ['ativo = $1'];
+    const params = [ativo];
+    let pIdx = 2;
+
+    if (hasStatusSolicitacao) {
+      fields.push(`status_solicitacao = $${pIdx}`);
+      params.push(novoStatus);
+      pIdx++;
+    }
+    // Resolver perfil_id a partir de 'role' se necessário
+    let perfilIdToSet = perfil_id;
+    if (isAprovado && !perfilIdToSet && role) {
+      try {
+        const pr = await query('SELECT id FROM perfis WHERE LOWER(nome) = LOWER($1) LIMIT 1', [role]);
+        perfilIdToSet = pr.rows[0]?.id;
+      } catch (_) { console.warn('resolve perfil_id from role failed'); }
+    }
+    if (isAprovado && perfilIdToSet) {
+      fields.push(`perfil_id = $${pIdx}`);
+      params.push(perfilIdToSet);
+      pIdx++;
+    }
+
+    // Resolver setor_id a partir de 'setor' se necessário
+    let setorIdToSet = setor_id;
+    const hasFuncaoId = await columnExists('usuarios', 'funcao_id');
+    if (isAprovado && hasSetorId && !setorIdToSet && setor) {
+      try {
+        const sr = await query('SELECT id FROM setores WHERE LOWER(nome) = LOWER($1) LIMIT 1', [setor]);
+        setorIdToSet = sr.rows[0]?.id;
+      } catch (_) { console.warn('resolve setor_id from nome failed'); }
+    }
+    if (isAprovado && hasSetorId && setorIdToSet) {
+      fields.push(`setor_id = $${pIdx}`);
+      params.push(setorIdToSet);
+      pIdx++;
+    }
+
+    // Resolver funcao_id ou funcoes jsonb
+    let funcaoIdToSet = funcao_id;
+    if (isAprovado && hasFuncaoId && !funcaoIdToSet && funcao) {
+      try {
+        const fr = await query('SELECT id FROM funcoes WHERE LOWER(nome) = LOWER($1) LIMIT 1', [funcao]);
+        funcaoIdToSet = fr.rows[0]?.id;
+      } catch (_) { console.warn('resolve funcao_id from nome failed'); }
+    }
+    if (isAprovado && hasFuncaoId && funcaoIdToSet) {
+      fields.push(`funcao_id = $${pIdx}`);
+      params.push(funcaoIdToSet);
+      pIdx++;
+    } else if (isAprovado && hasFuncoes && funcoes) {
+      fields.push(`funcoes = $${pIdx}::jsonb`);
+      params.push(Array.isArray(funcoes) ? JSON.stringify(funcoes) : funcoes);
+      pIdx++;
+    }
+    if (hasAprovadoPor) {
+      fields.push(`aprovado_por = $${pIdx}`);
+      params.push(req.user.id);
+      pIdx++;
+    }
+    if (hasAprovadoEm) {
+      fields.push('aprovado_em = CURRENT_TIMESTAMP');
+    }
+    if (hasObservacoesAprovacao && observacoes) {
+      fields.push(`observacoes_aprovacao = $${pIdx}`);
+      params.push(observacoes);
+      pIdx++;
+    }
+
+    params.push(id);
+    const updateSql = `UPDATE usuarios SET ${fields.join(', ')} WHERE id = $${pIdx} RETURNING *`;
+    const upd = await query(updateSql, params);
+    const usuarioAtualizado = upd.rows[0];
+
+    // Se aprovado, garantir relação em membros_unidade com unidade de lotação
+    if (isAprovado) {
+      try {
+        const lotacaoCol = (await getUsuariosUnidadeColumn()) || 'unidade_id';
+        const unidadeLotacaoId = usuarioAtualizado[lotacaoCol] || usuario[lotacaoCol];
+        const hasMembrosUnidade = await tableExists('membros_unidade');
+        if (hasMembrosUnidade && unidadeLotacaoId) {
+          const existeRel = await query(
+            'SELECT id FROM membros_unidade WHERE usuario_id = $1 AND unidade_id = $2',
+            [usuarioAtualizado.id, unidadeLotacaoId]
+          );
+          if (existeRel.rows.length === 0) {
+            await query(
+              'INSERT INTO membros_unidade (usuario_id, unidade_id, ativo) VALUES ($1, $2, true)',
+              [usuarioAtualizado.id, unidadeLotacaoId]
+            );
+          } else {
+            await query(
+              'UPDATE membros_unidade SET ativo = true WHERE usuario_id = $1 AND unidade_id = $2',
+              [usuarioAtualizado.id, unidadeLotacaoId]
+            );
+          }
+        }
+      } catch (e) {
+        // Não bloquear aprovação por falhas em relação de membros; logar somente
+        console.error('Aviso: falha ao ajustar membros_unidade na aprovação:', e?.message);
+      }
+    }
+
+    // Notificar via socket se disponível
+    try {
+      const message = isAprovado
+        ? `Cadastro de ${usuarioAtualizado.nome_completo || usuario.nome_completo} aprovado.`
+        : `Cadastro de ${usuarioAtualizado.nome_completo || usuario.nome_completo} rejeitado.`;
+      req.io?.emit('usuarios:aprovacao', {
+        usuario_id: usuarioAtualizado.id,
+        aprovado: isAprovado,
+        message,
+      });
+    } catch (_) { console.warn('socket notify failed'); }
+
+    return res.json({
+      success: true,
+      message: isAprovado ? 'Solicitação aprovada com sucesso' : 'Solicitação rejeitada com sucesso',
+      data: usuarioAtualizado,
+    });
+  } catch (error) {
+    console.error('Erro ao aprovar/rejeitar solicitação:', error);
+    return res.status(500).json({ success: false, error: 'Erro interno do servidor' });
+  }
+});
+
+/**
  * @route GET /api/usuarios/:id
  * @desc Buscar usuário por ID
  * @access Próprio usuário, Administrador, Comandante, Chefe
@@ -556,7 +830,10 @@ router.get('/:id', async (req, res) => {
 
     // Include funcoes (JSONB) if column exists
     const hasUsuariosFuncoes = await columnExists('usuarios', 'funcoes');
-    const funcoesCampo = hasUsuariosFuncoes ? "COALESCE(u.funcoes, '[]'::jsonb) as funcoes" : 'NULL as funcoes';
+    const funcoesCampo = hasUsuariosFuncoes ? 'COALESCE(u.funcoes, \'[]\'::jsonb) as funcoes' : 'NULL as funcoes';
+
+    const hasCategoriaCnh = await columnExists('usuarios', 'categoria_cnh');
+    const selectCategoriaCnh = hasCategoriaCnh ? 'u.categoria_cnh' : 'NULL as categoria_cnh';
 
     // Seleções dinâmicas para colunas opcionais em perfis
     const hasPerfilDescricao = await columnExists('perfis', 'descricao');
@@ -565,9 +842,23 @@ router.get('/:id', async (req, res) => {
 
     // Detecção dinâmica de setor/funcao
     const hasUsuariosSetorId = await columnExists('usuarios', 'setor_id');
+    const hasUsuariosSetorText = await columnExists('usuarios', 'setor');
     const hasSetorSigla = await columnExists('setores', 'sigla');
     const setorJoin = hasUsuariosSetorId ? 'LEFT JOIN setores s ON u.setor_id = s.id' : '';
-    const selectSetorNome = hasUsuariosSetorId ? 's.nome as setor_nome' : 'u.setor as setor_nome';
+    let selectSetorNome;
+    if (hasUsuariosSetorId) {
+      if (hasUsuariosSetorText) {
+        selectSetorNome = 'COALESCE(NULLIF(u.setor, \'\'), s.nome) as setor_nome';
+      } else {
+        selectSetorNome = 's.nome as setor_nome';
+      }
+    } else {
+      if (hasUsuariosSetorText) {
+        selectSetorNome = 'u.setor as setor_nome';
+      } else {
+        selectSetorNome = 'NULL as setor_nome';
+      }
+    }
     const selectSetorSigla = (hasUsuariosSetorId && hasSetorSigla) ? 's.sigla as setor_sigla' : 'NULL as setor_sigla';
 
     const hasUsuariosFuncaoId = await columnExists('usuarios', 'funcao_id');
@@ -588,6 +879,7 @@ router.get('/:id', async (req, res) => {
         u.posto_graduacao,
         u.nome_guerra,
         u.matricula,
+        u.antiguidade,
         u.data_nascimento,
         u.data_incorporacao,
         u.ativo,
@@ -596,6 +888,7 @@ router.get('/:id', async (req, res) => {
         u.updated_at,
         u.perfil_id,
         u.${lotacaoCol} as unidade_lotacao_id,
+        ${selectCategoriaCnh},
         
         -- Informações do perfil
         p.nome as perfil_nome,
@@ -612,6 +905,8 @@ router.get('/:id', async (req, res) => {
         
         -- Informações da função
         ${selectFuncaoNome}
+        ,
+        ${funcoesCampo}
         
       FROM usuarios u
       LEFT JOIN perfis p ON u.perfil_id = p.id
@@ -694,25 +989,73 @@ router.put('/:id', async (req, res) => {
       });
     }
 
-    // Campos permitidos (base)
+    // Detecta dinamicamente a coluna de lotação para compatibilidade
+    // Comentário: a tabela pode ter `unidade_id`, `unidade_lotacao_id` ou `unidades_id`.
+    const lotacaoCol = await getUsuariosUnidadeColumn() || 'unidade_id';
+
+    // Campos permitidos (base), substituindo a coluna de lotação detectada
     const allowedFields = isAdmin
       ? [
-          'nome_completo',
-          'email',
-          'cpf',
-          'telefone',
-          'tipo',
-          'posto_graduacao',
-          'nome_guerra',
-          'matricula',
-          'data_nascimento',
-          'data_incorporacao',
-          'unidade_id',
-          'setor_id',
-          'perfil_id',
-          'ativo'
-        ]
+        'nome_completo',
+        'email',
+        'cpf',
+        'telefone',
+        'tipo',
+        'posto_graduacao',
+        'nome_guerra',
+        'categoria_cnh',
+        'matricula',
+        'data_nascimento',
+        'data_incorporacao',
+        'antiguidade',
+        lotacaoCol,
+        'setor_id',
+        'setor',
+        'perfil_id',
+        'ativo'
+      ]
       : ['nome_completo', 'email', 'telefone'];
+
+    // Normalizações leves no corpo (tipos e datas) para evitar erros de tipo
+    // Comentário: conversões defensivas antes de montar o SQL.
+    const normalizeDate = (value) => {
+      if (!value) return value;
+      const s = String(value);
+      const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); // dd/mm/yyyy
+      if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+      return s.includes('-') ? s.substring(0, 10) : s; // yyyy-mm-dd
+    };
+    if (req.body.data_nascimento) req.body.data_nascimento = normalizeDate(req.body.data_nascimento);
+    if (req.body.data_incorporacao) req.body.data_incorporacao = normalizeDate(req.body.data_incorporacao);
+    if (req.body.ativo !== undefined) req.body.ativo = !!req.body.ativo;
+
+    // Mapear unidade de lotação do payload para a coluna correta
+    if (req.body.unidade_lotacao_id && req.body[lotacaoCol] === undefined) {
+      req.body[lotacaoCol] = req.body.unidade_lotacao_id;
+    } else if (req.body.unidade_id && req.body[lotacaoCol] === undefined) {
+      req.body[lotacaoCol] = req.body.unidade_id;
+    }
+
+    // Sanitize: converter strings vazias em null para evitar erros de tipo no banco
+    const numericFields = new Set(['perfil_id', 'setor_id', 'antiguidade', lotacaoCol]);
+    const dateFields = new Set(['data_nascimento', 'data_incorporacao']);
+    for (const key of Object.keys(req.body)) {
+      if (req.body[key] === '') {
+        if (numericFields.has(key) || dateFields.has(key)) {
+          req.body[key] = null;
+        }
+      }
+    }
+
+    // Converter IDs numéricos para inteiros
+    ['perfil_id', 'setor_id', lotacaoCol, 'antiguidade'].forEach((field) => {
+      if (req.body[field] !== undefined && req.body[field] !== null && req.body[field] !== '') {
+        const v = parseInt(String(req.body[field]), 10);
+        if (!isNaN(v) && v > 0) {
+          req.body[field] = v;
+        }
+      }
+    });
 
     const updates = [];
     const params = [];
@@ -729,6 +1072,84 @@ router.put('/:id', async (req, res) => {
           params.push(req.body[field]);
           idx++;
         }
+      }
+    }
+
+    // Atualizar Setor quando não existe coluna setor_id (fallback para coluna texto 'setor')
+    const hasSetorIdCol = await columnExists('usuarios', 'setor_id');
+    const hasSetorTextCol = await columnExists('usuarios', 'setor');
+    if (!hasSetorIdCol && hasSetorTextCol && req.body.setor_id !== undefined && req.body.setor === undefined) {
+      const setoresFixos = [
+        'Comando',
+        'Subcomando',
+        'SAAD',
+        'SOP',
+        'SEC',
+        'SAT',
+        'PROEBOM',
+        'Operacional',
+      ];
+      const sid = parseInt(String(req.body.setor_id), 10);
+      const setorNome = (!isNaN(sid) && sid >= 1 && sid <= setoresFixos.length)
+        ? setoresFixos[sid - 1]
+        : null;
+      if (setorNome !== null) {
+        updates.push(`setor = $${idx}`);
+        params.push(setorNome);
+        idx++;
+      }
+    }
+
+    // Atualizar setor_id a partir de `setor` (texto) quando não existe coluna de texto `setor`
+    // Isso garante compatibilidade com bancos não migrados que ainda possuem apenas `setor_id`.
+    if (hasSetorIdCol && !hasSetorTextCol && req.body.setor !== undefined) {
+      const setoresFixos = [
+        'Comando',
+        'Subcomando',
+        'SAAD',
+        'SOP',
+        'SEC',
+        'SAT',
+        'PROEBOM',
+        'Operacional',
+      ];
+      const setorNome = String(req.body.setor).trim();
+      const idxNome = setoresFixos.findIndex((n) => n.toLowerCase() === setorNome.toLowerCase());
+      const setorId = idxNome >= 0 ? (idxNome + 1) : null;
+      if (setorId !== null) {
+        updates.push(`setor_id = $${idx}`);
+        params.push(setorId);
+        idx++;
+      }
+    }
+
+    // Atualizar funcao_id (FK) se existir coluna e for possível resolver ID a partir de funcoes
+    const hasFuncaoIdCol = await columnExists('usuarios', 'funcao_id');
+    if (isAdmin && hasFuncaoIdCol) {
+      let funcaoIdToSet = null;
+      if (req.body.funcao_id !== undefined && req.body.funcao_id !== '') {
+        const v = parseInt(String(req.body.funcao_id), 10);
+        funcaoIdToSet = !isNaN(v) && v > 0 ? v : null;
+      } else if (req.body.funcoes !== undefined) {
+        const primaryNome = Array.isArray(req.body.funcoes) ? req.body.funcoes[0] : req.body.funcoes;
+        if (typeof primaryNome === 'string' && primaryNome.trim()) {
+          try {
+            const hasFuncoesTable = await tableExists('funcoes');
+            if (hasFuncoesTable) {
+              const sel = await query('SELECT id FROM funcoes WHERE LOWER(nome) = LOWER($1) LIMIT 1', [primaryNome.trim()]);
+              if (sel.rows.length > 0) {
+                funcaoIdToSet = sel.rows[0].id;
+              }
+            }
+          } catch (e) {
+            // Se não conseguir resolver, ignora silenciosamente
+          }
+        }
+      }
+      if (funcaoIdToSet !== null) {
+        updates.push(`funcao_id = $${idx}`);
+        params.push(funcaoIdToSet);
+        idx++;
       }
     }
 
@@ -750,7 +1171,11 @@ router.put('/:id', async (req, res) => {
       });
     }
 
-    updates.push(`updated_at = NOW()`);
+    // Atualizar updated_at apenas se a coluna existir
+    const hasUpdatedAt = await columnExists('usuarios', 'updated_at');
+    if (hasUpdatedAt) {
+      updates.push('updated_at = NOW()');
+    }
 
     const queryText = `
       UPDATE usuarios
@@ -775,7 +1200,16 @@ router.put('/:id', async (req, res) => {
       usuario: result.rows[0]
     });
   } catch (error) {
-    console.error('Erro ao atualizar usuário:', error);
+    // Log detalhado para facilitar diagnóstico em produção/desenvolvimento
+    const dbInfo = {
+      code: error?.code,
+      detail: error?.detail,
+      constraint: error?.constraint,
+      table: error?.table,
+      column: error?.column,
+      message: error?.message,
+    };
+    console.error('💥 [Usuarios] Erro ao atualizar usuário:', dbInfo, '\nStack:', error?.stack);
     res.status(500).json({
       success: false,
       error: 'Erro interno do servidor'
@@ -795,6 +1229,8 @@ router.post('/',
     body('email').isEmail().withMessage('Email inválido'),
     body('tipo').isIn(['militar', 'civil']).withMessage('Tipo deve ser militar ou civil'),
     body('perfil_id').isInt({ min: 1 }).withMessage('Perfil é obrigatório'),
+    // Antiguidade é opcional, quando presente deve ser inteiro >= 1
+    body('antiguidade').optional().isInt({ min: 1 }).withMessage('Antiguidade deve ser inteiro >= 1'),
     
     // Validações condicionais para militares
     body('posto_graduacao').if(body('tipo').equals('militar'))
@@ -806,6 +1242,8 @@ router.post('/',
     body('telefone').optional().isMobilePhone('pt-BR').withMessage('Telefone inválido')
   ],
   async (req, res) => {
+    // Contexto de debug para rastrear colunas detectadas e campos usados
+    let debugCtx = { detectedCols: {}, fieldsUsed: [] };
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -816,12 +1254,13 @@ router.post('/',
         });
       }
 
-      const { 
+      const {
         nome_completo, email, cpf, telefone, tipo,
         posto_graduacao, nome_guerra, matricula,
         data_nascimento, data_incorporacao,
-        unidade_id, unidade_lotacao_id, unidades_ids, setor_id, funcao_id, perfil_id,
-        senha = 'senha123' // Senha padrão
+        unidade_id, unidade_lotacao_id, _unidades_ids, setor_id, funcao_id, perfil_id,
+        antiguidade,
+        senha = 'senha123'
       } = req.body;
 
       // Verificar se email já existe
@@ -852,6 +1291,12 @@ router.post('/',
       // Suporte dinâmico a funcao_id (FK) ou funcoes (JSONB)
       const hasFuncaoId = await columnExists('usuarios', 'funcao_id');
       const hasFuncoes = await columnExists('usuarios', 'funcoes');
+      const hasSetorId = await columnExists('usuarios', 'setor_id');
+      const hasSetorText = await columnExists('usuarios', 'setor');
+      const hasCreatedBy = await columnExists('usuarios', 'created_by');
+      const hasSenhaHash = await columnExists('usuarios', 'senha_hash');
+      const hasSenhaCol = await columnExists('usuarios', 'senha');
+      const hasCategoriaCnh = await columnExists('usuarios', 'categoria_cnh');
 
       let fields = [];
       let placeholders = [];
@@ -864,6 +1309,10 @@ router.post('/',
         idx++;
       };
 
+      const hasNomeCol = await columnExists('usuarios', 'nome');
+      if (hasNomeCol) {
+        add('nome', nome_completo);
+      }
       add('nome_completo', nome_completo);
       add('email', email);
       add('cpf', cpf);
@@ -874,6 +1323,12 @@ router.post('/',
       add('matricula', matricula);
       add('data_nascimento', data_nascimento);
       add('data_incorporacao', data_incorporacao);
+      // Persistir ANTIGUIDADE (inteiro opcional) se a coluna existir
+      const hasAntiguidade = await columnExists('usuarios', 'antiguidade');
+      if (hasAntiguidade) {
+        const antiguidadeValue = antiguidade ? parseInt(antiguidade, 10) : null;
+        add('antiguidade', antiguidadeValue, '::int');
+      }
       // Persistir LOTAÇÃO usando coluna preferencial `unidade_lotacao_id` se existir; caso contrário, usa `unidade_id`.
       const hasUnidadeLotacaoId = await columnExists('usuarios', 'unidade_lotacao_id');
       const hasUnidadeId = await columnExists('usuarios', 'unidade_id');
@@ -884,7 +1339,32 @@ router.post('/',
       if (hasUnidadeId) {
         add('unidade_id', lotacaoValue);
       }
-      add('setor_id', setor_id);
+      // Atualizar contexto de colunas detectadas para debug
+      debugCtx.detectedCols = {
+        funcao_id: hasFuncaoId,
+        funcoes: hasFuncoes,
+        setor_id: hasSetorId,
+        setor: hasSetorText,
+        antiguidade: hasAntiguidade,
+        unidade_lotacao_id: hasUnidadeLotacaoId,
+        unidade_id: hasUnidadeId,
+        created_by: hasCreatedBy,
+        senha_hash: hasSenhaHash,
+        senha: hasSenhaCol,
+        nome: hasNomeCol,
+        categoria_cnh: hasCategoriaCnh,
+      };
+      // Persistir setor priorizando texto quando disponível
+      if (hasSetorText) {
+        const setorNome = typeof req.body.setor === 'string' ? req.body.setor.trim() : '';
+        if (setorNome) add('setor', setorNome);
+      }
+      if (hasSetorId) {
+        const setorIdValue = (setor_id !== undefined && setor_id !== '')
+          ? parseInt(String(setor_id), 10)
+          : null;
+        if (!isNaN(setorIdValue) && setorIdValue > 0) add('setor_id', setorIdValue);
+      }
       if (hasFuncaoId) {
         add('funcao_id', funcao_id || null);
       }
@@ -894,18 +1374,37 @@ router.post('/',
           : (req.body.funcoes ? [req.body.funcoes] : []);
         add('funcoes', JSON.stringify(funcoesArray), '::jsonb');
       }
+      if (hasCategoriaCnh) {
+        const cnh = typeof req.body.categoria_cnh === 'string' ? req.body.categoria_cnh.trim() : '';
+        if (cnh) add('categoria_cnh', cnh);
+      }
       add('perfil_id', perfil_id);
-      add('senha', hashedPassword);
+      // Armazenar senha na coluna disponível
+      if (hasSenhaHash) {
+        add('senha_hash', hashedPassword);
+      } else if (hasSenhaCol) {
+        add('senha', hashedPassword);
+      }
+      // Salvar campos usados para debug
+      debugCtx.fieldsUsed = [...fields];
 
+      // Montar INSERT dinamicamente, incluindo created_by apenas se existir
+      const insertFields = [...fields, 'ativo'];
+      const insertPlaceholders = [...placeholders, 'true'];
+      const insertParams = [...params];
+      if (hasCreatedBy) {
+        insertFields.push('created_by');
+        insertPlaceholders.push(`$${idx}`);
+        insertParams.push(req.user.id);
+        idx++;
+      }
       const insertSql = `
-        INSERT INTO usuarios (${fields.join(', ')}, ativo, created_by)
-        VALUES (${placeholders.join(', ')}, true, $${idx})
+        INSERT INTO usuarios (${insertFields.join(', ')})
+        VALUES (${insertPlaceholders.join(', ')})
         RETURNING id, nome_completo, email, tipo, ativo, created_at
       `;
 
-      params.push(req.user.id);
-
-      const result = await query(insertSql, params);
+      const result = await query(insertSql, insertParams);
 
       const novoUsuario = result.rows[0];
 
@@ -927,14 +1426,93 @@ router.post('/',
         usuario: novoUsuario
       });
     } catch (error) {
-      console.error('Erro ao criar usuário:', error);
+      const dbInfo = {
+        code: error?.code,
+        detail: error?.detail,
+        constraint: error?.constraint,
+        table: error?.table,
+        column: error?.column,
+        message: error?.message,
+      };
+      console.error('💥 [Usuarios] Erro ao criar usuário:', dbInfo, '\nDetectado:', debugCtx, '\nStack:', error?.stack);
       res.status(500).json({ 
         success: false,
-        error: 'Erro interno do servidor' 
+        error: dbInfo?.message || 'Erro interno do servidor',
+        code: dbInfo?.code,
+        constraint: dbInfo?.constraint
       });
     }
   }
 );
+
+/**
+ * @route PUT /api/usuarios/:id/senha
+ * @desc Alterar senha do usuário (autoatendimento ou por admin)
+ * @access Próprio usuário ou Administrador/Comandante
+ */
+router.put('/:id/senha', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const requesterId = req.user?.id;
+    const requesterPerfil = req.user?.perfil_nome;
+
+    const isAdmin = ['Administrador', 'Comandante'].includes(requesterPerfil);
+    const isSelf = parseInt(id, 10) === parseInt(requesterId, 10);
+
+    const { senha_atual, nova_senha } = req.body;
+
+    if (!nova_senha || String(nova_senha).length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: 'Nova senha deve ter pelo menos 6 caracteres'
+      });
+    }
+
+    if (!isAdmin && !isSelf) {
+      return res.status(403).json({
+        success: false,
+        error: 'Acesso negado'
+      });
+    }
+
+    // Buscar senha atual do usuário alvo
+    const result = await query('SELECT id, senha_hash FROM usuarios WHERE id = $1 AND ativo = true', [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Usuário não encontrado' });
+    }
+
+    const usuarioAlvo = result.rows[0];
+
+    // Se não for admin, validar senha atual obrigatória
+    if (!isAdmin) {
+      if (!senha_atual) {
+        return res.status(400).json({ success: false, error: 'Senha atual é obrigatória' });
+      }
+      const ok = await bcrypt.compare(senha_atual, usuarioAlvo.senha_hash);
+      if (!ok) {
+        return res.status(400).json({ success: false, error: 'Senha atual incorreta' });
+      }
+    } else {
+      // Se admin forneceu senha_atual, validar por segurança opcional
+      if (senha_atual) {
+        const ok = await bcrypt.compare(senha_atual, usuarioAlvo.senha_hash);
+        if (!ok) {
+          return res.status(400).json({ success: false, error: 'Senha atual incorreta' });
+        }
+      }
+    }
+
+    const saltRounds = parseInt(process.env.BCRYPT_ROUNDS, 10) || 12;
+    const hashed = await bcrypt.hash(nova_senha, saltRounds);
+
+    await query('UPDATE usuarios SET senha_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [hashed, id]);
+
+    return res.json({ success: true, message: 'Senha alterada com sucesso' });
+  } catch (error) {
+    console.error('Erro ao alterar senha do usuário:', error);
+    return res.status(500).json({ success: false, error: 'Erro interno do servidor' });
+  }
+});
 
 // =====================================================
 // ROTAS AUXILIARES DE DADOS
@@ -1212,42 +1790,4 @@ router.get('/config/unidades', getUserUnits, async (req, res) => {
 
 module.exports = router;
 
-// =====================================================
-// DOCUMENTAÇÃO DE USO
-// =====================================================
-//
-// EXEMPLOS DE USO:
-//
-// 1. Listar todos os usuários:
-//    GET /api/usuarios
-//
-// 2. Listar apenas militares ativos:
-//    GET /api/usuarios?tipo=militar&ativo=true
-//
-// 3. Buscar usuários por nome:
-//    GET /api/usuarios?busca=João
-//
-// 4. Listar usuários de uma unidade:
-//    GET /api/usuarios?unidade_id=1
-//
-// 5. Criar novo militar:
-//    POST /api/usuarios
-//    {
-//      "nome_completo": "João Silva",
-//      "email": "joao@email.com",
-//      "tipo": "militar",
-//      "posto_graduacao": "Sargento",
-//      "matricula": "123456",
-//      "perfil_id": 5
-//    }
-//
-// 6. Criar novo civil:
-//    POST /api/usuarios
-//    {
-//      "nome_completo": "Maria Santos",
-//      "email": "maria@email.com",
-//      "tipo": "civil",
-//      "perfil_id": 5
-//    }
-//
 // =====================================================

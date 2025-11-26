@@ -259,26 +259,26 @@ router.get('/verify', authenticateToken, async (req, res) => {
   });
 });
 
-// Alterar senha
-router.put('/change-password', authenticateToken, [
-  body('senhaAtual').notEmpty().withMessage('Senha atual é obrigatória'),
-  body('novaSenha').isLength({ min: 6 }).withMessage('Nova senha deve ter pelo menos 6 caracteres')
-], async (req, res) => {
+// Alterar senha (suportando camelCase e snake_case)
+const handleChangePassword = async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+    const senhaAtual = req.body.senhaAtual ?? req.body.senha_atual;
+    const novaSenha = req.body.novaSenha ?? req.body.nova_senha;
+
+    if (!senhaAtual) {
+      return res.status(400).json({ error: 'Senha atual é obrigatória' });
+    }
+    if (!novaSenha || String(novaSenha).length < 6) {
+      return res.status(400).json({ error: 'Nova senha deve ter pelo menos 6 caracteres' });
     }
 
-    const { senhaAtual, novaSenha } = req.body;
     const userId = req.user.id;
 
-    // Buscar senha atual
-    const result = await query(
-      'SELECT senha FROM usuarios WHERE id = $1',
-      [userId]
-    );
-
+    // Buscar hash da senha atual
+    const result = await query('SELECT senha_hash FROM usuarios WHERE id = $1', [userId]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
     const user = result.rows[0];
 
     // Verificar senha atual
@@ -288,20 +288,21 @@ router.put('/change-password', authenticateToken, [
     }
 
     // Hash da nova senha
-    const hashedNewPassword = await bcrypt.hash(novaSenha, parseInt(process.env.BCRYPT_ROUNDS));
+    const hashedNewPassword = await bcrypt.hash(novaSenha, parseInt(process.env.BCRYPT_ROUNDS) || 12);
 
     // Atualizar senha
-    await query(
-      'UPDATE usuarios SET senha = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-      [hashedNewPassword, userId]
-    );
+    await query('UPDATE usuarios SET senha_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [hashedNewPassword, userId]);
 
     res.json({ message: 'Senha alterada com sucesso' });
   } catch (error) {
     console.error('Erro ao alterar senha:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
-});
+};
+
+router.put('/change-password', authenticateToken, handleChangePassword);
+// Alias para compatibilidade com frontend antigo
+router.put('/alterar-senha', authenticateToken, handleChangePassword);
 
 /**
  * @swagger

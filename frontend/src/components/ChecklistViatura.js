@@ -25,6 +25,7 @@ import {
   StepLabel,
   Alert,
   CircularProgress,
+  LinearProgress,
   Autocomplete,
   ImageList,
   ImageListItem,
@@ -35,8 +36,7 @@ import {
   AccordionDetails,
   Snackbar,
   Divider,
-  Tooltip,
-  LinearProgress
+  Tooltip
 } from '@mui/material';
 import {
   PhotoCamera,
@@ -65,9 +65,6 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [step, setStep] = useState(1); // 1: Dados iniciais, 2: Checklist, 3: Autenticação
-  // Paginação por categoria no Passo 2 e visualização de imagens
-  const [categoryIndex, setCategoryIndex] = useState(0);
-  const [imagePreview, setImagePreview] = useState({ open: false, url: '', title: '' });
   
   // Estados para dados iniciais
   const [viaturas, setViaturas] = useState(viaturasProps || []);
@@ -80,7 +77,6 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   const [templates, setTemplates] = useState([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [dataHora] = useState(new Date());
-  const [templateModelo, setTemplateModelo] = useState(null);
   
   // Itens do checklist
   const [itensChecklist, setItensChecklist] = useState([
@@ -101,6 +97,10 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   const [usuarioAutenticacao, setUsuarioAutenticacao] = useState(user || null);
   const [senhaAutenticacao, setSenhaAutenticacao] = useState('');
   const [observacoesGerais, setObservacoesGerais] = useState('');
+
+  // Paginação por categoria (Step 2)
+  const [categories, setCategories] = useState([]);
+  const [currentCategoryIndex, setCurrentCategoryIndex] = useState(0);
 
   // Função para carregar templates
   const loadTemplates = async () => {
@@ -183,7 +183,6 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   useEffect(() => {
     if (!open) {
       setStep(1);
-      setCategoryIndex(0);
       setKmInicial('');
       setCombustivelPercentual('');
       setAlaServico('');
@@ -208,16 +207,8 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         { nome_item: 'Extintor', categoria: 'Segurança', status: 'ok', observacoes: '', fotos: [], ordem: 9 },
         { nome_item: 'Triângulo', categoria: 'Segurança', status: 'ok', observacoes: '', fotos: [], ordem: 10 },
       ]);
-      setImagePreview({ open: false, url: '', title: '' });
     }
   }, [open]);
-
-  // Ao entrar no Passo 2, iniciar na primeira categoria
-  useEffect(() => {
-    if (step === 2) {
-      setCategoryIndex(0);
-    }
-  }, [step]);
 
   const loadViaturas = async () => {
     try {
@@ -322,8 +313,6 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
     setItensChecklist(newItens);
   };
 
-  // Removido: upload/remoção de fotos de categoria (gerenciadas no Template)
-
   const handleNext = async () => {
     if (step === 1) {
       if (!selectedViatura || !kmInicial || !combustivelPercentual || !alaServico || !tipoChecklist || !selectedTemplate) {
@@ -335,7 +324,6 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
       try {
         setLoading(true);
         const templateCompleto = await templateService.getTemplate(selectedTemplate.id);
-        setTemplateModelo(templateCompleto);
         
         // Converter categorias e itens do template para o formato do checklist
         const itensDoTemplate = [];
@@ -353,8 +341,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
                   fotos: [],
                   ordem: ordem++,
                   obrigatorio: item.obrigatorio || false,
-                  tipo: item.tipo || 'checkbox',
-                  modelo_imagem_url: item.imagem_url || ''
+                  tipo: item.tipo || 'checkbox'
                 });
               });
             }
@@ -364,6 +351,18 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         // Atualizar itens do checklist com os itens do template
         if (itensDoTemplate.length > 0) {
           setItensChecklist(itensDoTemplate);
+          // Definir páginas por categoria na ordem do template
+          let cats = [];
+          if (templateCompleto.categorias && templateCompleto.categorias.length > 0) {
+            cats = templateCompleto.categorias
+              .filter(c => Array.isArray(c.itens) && c.itens.length > 0)
+              .map(c => c.nome || 'Sem Categoria');
+          } else {
+            const grouped = groupItemsByCategory(itensDoTemplate);
+            cats = Object.keys(grouped);
+          }
+          setCategories(cats);
+          setCurrentCategoryIndex(0);
         }
         
       } catch (err) {
@@ -374,27 +373,49 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         setLoading(false);
       }
     }
-    // No Passo 2, avançar entre categorias antes de ir ao Passo 3
+
+    // Navegação entre categorias dentro do Passo 2
     if (step === 2) {
-      const categorias = Object.keys(groupItemsByCategory(itensChecklist));
-      if (categoryIndex < categorias.length - 1) {
-        setCategoryIndex(categoryIndex + 1);
-        return;
+      if (Array.isArray(categories) && categories.length > 0) {
+        const grouped = groupItemsByCategory(itensChecklist);
+        const currentCategory = categories[currentCategoryIndex];
+        const items = grouped[currentCategory] || [];
+
+        // Validação simples: itens obrigatórios com alteração exigem observação
+        const missingObs = items.filter(
+          (it) => it.obrigatorio && it.status === 'com_alteracao' && (!it.observacoes || !it.observacoes.trim())
+        );
+        if (missingObs.length > 0) {
+          setError(
+            `Preencha observações para itens obrigatórios com alteração: ${missingObs
+              .map((i) => i.nome_item)
+              .join(', ')}`
+          );
+          return;
+        }
+
+        // Avançar para próxima categoria ou seguir para autenticação
+        if (currentCategoryIndex < categories.length - 1) {
+          setError('');
+          setCurrentCategoryIndex((idx) => idx + 1);
+          return;
+        }
       }
     }
-
+    
     setError('');
     setStep(step + 1);
   };
 
   const handleBack = () => {
-    if (step === 2) {
-      if (categoryIndex > 0) {
-        setCategoryIndex(categoryIndex - 1);
-        return;
-      }
+    // Retroceder entre categorias no Passo 2
+    if (step === 2 && currentCategoryIndex > 0) {
+      setCurrentCategoryIndex((idx) => Math.max(0, idx - 1));
+      return;
     }
-    if (step > 1) setStep(step - 1);
+    if (step > 1) {
+      setStep(step - 1);
+    }
   };
 
   const handleSubmit = async () => {
@@ -434,17 +455,18 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
       }
 
       // SEGUNDO: Criar ou atualizar checklist (só se as credenciais forem válidas)
-      // Normalizar valores sensíveis a restrições do banco
+      // Normalizar valores sensíveis a restrições do banco (versão robusta, igual ao backend)
       const normalizeAlaServico = (val) => {
-        const v = (val || '').trim();
+        const raw = (val || '').toString().trim();
+        const cleaned = raw.replace(/[^a-zA-Z]/g, '').toLowerCase();
         const map = {
-          'alpha': 'Alpha', 'Alpha': 'Alpha',
-          'bravo': 'Bravo', 'Bravo': 'Bravo',
-          'charlie': 'Charlie', 'Charlie': 'Charlie',
-          'delta': 'Delta', 'Delta': 'Delta',
-          'adm': 'ADM', 'ADM': 'ADM'
+          alpha: 'Alpha',
+          bravo: 'Bravo',
+          charlie: 'Charlie',
+          delta: 'Delta',
+          adm: 'ADM',
         };
-        return map[v] || 'Alpha';
+        return map[cleaned] || 'Alpha';
       };
 
       const checklistData = {
@@ -489,7 +511,11 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         handleClose();
       }, 2000);
     } catch (error) {
-      console.error('Erro ao processar checklist:', error);
+      console.error('Erro ao processar checklist:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+      });
       
       // Tratar especificamente erro de autenticação
       if (error.response?.status === 401) {
@@ -499,6 +525,11 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
       } else {
         const generic = error.response?.data?.error || 'Erro ao processar checklist';
         const details = error.response?.data?.details;
+        const constraint = error.response?.data?.constraint;
+        const detail = error.response?.data?.detail;
+        if (constraint || detail) {
+          console.warn('ℹ️ Detalhes do erro (DB CHECK):', { constraint, detail });
+        }
         setError(details ? `${generic} - ${details}` : generic);
       }
     } finally {
@@ -514,7 +545,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   const renderStep1 = () => (
     <Grid container spacing={3}>
       <Grid item xs={12}>
-        <Typography variant="h6" gutterBottom>
+        <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', letterSpacing: '0.5px' }}>
           Dados Iniciais do Checklist
         </Typography>
       </Grid>
@@ -544,24 +575,11 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         <TextField
           fullWidth
           label="KM Inicial"
-          type="text"
+          type="number"
           value={kmInicial}
-          onChange={(e) => {
-            // Permitir apenas números
-            const value = e.target.value.replace(/[^0-9]/g, '');
-            setKmInicial(value);
-          }}
+          onChange={(e) => setKmInicial(e.target.value)}
           required
-          inputProps={{ 
-            inputMode: 'numeric',
-            pattern: '[0-9]*'
-          }}
-          onKeyPress={(e) => {
-            // Bloquear caracteres não numéricos
-            if (!/[0-9]/.test(e.key) && e.key !== 'Backspace' && e.key !== 'Delete' && e.key !== 'Tab' && e.key !== 'Enter') {
-              e.preventDefault();
-            }
-          }}
+          inputProps={{ min: 0 }}
         />
       </Grid>
       
@@ -569,31 +587,18 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         <TextField
           fullWidth
           label="Combustível (%)"
-          type="text"
+          type="number"
           value={combustivelPercentual}
           onChange={(e) => {
-            // Permitir apenas números
-            const numericValue = e.target.value.replace(/[^0-9]/g, '');
-            const value = parseInt(numericValue);
-            
-            // Manter as regras existentes do campo de combustível
-            if (!isNaN(value) && value >= 0 && value <= 100) {
-              setCombustivelPercentual(numericValue);
-            } else if (numericValue === '') {
+            const value = parseInt(e.target.value);
+            if (value >= 0 && value <= 100) {
+              setCombustivelPercentual(e.target.value);
+            } else if (e.target.value === '') {
               setCombustivelPercentual('');
             }
           }}
           required
-          inputProps={{ 
-            inputMode: 'numeric',
-            pattern: '[0-9]*'
-          }}
-          onKeyPress={(e) => {
-            // Bloquear caracteres não numéricos
-            if (!/[0-9]/.test(e.key) && e.key !== 'Backspace' && e.key !== 'Delete' && e.key !== 'Tab' && e.key !== 'Enter') {
-              e.preventDefault();
-            }
-          }}
+          inputProps={{ min: 0, max: 100 }}
           helperText="Digite um valor entre 0 e 100"
         />
       </Grid>
@@ -715,107 +720,104 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
 
   const renderStep2 = () => {
     const groupedItems = groupItemsByCategory(itensChecklist);
-    const categorias = Object.keys(groupedItems);
-    const totalCategorias = categorias.length || 1;
-    const categoriaAtual = categorias[categoryIndex] || 'Categoria';
-    const items = groupedItems[categoriaAtual] || [];
+    const totalCategories = categories.length || Object.keys(groupedItems).length;
+    const currentCategoryName = categories.length > 0
+      ? categories[currentCategoryIndex]
+      : Object.keys(groupedItems)[0];
 
-    const progresso = Math.round(((categoryIndex + 1) / totalCategorias) * 100);
+    const items = groupedItems[currentCategoryName] || [];
 
     return (
       <Box>
-        {/* Cabeçalho da categoria e progresso */}
-        <Box sx={{ mb: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {templateModelo && (() => {
-              const catRef = templateModelo.categorias?.find(c => c.nome === categoriaAtual);
-              if (catRef?.imagem_url) {
-                return (
-                  <img
-                    src={catRef.imagem_url}
-                    alt={`Categoria ${categoriaAtual}`}
-                    style={{ width: 40, height: 40, objectFit: 'contain', borderRadius: 4, border: '1px solid #eee', cursor: 'pointer' }}
-                    onClick={() => setImagePreview({ open: true, url: catRef.imagem_url, title: categoriaAtual })}
-                  />
-                );
-              }
-              return null;
-            })()}
-            <Typography variant="h5" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-              {categoriaAtual}
-            </Typography>
-          </Box>
-          <Typography variant="body2" color="text.secondary">
-            Categoria {categoryIndex + 1} de {totalCategorias}
-          </Typography>
-          <LinearProgress variant="determinate" value={progresso} sx={{ mt: 1, height: 8, borderRadius: 1 }} />
-        </Box>
+        <Typography variant="h6" gutterBottom>
+          Checklist da Viatura
+        </Typography>
+        <Typography variant="body2" color="text.secondary" gutterBottom>
+          Categoria {Math.min(currentCategoryIndex + 1, totalCategories)} de {totalCategories}: {currentCategoryName}
+        </Typography>
 
-        {/* Itens da categoria atual */}
-        <Grid container spacing={2}>
-          {items.map((item) => {
-            return (
-              <Grid item xs={12} key={item.originalIndex}>
-                <Card variant="outlined">
-                  <CardContent>
-                    <Box>
-                      <Box mb={1} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          {item.modelo_imagem_url && (
-                            <img
-                              src={item.modelo_imagem_url}
-                              alt={item.nome_item}
-                              style={{ width: 40, height: 40, objectFit: 'contain', borderRadius: 4, border: '1px solid #eee', cursor: 'pointer' }}
-                              onClick={() => setImagePreview({ open: true, url: item.modelo_imagem_url, title: item.nome_item })}
-                            />
-                          )}
-                          <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-                            {item.nome_item}
-                          </Typography>
-                        </Box>
-                      </Box>
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          {/* Header da Categoria */}
+          <Grid item xs={12}>
+            <Box sx={{ my: 2, p: 2, backgroundColor: '#f5f5f5', borderRadius: 1, border: '1px solid #e0e0e0' }}>
+              <Typography variant="h6" sx={{ color: 'primary.main', fontWeight: 'bold', textAlign: 'center', letterSpacing: '1px', textTransform: 'uppercase' }}>
+                {currentCategoryName}
+              </Typography>
+              <Divider sx={{ mt: 1 }} />
+            </Box>
+          </Grid>
 
-                        <RadioGroup row value={item.status} onChange={(e) => handleItemStatusChange(item.originalIndex, e.target.value)}>
-                          <FormControlLabel value="ok" control={<Radio color="success" />} label={<Box display="flex" alignItems="center"><CheckIcon color="success" sx={{ mr: 1 }} />OK</Box>} />
-                          <FormControlLabel value="com_alteracao" control={<Radio color="warning" />} label={<Box display="flex" alignItems="center"><WarningIcon color="warning" sx={{ mr: 1 }} />Com Alteração</Box>} />
-                        </RadioGroup>
+          {/* Itens da Categoria Atual */}
+          {items.map((item) => (
+            <Grid item xs={12} key={item.originalIndex}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Box mb={2}>
+                    <Typography variant="subtitle1" fontWeight="bold">
+                      {item.nome_item}
+                    </Typography>
+                  </Box>
 
-                        {item.status === 'com_alteracao' && (
-                          <TextField fullWidth label="Observações" multiline rows={2} value={item.observacoes} onChange={(e) => handleItemObservacaoChange(item.originalIndex, e.target.value)} sx={{ mt: 2 }} placeholder="Descreva o problema encontrado..." />
-                        )}
+                  <RadioGroup row value={item.status} onChange={(e) => handleItemStatusChange(item.originalIndex, e.target.value)}>
+                    <FormControlLabel
+                      value="ok"
+                      control={<Radio color="success" />}
+                      label={<Box display="flex" alignItems="center"><CheckIcon color="success" sx={{ mr: 1 }} />OK</Box>}
+                    />
+                    <FormControlLabel
+                      value="com_alteracao"
+                      control={<Radio color="warning" />}
+                      label={<Box display="flex" alignItems="center"><WarningIcon color="warning" sx={{ mr: 1 }} />Com Alteração</Box>}
+                    />
+                  </RadioGroup>
 
-                        <Box mt={2}>
-                          <Box display="flex" alignItems="center" mb={1}>
-                            <Typography variant="body2" sx={{ mr: 2 }}>Evidências:</Typography>
-                            <input accept="image/*" style={{ display: 'none' }} id={`photo-upload-${item.originalIndex}`} multiple type="file" onChange={(e) => handlePhotoUpload(item.originalIndex, e)} />
-                            <label htmlFor={`photo-upload-${item.originalIndex}`}>
-                              <IconButton color="primary" component="span">
-                                <PhotoIcon />
-                              </IconButton>
-                            </label>
-                          </Box>
+                  {item.status === 'com_alteracao' && (
+                    <TextField
+                      fullWidth
+                      label="Observações"
+                      multiline
+                      rows={2}
+                      value={item.observacoes}
+                      onChange={(e) => handleItemObservacaoChange(item.originalIndex, e.target.value)}
+                      sx={{ mt: 2 }}
+                      placeholder="Descreva o problema encontrado..."
+                    />
+                  )}
 
-                          {item.fotos && item.fotos.length > 0 && (
-                            <ImageList cols={3} rowHeight={100}>
-                              {item.fotos.map((foto, photoIndex) => (
-                                <ImageListItem key={photoIndex}>
-                                  <img src={foto.url} alt={foto.name} loading="lazy" style={{ height: 100, objectFit: 'cover' }} onClick={() => setImagePreview({ open: true, url: foto.url, title: item.nome_item })} />
-                                  <ImageListItemBar actionIcon={
-                                    <IconButton sx={{ color: 'rgba(255, 255, 255, 0.9)' }} onClick={() => handleRemovePhoto(item.originalIndex, photoIndex)}>
-                                      <DeleteIcon />
-                                    </IconButton>
-                                  } />
-                                </ImageListItem>
-                              ))}
-                            </ImageList>
-                          )}
-                      </Box>
+                  <Box mt={2}>
+                    <Box display="flex" alignItems="center" mb={1}>
+                      <Typography variant="body2" sx={{ mr: 2 }}>
+                        Fotos:
+                      </Typography>
+                      <input accept="image/*" style={{ display: 'none' }} id={`photo-upload-${item.originalIndex}`} multiple type="file" onChange={(e) => handlePhotoUpload(item.originalIndex, e)} />
+                      <label htmlFor={`photo-upload-${item.originalIndex}`}>
+                        <IconButton color="primary" component="span">
+                          <PhotoIcon />
+                        </IconButton>
+                      </label>
                     </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            );
-          })}
+
+                    {item.fotos && item.fotos.length > 0 && (
+                      <ImageList cols={3} rowHeight={100}>
+                        {item.fotos.map((foto, photoIndex) => (
+                          <ImageListItem key={photoIndex}>
+                            <img src={foto.url} alt={foto.name} loading="lazy" style={{ height: 100, objectFit: 'cover' }} />
+                            <ImageListItemBar
+                              actionIcon={
+                                <IconButton sx={{ color: 'rgba(255, 255, 255, 0.54)' }} onClick={() => handleRemovePhoto(item.originalIndex, photoIndex)}>
+                                  <DeleteIcon />
+                                </IconButton>
+                              }
+                            />
+                          </ImageListItem>
+                        ))}
+                      </ImageList>
+                    )}
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
         </Grid>
       </Box>
     );
@@ -842,7 +844,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   const renderStep3 = () => (
     <Grid container spacing={3}>
       <Grid item xs={12}>
-        <Typography variant="h6" gutterBottom>
+        <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', letterSpacing: '0.5px' }}>
           Autenticação para Finalização
         </Typography>
         <Typography variant="body2" color="text.secondary" gutterBottom>
@@ -892,13 +894,36 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>Checklist de Viatura</Typography>
-          <Chip label={`Passo ${step} de 3`} color="primary" size="small" />
-        </Box>
+        {step === 2 && (Array.isArray(categories) && categories.length > 0)
+          ? `Checklist de Viatura - Categoria ${currentCategoryIndex + 1} de ${categories.length}`
+          : `Checklist de Viatura - Passo ${step} de 3`}
       </DialogTitle>
       
       <DialogContent>
+        {/* Barra de Progresso */}
+        {(function() {
+          const grouped = groupItemsByCategory(itensChecklist);
+          const catsCount = (Array.isArray(categories) && categories.length > 0) ? categories.length : Object.keys(grouped).length;
+          const totalPages = 2 + (catsCount || 0);
+          let progressPercent = 0;
+          if (totalPages > 0) {
+            if (step === 1) progressPercent = 0;
+            else if (step === 2) progressPercent = Math.round(((1 + currentCategoryIndex) / totalPages) * 100);
+            else if (step === 3) progressPercent = 100;
+          }
+          return (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="caption" color="text.secondary">Progresso</Typography>
+              <LinearProgress variant="determinate" value={progressPercent} sx={{ height: 8, borderRadius: 1 }} />
+              <Box display="flex" justifyContent="space-between" mt={0.5}>
+                <Typography variant="caption">{progressPercent}%</Typography>
+                <Typography variant="caption">
+                  {step === 2 && catsCount > 0 ? `Categoria ${currentCategoryIndex + 1} de ${catsCount}` : `Passo ${step} de 3`}
+                </Typography>
+              </Box>
+            </Box>
+          );
+        })()}
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {error}
@@ -918,34 +943,29 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
       
       <DialogActions>
         <Button onClick={handleClose}>Cancelar</Button>
-        {step > 1 && (<Button onClick={handleBack}>Voltar</Button>)}
+        
+        {step > 1 && (
+          <Button onClick={handleBack}>Voltar</Button>
+        )}
+
         {step < 3 ? (
           <Button onClick={handleNext} variant="contained" startIcon={<SaveIcon />}>
-            {step === 2 ? 'Próxima Categoria' : 'Próximo'}
+            {step === 2 && (Array.isArray(categories) && categories.length > 0) && currentCategoryIndex < categories.length - 1
+              ? 'Próxima Categoria'
+              : 'Próximo'}
           </Button>
         ) : (
-          <Button onClick={handleSubmit} variant="contained" disabled={loading} startIcon={loading ? <CircularProgress size={20} /> : <SendIcon />} type="button">
+          <Button 
+            onClick={handleSubmit} 
+            variant="contained" 
+            disabled={loading}
+            startIcon={loading ? <CircularProgress size={20} /> : <SendIcon />}
+            type="button"
+          >
             {loading ? 'Finalizando...' : 'Finalizar Checklist'}
           </Button>
         )}
       </DialogActions>
-
-      {/* Visualização de imagem ampliada */}
-      <Dialog open={imagePreview.open} onClose={() => setImagePreview({ open: false, url: '', title: '' })} maxWidth="md" fullWidth>
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Typography variant="subtitle1">{imagePreview.title}</Typography>
-            <IconButton onClick={() => setImagePreview({ open: false, url: '', title: '' })}><CloseIcon /></IconButton>
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          {imagePreview.url && (
-            <Box sx={{ width: '100%', textAlign: 'center' }}>
-              <img src={imagePreview.url} alt={imagePreview.title} style={{ maxWidth: '100%', borderRadius: 8 }} />
-            </Box>
-          )}
-        </DialogContent>
-      </Dialog>
     </Dialog>
   );
 };

@@ -6,15 +6,26 @@ const compression = require('compression');
 const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
-require('dotenv').config({ override: true });
+// Carregar .env SEM sobrescrever variáveis já definidas no ambiente
+require('dotenv').config();
 const { query } = require('./config/database');
 
 const app = express();
 const server = http.createServer(app);
+const allowedOrigins = [
+  process.env.FRONTEND_URL || 'http://localhost:3000',
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:3003',
+  'http://localhost:3004',
+  'http://localhost:3005'
+];
+
 const io = socketIo(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-    methods: ['GET', 'POST']
+    origin: allowedOrigins,
+    methods: ['GET', 'POST'],
+    credentials: true
   }
 });
 
@@ -24,16 +35,28 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "http://localhost:5000", "http://localhost:3000"],
+      imgSrc: ["'self'", "data:", "http://localhost:5000", "http://localhost:3000", "http://localhost:3003", "http://localhost:3004", "http://localhost:3005"],
       scriptSrc: ["'self'", "'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'"]
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      connectSrc: ["'self'", "http://localhost:5000", "http://localhost:3000", "http://localhost:3003", "http://localhost:3004", "http://localhost:3005"]
     }
   }
 }));
 app.use(compression());
 app.use(morgan('combined'));
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    // Permitir qualquer porta local (localhost/127.0.0.1)
+    try {
+      const url = new URL(origin);
+      if (url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1')) {
+        return callback(null, true);
+      }
+    } catch (e) {}
+    return callback(new Error('Not allowed by CORS'));
+  },
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
@@ -118,7 +141,7 @@ app.use('*', (req, res) => {
   res.status(404).json({ error: 'Rota não encontrada' });
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = 5000;
 
 // Scheduler simples para gerar solicitações das automações
 const semanaMap = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];

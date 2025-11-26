@@ -305,82 +305,24 @@ router.put('/viaturas/:id', authorizeRoles('Administrador', 'Chefe'), [
   }
 });
 
-// Excluir viatura (com auditoria de exclusão)
+// Excluir viatura
 router.delete('/viaturas/:id', authorizeRoles('Administrador', 'Chefe'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { motivo, usuario_id, usuario_nome } = req.body || {};
 
-    if (!motivo || !String(motivo).trim()) {
-      return res.status(400).json({ error: 'Motivo da exclusão é obrigatório' });
-    }
-
-    const unidadeId = req.unidade?.id || null;
-    const authUser = req.user || {};
-    const auditUserId = usuario_id || authUser.id || null;
-    const auditUserNome = usuario_nome || authUser.nome || authUser.nome_completo || null;
-
-    const result = await transaction(async (client) => {
-      // Buscar a viatura antes de excluir para registrar auditoria
-      const viaturaRes = await client.query('SELECT * FROM viaturas WHERE id = $1', [parseInt(id)]);
-      if (viaturaRes.rows.length === 0) {
-        throw new Error('VIATURA_NOT_FOUND');
-      }
-
-      // Garantir tabela de auditoria
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS viaturas_exclusoes (
-          id SERIAL PRIMARY KEY,
-          viatura_id INTEGER NOT NULL,
-          dados_viatura JSONB NOT NULL,
-          motivo TEXT,
-          usuario_id INTEGER,
-          usuario_nome VARCHAR(255),
-          unidade_id INTEGER,
-          excluida_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      // Registrar auditoria
-      await client.query(
-        `INSERT INTO viaturas_exclusoes (viatura_id, dados_viatura, motivo, usuario_id, usuario_nome, unidade_id)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [
-          viaturaRes.rows[0].id,
-          JSON.stringify(viaturaRes.rows[0]),
-          String(motivo).trim(),
-          auditUserId,
-          auditUserNome,
-          unidadeId,
-        ]
-      );
-
-      // Excluir a viatura
-      const deleteRes = await client.query(
-        'DELETE FROM viaturas WHERE id = $1 RETURNING *',
-        [parseInt(id)]
-      );
-
-      return deleteRes;
-    });
+    const result = await query(
+      'DELETE FROM viaturas WHERE id = $1 RETURNING *',
+      [parseInt(id)]
+    );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Viatura não encontrada' });
     }
 
     res.json({
-      message: 'Viatura excluída com sucesso',
-      auditoria: {
-        motivo: String(motivo).trim(),
-        usuario_id: auditUserId,
-        usuario_nome: auditUserNome,
-        unidade_id: unidadeId || null,
-      }
+      message: 'Viatura excluída com sucesso'
     });
   } catch (error) {
-    if (error.message === 'VIATURA_NOT_FOUND') {
-      return res.status(404).json({ error: 'Viatura não encontrada' });
-    }
     console.error('Erro ao excluir viatura:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
