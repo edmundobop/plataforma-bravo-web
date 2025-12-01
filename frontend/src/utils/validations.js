@@ -290,6 +290,14 @@ export const validateUsuarioForm = (formData) => {
     isValid = false;
   }
 
+  if (formData.categoria_cnh !== undefined && formData.categoria_cnh !== '') {
+    const v = String(formData.categoria_cnh).toUpperCase();
+    if (!['A','B','AB','C','D','E'].includes(v)) {
+      errors.categoria_cnh = 'Categoria CNH inválida';
+      isValid = false;
+    }
+  }
+
   // Validação opcional de antiguidade (inteiro >= 1)
   if (formData.antiguidade !== undefined && formData.antiguidade !== '') {
     const n = parseInt(String(formData.antiguidade), 10);
@@ -390,6 +398,19 @@ export const sanitizeUsuarioData = (formData) => {
       }
     }
   });
+  if (sanitized.categoria_cnh !== undefined) {
+    const v = String(sanitized.categoria_cnh).trim().toUpperCase();
+    if (['A','B','AB','C','D','E'].includes(v)) {
+      sanitized.categoria_cnh = v;
+    } else {
+      delete sanitized.categoria_cnh;
+    }
+  }
   
   return sanitized;
+};
+
+export const validateCnhCategoria = (value) => {
+  if (!value) return true;
+  return ['A','B','AB','C','D','E'].includes(String(value).toUpperCase());
 };

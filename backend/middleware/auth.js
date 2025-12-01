@@ -32,14 +32,18 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const jwtSecret = process.env.JWT_SECRET && String(process.env.JWT_SECRET).trim() !== ''
+      ? process.env.JWT_SECRET
+      : 'dev-secret';
+
+    const decoded = jwt.verify(token, jwtSecret);
     
     // Detectar coluna de unidade em usuarios
     const unidadeCol = await getUsuariosUnidadeColumn();
 
     // Construir SELECT e JOIN dinamicamente para compatibilidade com esquemas
     const { tableExists } = require('../utils/schema');
-    const unidadeSelect = unidadeCol ? `u.${unidadeCol} as unidade_id` : `NULL as unidade_id`;
+    const unidadeSelect = unidadeCol ? ('u.' + unidadeCol + ' as unidade_id') : 'NULL as unidade_id';
     const hasUnidadesTable = await tableExists('unidades');
     const hasSetoresTable = await tableExists('setores');
     const hasFuncoesTable = await tableExists('funcoes');
@@ -51,21 +55,22 @@ const authenticateToken = async (req, res, next) => {
     const hasUnTipo = hasUnidadesTable && await columnExists('unidades', 'tipo');
     const hasSetorSigla = hasSetoresTable && await columnExists('setores', 'sigla');
     const hasPerfilPermissoes = await columnExists('perfis', 'permissoes');
+    const hasPerfilDescricao = await columnExists('perfis', 'descricao');
     const unidadeCampos = (unidadeCol && hasUnidadesTable)
-      ? `un.nome as unidade_nome, ${hasUnSigla ? 'un.sigla' : 'NULL'} as unidade_sigla, ${hasUnTipo ? 'un.tipo' : 'NULL'} as unidade_tipo,`
-      : `NULL as unidade_nome, NULL as unidade_sigla, NULL as unidade_tipo,`;
-    const setorCampos = hasSetoresTable
-      ? `s.nome as setor_nome, ${hasSetorSigla ? 's.sigla' : 'NULL'} as setor_sigla,`
+      ? ('un.nome as unidade_nome, ' + (hasUnSigla ? 'un.sigla' : 'NULL') + ' as unidade_sigla, ' + (hasUnTipo ? 'un.tipo' : 'NULL') + ' as unidade_tipo,')
+      : 'NULL as unidade_nome, NULL as unidade_sigla, NULL as unidade_tipo,';
+    const setorCampos = (hasSetoresTable && hasSetorIdCol)
+      ? ('s.nome as setor_nome, ' + (hasSetorSigla ? 's.sigla' : 'NULL') + ' as setor_sigla,')
       : (hasSetorTextCol
-         ? `u.setor as setor_nome, NULL as setor_sigla,`
-         : `NULL as setor_nome, NULL as setor_sigla,`);
-    const funcaoCampo = hasFuncoesTable
-      ? `f.nome as funcao_nome`
-      : `NULL as funcao_nome`;
+        ? 'u.setor as setor_nome, NULL as setor_sigla,'
+        : 'NULL as setor_nome, NULL as setor_sigla,');
+    const funcaoCampo = (hasFuncoesTable && hasFuncaoIdCol)
+      ? 'f.nome as funcao_nome'
+      : 'NULL as funcao_nome';
     const funcoesCampo = hasFuncoesTextCol ? 'u.funcoes' : 'NULL';
-    const unidadeJoin = (unidadeCol && hasUnidadesTable) ? `LEFT JOIN unidades un ON u.${unidadeCol} = un.id` : '';
-    const setorJoin = hasSetoresTable ? `LEFT JOIN setores s ON u.setor_id = s.id` : '';
-    const funcaoJoin = hasFuncoesTable ? `LEFT JOIN funcoes f ON u.funcao_id = f.id` : '';
+    const unidadeJoin = (unidadeCol && hasUnidadesTable) ? ('LEFT JOIN unidades un ON u.' + unidadeCol + ' = un.id') : '';
+    const setorJoin = (hasSetoresTable && hasSetorIdCol) ? 'LEFT JOIN setores s ON u.setor_id = s.id' : '';
+    const funcaoJoin = (hasFuncoesTable && hasFuncaoIdCol) ? 'LEFT JOIN funcoes f ON u.funcao_id = f.id' : '';
 
     const result = await query(`
       SELECT 
@@ -88,7 +93,7 @@ const authenticateToken = async (req, res, next) => {
         -- Informações do perfil
         p.id as perfil_id,
         p.nome as perfil_nome,
-        p.descricao as perfil_descricao,
+        ${hasPerfilDescricao ? 'p.descricao' : 'NULL'} as perfil_descricao,
         NULL as nivel_hierarquia,
         ${hasPerfilPermissoes ? 'p.permissoes' : 'NULL'} as permissoes,
         
@@ -118,11 +123,13 @@ const authenticateToken = async (req, res, next) => {
 
     const user = result.rows[0];
     
-    // Atualizar último login
-    await query(
-      'UPDATE usuarios SET ultimo_login = NOW() WHERE id = $1',
-      [user.id]
-    );
+    const hasUltimoLoginCol = await columnExists('usuarios', 'ultimo_login');
+    if (hasUltimoLoginCol) {
+      await query(
+        'UPDATE usuarios SET ultimo_login = NOW() WHERE id = $1',
+        [user.id]
+      );
+    }
     
     // Compatibilidade com código legado
     user.nome = user.nome_completo; // Para compatibilidade
@@ -366,7 +373,10 @@ const optionalAuth = async (req, res, next) => {
     const token = authHeader && authHeader.split(' ')[1];
 
     if (token) {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const jwtSecret = process.env.JWT_SECRET && String(process.env.JWT_SECRET).trim() !== ''
+        ? process.env.JWT_SECRET
+        : 'dev-secret';
+      const decoded = jwt.verify(token, jwtSecret);
       const result = await query(`
         SELECT 
           u.id,
@@ -379,10 +389,9 @@ const optionalAuth = async (req, res, next) => {
           u.ativo,
           p.nome as perfil_nome,
           p.nivel_hierarquia,
-          s.nome as setor_nome
+          u.setor as setor_nome
         FROM usuarios u
         LEFT JOIN perfis p ON u.perfil_id = p.id
-        LEFT JOIN setores s ON u.setor_id = s.id
         WHERE u.id = $1 AND u.ativo = true
       `, [decoded.userId]);
 

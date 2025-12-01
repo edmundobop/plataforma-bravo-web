@@ -191,7 +191,7 @@ router.get('/solicitacoes', async (req, res) => {
     const result = await query(queryText, params);
 
     // Contagem
-    let countQuery = `SELECT COUNT(*) as total FROM checklist_solicitacoes s WHERE 1=1`;
+    let countQuery = 'SELECT COUNT(*) as total FROM checklist_solicitacoes s WHERE 1=1';
     const countParams = [];
     let countIdx = 1;
     if (req.unidade?.id) {

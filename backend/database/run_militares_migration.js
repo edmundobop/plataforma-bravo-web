@@ -33,7 +33,7 @@ async function runMilitaresMigration() {
     
     // Verificar se a tabela foi criada
     const result = await query(
-      "SELECT COUNT(*) as count FROM information_schema.tables WHERE table_name = 'militares'"
+      'SELECT COUNT(*) as count FROM information_schema.tables WHERE table_name = \'militares\''
     );
     
     if (result.rows[0].count > 0) {

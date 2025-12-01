@@ -55,14 +55,14 @@ async function setupDatabase() {
     if (userExists.rows.length === 0) {
       console.log('👤 Criando usuário cbmgo_user...');
       await adminClient.query(
-        "CREATE USER cbmgo_user WITH PASSWORD 'cbmgo123'"
+        'CREATE USER cbmgo_user WITH PASSWORD \'cbmgo123\''
       );
       console.log('✅ Usuário cbmgo_user criado!');
     } else {
       console.log('✅ Usuário cbmgo_user já existe!');
       console.log('🔑 Atualizando senha do usuário cbmgo_user...');
       await adminClient.query(
-        "ALTER USER cbmgo_user WITH PASSWORD 'cbmgo123'"
+        'ALTER USER cbmgo_user WITH PASSWORD \'cbmgo123\''
       );
       console.log('✅ Senha do usuário cbmgo_user atualizada!');
     }

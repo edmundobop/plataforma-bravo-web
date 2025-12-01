@@ -9,7 +9,7 @@ const { query, transaction } = require('../config/database');
 
 async function columnExists(table, column) {
   const res = await query(
-    `SELECT 1 FROM information_schema.columns WHERE table_name = $1 AND column_name = $2 LIMIT 1`,
+    'SELECT 1 FROM information_schema.columns WHERE table_name = $1 AND column_name = $2 LIMIT 1',
     [table, column]
   );
   return res.rows.length > 0;
@@ -17,7 +17,7 @@ async function columnExists(table, column) {
 
 async function tableExists(table) {
   const res = await query(
-    `SELECT 1 FROM information_schema.tables WHERE table_name = $1 LIMIT 1`,
+    'SELECT 1 FROM information_schema.tables WHERE table_name = $1 LIMIT 1',
     [table]
   );
   return res.rows.length > 0;
@@ -29,27 +29,27 @@ async function run() {
   await transaction(async (client) => {
     // Backup dos dados atuais
     console.log('🗄️ Criando backup de usuarios (setor/funcao)...');
-    await client.query(`
-      DO $$
-      BEGIN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='usuarios_backup_sf') THEN
-          CREATE TABLE usuarios_backup_sf AS 
-            SELECT id, setor_id, setor, funcao_id, funcoes FROM usuarios;
-          ALTER TABLE usuarios_backup_sf ADD COLUMN backup_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
-        END IF;
-      END $$;
-    `);
+    await client.query(
+      'DO $$\n' +
+      'BEGIN\n' +
+      '  IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name=\'usuarios_backup_sf\') THEN\n' +
+      '    CREATE TABLE usuarios_backup_sf AS \n' +
+      '      SELECT id, setor_id, setor, funcao_id, funcoes FROM usuarios;\n' +
+      '    ALTER TABLE usuarios_backup_sf ADD COLUMN backup_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;\n' +
+      '  END IF;\n' +
+      'END $$;'
+    );
 
     // Garantir colunas alvo
     const hasSetorText = await columnExists('usuarios', 'setor');
     if (!hasSetorText) {
       console.log('➕ Adicionando coluna texto usuarios.setor...');
-      await client.query(`ALTER TABLE usuarios ADD COLUMN setor VARCHAR(120)`);
+      await client.query('ALTER TABLE usuarios ADD COLUMN setor VARCHAR(120)');
     }
     const hasFuncoesJson = await columnExists('usuarios', 'funcoes');
     if (!hasFuncoesJson) {
       console.log('➕ Adicionando coluna JSONB usuarios.funcoes...');
-      await client.query(`ALTER TABLE usuarios ADD COLUMN funcoes JSONB DEFAULT '[]'`);
+      await client.query('ALTER TABLE usuarios ADD COLUMN funcoes JSONB DEFAULT \'[]\'');
     }
 
     // Migrar setor_id -> setor (texto)
@@ -58,33 +58,33 @@ async function run() {
       const hasSetoresTable = await tableExists('setores');
       if (hasSetoresTable) {
         console.log('🔄 Migrando usuarios.setor_id -> usuarios.setor usando tabela setores...');
-        await client.query(`
-          UPDATE usuarios u
-          SET setor = s.nome
-          FROM setores s
-          WHERE u.setor_id = s.id AND (u.setor IS NULL OR u.setor = '')
-        `);
+        await client.query(
+          'UPDATE usuarios u\n' +
+          'SET setor = s.nome\n' +
+          'FROM setores s\n' +
+          'WHERE u.setor_id = s.id AND (u.setor IS NULL OR u.setor = \'\')'
+        );
       } else {
         console.log('🔄 Migrando usuarios.setor_id -> usuarios.setor usando lista fixa...');
-        await client.query(`
-          UPDATE usuarios
-          SET setor = CASE setor_id
-            WHEN 1 THEN 'Comando'
-            WHEN 2 THEN 'Subcomando'
-            WHEN 3 THEN 'SAAD'
-            WHEN 4 THEN 'SOP'
-            WHEN 5 THEN 'SEC'
-            WHEN 6 THEN 'SAT'
-            WHEN 7 THEN 'PROEBOM'
-            WHEN 8 THEN 'Operacional'
-            ELSE setor
-          END
-          WHERE setor_id IS NOT NULL AND (setor IS NULL OR setor = '')
-        `);
+        await client.query(
+          'UPDATE usuarios\n' +
+          'SET setor = CASE setor_id\n' +
+          '  WHEN 1 THEN \'Comando\'\n' +
+          '  WHEN 2 THEN \'Subcomando\'\n' +
+          '  WHEN 3 THEN \'SAAD\'\n' +
+          '  WHEN 4 THEN \'SOP\'\n' +
+          '  WHEN 5 THEN \'SEC\'\n' +
+          '  WHEN 6 THEN \'SAT\'\n' +
+          '  WHEN 7 THEN \'PROEBOM\'\n' +
+          '  WHEN 8 THEN \'Operacional\'\n' +
+          '  ELSE setor\n' +
+          'END\n' +
+          'WHERE setor_id IS NOT NULL AND (setor IS NULL OR setor = \'\')'
+        );
       }
 
       console.log('🗑️ Removendo coluna usuarios.setor_id...');
-      await client.query(`ALTER TABLE usuarios DROP COLUMN IF EXISTS setor_id`);
+      await client.query('ALTER TABLE usuarios DROP COLUMN IF EXISTS setor_id');
     } else {
       console.log('ℹ️ Coluna usuarios.setor_id não existe — nada a fazer para setor.');
     }
@@ -95,24 +95,24 @@ async function run() {
       const hasFuncoesTable = await tableExists('funcoes');
       if (hasFuncoesTable) {
         console.log('🔄 Migrando usuarios.funcao_id -> usuarios.funcoes usando tabela funcoes...');
-        await client.query(`
-          UPDATE usuarios u
-          SET funcoes = CASE 
-            WHEN (u.funcoes IS NULL OR u.funcoes::text = '[]') THEN jsonb_build_array(f.nome)
-            ELSE u.funcoes
-          END
-          FROM funcoes f
-          WHERE u.funcao_id = f.id
-        `);
+        await client.query(
+          'UPDATE usuarios u\n' +
+          'SET funcoes = CASE \n' +
+          '  WHEN (u.funcoes IS NULL OR u.funcoes::text = \'[]\') THEN jsonb_build_array(f.nome)\n' +
+          '  ELSE u.funcoes\n' +
+          'END\n' +
+          'FROM funcoes f\n' +
+          'WHERE u.funcao_id = f.id'
+        );
       } else {
         console.log('🔄 Ajustando usuarios.funcoes para [] quando vazio...');
-        await client.query(`
-          UPDATE usuarios SET funcoes = COALESCE(funcoes, '[]'::jsonb)
-        `);
+        await client.query(
+          'UPDATE usuarios SET funcoes = COALESCE(funcoes, \'[]\'::jsonb)'
+        );
       }
 
       console.log('🗑️ Removendo coluna usuarios.funcao_id...');
-      await client.query(`ALTER TABLE usuarios DROP COLUMN IF EXISTS funcao_id`);
+      await client.query('ALTER TABLE usuarios DROP COLUMN IF EXISTS funcao_id');
     } else {
       console.log('ℹ️ Coluna usuarios.funcao_id não existe — nada a fazer para funcoes.');
     }
@@ -121,7 +121,7 @@ async function run() {
     const hasSetores = await tableExists('setores');
     if (hasSetores) {
       console.log('🗑️ Removendo tabela setores...');
-      await client.query(`DROP TABLE IF EXISTS setores CASCADE`);
+      await client.query('DROP TABLE IF EXISTS setores CASCADE');
     } else {
       console.log('ℹ️ Tabela setores não existe.');
     }
@@ -129,7 +129,7 @@ async function run() {
     const hasFuncoes = await tableExists('funcoes');
     if (hasFuncoes) {
       console.log('🗑️ Removendo tabela funcoes...');
-      await client.query(`DROP TABLE IF EXISTS funcoes CASCADE`);
+      await client.query('DROP TABLE IF EXISTS funcoes CASCADE');
     } else {
       console.log('ℹ️ Tabela funcoes não existe.');
     }

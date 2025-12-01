@@ -31,14 +31,14 @@ const io = socketIo(server, {
 
 // Middlewares
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
   contentSecurityPolicy: {
     directives: {
-      defaultSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "http://localhost:5000", "http://localhost:3000", "http://localhost:3003", "http://localhost:3004", "http://localhost:3005"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      connectSrc: ["'self'", "http://localhost:5000", "http://localhost:3000", "http://localhost:3003", "http://localhost:3004", "http://localhost:3005"]
+      defaultSrc: ['\'self\''],
+      imgSrc: ['\'self\'', 'data:', 'http://localhost:5000', 'http://localhost:3000', 'http://localhost:3003', 'http://localhost:3004', 'http://localhost:3005'],
+      scriptSrc: ['\'self\'', '\'unsafe-inline\''],
+      styleSrc: ['\'self\'', '\'unsafe-inline\''],
+      connectSrc: ['\'self\'', 'http://localhost:5000', 'http://localhost:3000', 'http://localhost:3003', 'http://localhost:3004', 'http://localhost:3005']
     }
   }
 }));
@@ -54,7 +54,7 @@ app.use(cors({
       if (url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1')) {
         return callback(null, true);
       }
-    } catch (e) {}
+    } catch (e) { console.warn('CORS origin parse failed:', e?.message); }
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true
@@ -128,7 +128,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Middleware de erro
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
   console.error(err.stack);
   res.status(500).json({ 
     error: 'Erro interno do servidor',

@@ -95,7 +95,7 @@ router.get('/produtos', async (req, res) => {
     }
 
     if (baixo_estoque === 'true') {
-      queryText += ` AND p.estoque_atual <= p.estoque_minimo`;
+      queryText += ' AND p.estoque_atual <= p.estoque_minimo';
     }
 
     if (busca) {
@@ -131,7 +131,7 @@ router.get('/produtos', async (req, res) => {
     }
 
     if (baixo_estoque === 'true') {
-      countQuery += ` AND p.estoque_atual <= p.estoque_minimo`;
+      countQuery += ' AND p.estoque_atual <= p.estoque_minimo';
     }
 
     if (busca) {

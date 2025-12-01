@@ -629,7 +629,44 @@ router.get('/metricas', async (req, res) => {
           (SELECT COUNT(*) FROM escala_usuarios eu JOIN escalas e ON eu.escala_id = e.id WHERE eu.data_servico = CURRENT_DATE) as servicos_hoje
       `;
     }
-    
+    // Atividade por módulo no período
+    let atividadeQuery;
+    if (unidadeId) {
+      atividadeQuery = `
+        SELECT 'checklist' AS modulo, COUNT(*) AS quantidade
+        FROM checklist_viaturas cv
+        JOIN viaturas v ON cv.viatura_id = v.id
+        WHERE cv.data_checklist >= CURRENT_DATE - INTERVAL '${periodo} days'
+          AND v.unidade_id = $1
+        UNION ALL
+        SELECT 'almoxarifado' AS modulo, COUNT(*) AS quantidade
+        FROM movimentacoes_estoque me
+        JOIN produtos p ON me.produto_id = p.id
+        WHERE me.data_movimentacao >= CURRENT_DATE - INTERVAL '${periodo} days'
+          AND p.unidade_id = $1
+        UNION ALL
+        SELECT 'emprestimos' AS modulo, COUNT(*) AS quantidade
+        FROM emprestimos e
+        JOIN equipamentos eq ON e.equipamento_id = eq.id
+        WHERE e.data_emprestimo >= CURRENT_DATE - INTERVAL '${periodo} days'
+          AND eq.unidade_id = $1
+      `;
+    } else {
+      atividadeQuery = `
+        SELECT 'checklist' AS modulo, COUNT(*) AS quantidade
+        FROM checklist_viaturas cv
+        WHERE cv.data_checklist >= CURRENT_DATE - INTERVAL '${periodo} days'
+        UNION ALL
+        SELECT 'almoxarifado' AS modulo, COUNT(*) AS quantidade
+        FROM movimentacoes_estoque me
+        WHERE me.data_movimentacao >= CURRENT_DATE - INTERVAL '${periodo} days'
+        UNION ALL
+        SELECT 'emprestimos' AS modulo, COUNT(*) AS quantidade
+        FROM emprestimos e
+        WHERE e.data_emprestimo >= CURRENT_DATE - INTERVAL '${periodo} days'
+      `;
+    }
+
     const atividadePorModulo = await query(atividadeQuery, unidadeId ? [unidadeId] : []);
     
     // Usuários mais ativos

@@ -49,6 +49,7 @@ describe('Auth Middleware', () => {
 
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({
+      success: false,
       error: 'Token de acesso requerido'
     });
     expect(next).not.toHaveBeenCalled();
@@ -66,6 +67,7 @@ describe('Auth Middleware', () => {
 
     expect(res.status).toHaveBeenCalledWith(403);
     expect(res.json).toHaveBeenCalledWith({
+      success: false,
       error: 'Token inválido'
     });
     expect(next).not.toHaveBeenCalled();
@@ -83,6 +85,7 @@ describe('Auth Middleware', () => {
 
     expect(res.status).toHaveBeenCalledWith(403);
     expect(res.json).toHaveBeenCalledWith({
+      success: false,
       error: 'Token inválido'
     });
     expect(next).not.toHaveBeenCalled();
@@ -100,6 +103,7 @@ describe('Auth Middleware', () => {
 
     expect(res.status).toHaveBeenCalledWith(403);
     expect(res.json).toHaveBeenCalledWith({
+      success: false,
       error: 'Token expirado'
     });
     expect(next).not.toHaveBeenCalled();

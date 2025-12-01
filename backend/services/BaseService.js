@@ -85,9 +85,9 @@ class BaseService {
       unidadeId
     );
 
-    finalQuery += ' RETURNING *';
+    const q = `${finalQuery} RETURNING *`;
 
-    return await query(finalQuery, finalParams);
+    return await query(q, finalParams);
   }
 
   // Deletar registro com verificação de tenant

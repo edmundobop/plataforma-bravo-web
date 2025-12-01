@@ -143,9 +143,12 @@ router.post('/login', loginValidation, async (req, res) => {
     );
 
     // Gerar token JWT
+    const jwtSecret = process.env.JWT_SECRET && String(process.env.JWT_SECRET).trim() !== ''
+      ? process.env.JWT_SECRET
+      : 'dev-secret';
     const token = jwt.sign(
       { userId: user.id, email: user.email, perfil_id: user.perfil_id, perfil_nome: user.perfil_nome },
-      process.env.JWT_SECRET,
+      jwtSecret,
       { expiresIn: process.env.JWT_EXPIRES_IN || '12h' }
     );
 
@@ -193,7 +196,7 @@ router.post('/register', authenticateToken, authorizeRoles('Administrador'), reg
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { nome_completo, email, senha, matricula, posto_graduacao, setor_id, telefone, perfil_id = 5 } = req.body;
+    const { nome_completo, email, senha, matricula, posto_graduacao, setor, telefone, perfil_id = 5 } = req.body;
 
     // Verificar se email já existe
     const emailExists = await query(
@@ -216,14 +219,15 @@ router.post('/register', authenticateToken, authorizeRoles('Administrador'), reg
     }
 
     // Hash da senha
-    const hashedPassword = await bcrypt.hash(senha, parseInt(process.env.BCRYPT_ROUNDS));
+    const bcryptRounds = parseInt(process.env.BCRYPT_ROUNDS) || 12;
+    const hashedPassword = await bcrypt.hash(senha, bcryptRounds);
 
     // Inserir usuário
     const result = await query(
-      `INSERT INTO usuarios (nome_completo, email, senha_hash, matricula, posto_graduacao, setor_id, telefone, perfil_id)
+      `INSERT INTO usuarios (nome_completo, email, senha_hash, matricula, posto_graduacao, setor, telefone, perfil_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING id, nome_completo, email, matricula, posto_graduacao, setor_id, telefone, perfil_id, ativo, created_at`,
-      [nome_completo, email.toLowerCase(), hashedPassword, matricula, posto_graduacao, setor_id, telefone, perfil_id]
+       RETURNING id, nome_completo, email, matricula, posto_graduacao, setor, telefone, perfil_id, ativo, created_at`,
+      [nome_completo, email.toLowerCase(), hashedPassword, matricula, posto_graduacao, setor, telefone, perfil_id]
     );
 
     const newUser = result.rows[0];
@@ -235,7 +239,7 @@ router.post('/register', authenticateToken, authorizeRoles('Administrador'), reg
       [
         newUser.id,
         'Bem-vindo ao Sistema CBMGO',
-        `Olá ${nome}, sua conta foi criada com sucesso. Acesse os módulos disponíveis e explore as funcionalidades.`,
+        `Olá ${nome_completo}, sua conta foi criada com sucesso. Acesse os módulos disponíveis e explore as funcionalidades.`,
         'info',
         'sistema'
       ]

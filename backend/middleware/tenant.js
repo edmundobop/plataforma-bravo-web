@@ -80,19 +80,19 @@ const getUserUnits = async (req, res, next) => {
       return res.status(401).json({ error: 'Usuário não autenticado' });
     }
 
-    const unidadeCol2 = await getUsuariosUnidadeColumn();
+    const unidadeCol2 = await getUsuariosUnidadeColumn() || 'unidade_id';
     const condLotacao = unidadeCol2 ? `usr.${unidadeCol2} = u.id` : 'FALSE';
     // Filtrar estritamente: incluir apenas lotação e unidades onde o usuário é membro
     const selectRole = (unidadeCol2 
-      ? `CASE WHEN ${condLotacao} THEN 'lotacao' WHEN mu.role_unidade IS NOT NULL THEN mu.role_unidade ELSE 'membro' END as role_unidade`
-      : `CASE WHEN mu.role_unidade IS NOT NULL THEN mu.role_unidade ELSE 'membro' END as role_unidade`);
+      ? ('CASE WHEN ' + condLotacao + ' THEN \'lotacao\' WHEN mu.role_unidade IS NOT NULL THEN mu.role_unidade ELSE \'membro\' END as role_unidade')
+      : 'CASE WHEN mu.role_unidade IS NOT NULL THEN mu.role_unidade ELSE \'membro\' END as role_unidade');
     const selectEhLotacao = unidadeCol2 
-      ? `CASE WHEN ${condLotacao} THEN true ELSE false END as eh_lotacao`
-      : `false as eh_lotacao`;
+      ? ('CASE WHEN ' + condLotacao + ' THEN true ELSE false END as eh_lotacao')
+      : 'false as eh_lotacao';
     // Apenas unidades vinculadas ao usuário (lotação ou membros_unidade)
     const whereClause = (unidadeCol2 
-      ? `( ${condLotacao} OR mu.usuario_id IS NOT NULL )`
-      : `( mu.usuario_id IS NOT NULL )`);
+      ? ('( ' + condLotacao + ' OR mu.usuario_id IS NOT NULL )')
+      : '( mu.usuario_id IS NOT NULL )');
 
     const hasUnSigla2 = await columnExists('unidades', 'sigla');
     const hasUnTipo = await columnExists('unidades', 'tipo');

@@ -168,8 +168,14 @@ const createTables = async () => {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='funcoes') THEN
           ALTER TABLE usuarios ADD COLUMN funcoes JSONB DEFAULT '[]';
         END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='categoria_cnh') THEN
+          ALTER TABLE usuarios ADD COLUMN categoria_cnh VARCHAR(5);
+        END IF;
       END $$;
     `);
+
+    await query('ALTER TABLE usuarios DROP COLUMN IF EXISTS setor_id');
+    await query('ALTER TABLE usuarios DROP COLUMN IF EXISTS funcao_id');
 
     // ==========================
     // FROTA
@@ -426,7 +432,7 @@ const createTables = async () => {
     // ==========================
     // NOTIFICAÇÕES
     // ==========================
-  await query(`
+    await query(`
     CREATE TABLE IF NOT EXISTS notificacoes (
         id SERIAL PRIMARY KEY,
         usuario_id INTEGER REFERENCES usuarios(id),
