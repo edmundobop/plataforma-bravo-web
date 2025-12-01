@@ -115,6 +115,15 @@ const Checklists = () => {
   const [automacaoDialogOpen, setAutomacaoDialogOpen] = useState(false);
   const [editingAutomacao, setEditingAutomacao] = useState(null);
   const [autoActionLoading, setAutoActionLoading] = useState(false);
+  const [autoFilters, setAutoFilters] = useState({ nome: '', ativo: '', ala_servico: '', tipo_checklist: '' });
+
+  const filteredAutomacoes = automacoes.filter((a) => {
+    const byName = autoFilters.nome ? (a.nome || '').toLowerCase().includes(autoFilters.nome.toLowerCase()) : true;
+    const byStatus = autoFilters.ativo !== '' ? String(!!a.ativo) === autoFilters.ativo : true;
+    const byAla = autoFilters.ala_servico ? a.ala_servico === autoFilters.ala_servico : true;
+    const byTipo = autoFilters.tipo_checklist ? a.tipo_checklist === autoFilters.tipo_checklist : true;
+    return byName && byStatus && byAla && byTipo;
+  });
   const [autoError, setAutoError] = useState('');
   const [autoMessage, setAutoMessage] = useState('');
   const [automacaoForm, setAutomacaoForm] = useState({
@@ -1225,16 +1234,65 @@ const Checklists = () => {
         <>
           <Card sx={{ mb: 3 }}>
             <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 2 : 0 }}>
                 <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
                   Automações de Checklists
                 </Typography>
                 {(user?.perfil_nome === 'Administrador' || user?.perfil_nome === 'Chefe') && (
-                  <Button variant="contained" startIcon={<AddIcon />} onClick={abrirNovaAutomacao}>
+                  <Button variant="contained" startIcon={<AddIcon />} onClick={abrirNovaAutomacao} fullWidth={isMobile}>
                     Nova Automação
                   </Button>
                 )}
               </Box>
+              <Accordion defaultExpanded={!isMobile} sx={{ mt: 2 }}>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>Filtros</AccordionSummary>
+                <AccordionDetails>
+                  <Grid container spacing={2} alignItems="center">
+                    <Grid item xs={12} sm={6} md={4}>
+                      <TextField fullWidth label="Buscar por nome" value={autoFilters.nome} onChange={(e) => setAutoFilters(prev => ({ ...prev, nome: e.target.value }))} />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <FormControl fullWidth>
+                        <InputLabel>Status</InputLabel>
+                        <Select value={autoFilters.ativo} onChange={(e) => setAutoFilters(prev => ({ ...prev, ativo: e.target.value }))} label="Status">
+                          <MenuItem value="">Todos</MenuItem>
+                          <MenuItem value="true">Ativo</MenuItem>
+                          <MenuItem value="false">Desativado</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <FormControl fullWidth>
+                        <InputLabel>Ala</InputLabel>
+                        <Select value={autoFilters.ala_servico} onChange={(e) => setAutoFilters(prev => ({ ...prev, ala_servico: e.target.value }))} label="Ala">
+                          <MenuItem value="">Todas</MenuItem>
+                          <MenuItem value="Alpha">Alpha</MenuItem>
+                          <MenuItem value="Bravo">Bravo</MenuItem>
+                          <MenuItem value="Charlie">Charlie</MenuItem>
+                          <MenuItem value="Delta">Delta</MenuItem>
+                          <MenuItem value="ADM">ADM</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={2}>
+                      <FormControl fullWidth>
+                        <InputLabel>Tipo</InputLabel>
+                        <Select value={autoFilters.tipo_checklist} onChange={(e) => setAutoFilters(prev => ({ ...prev, tipo_checklist: e.target.value }))} label="Tipo">
+                          <MenuItem value="">Todos</MenuItem>
+                          <MenuItem value="Diário">Diário</MenuItem>
+                          <MenuItem value="Semanal">Semanal</MenuItem>
+                          <MenuItem value="Mensal">Mensal</MenuItem>
+                          <MenuItem value="Pré-Operacional">Pré-Operacional</MenuItem>
+                          <MenuItem value="Pós-Operacional">Pós-Operacional</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={2}>
+                      <Button fullWidth variant="text" onClick={() => setAutoFilters({ nome: '', ativo: '', ala_servico: '', tipo_checklist: '' })}>Limpar</Button>
+                    </Grid>
+                  </Grid>
+                </AccordionDetails>
+              </Accordion>
               {autoError && (
                 <Alert severity="error" sx={{ mt: 2 }}>{autoError}</Alert>
               )}
@@ -1251,7 +1309,7 @@ const Checklists = () => {
                 </Typography>
               ) : (
                 <Grid container spacing={2} sx={{ mt: 1 }}>
-                  {automacoes.map((auto) => {
+                  {filteredAutomacoes.map((auto) => {
                     const template = templatesDisponiveis.find(t => t.id === auto.template_id);
                     const primeiraViaturaId = Array.isArray(auto.viaturas) && auto.viaturas.length > 0 ? auto.viaturas[0] : null;
                     const viatura = viaturasDisponiveis.find(v => v.id === primeiraViaturaId);
@@ -1310,9 +1368,9 @@ const Checklists = () => {
           </Card>
 
           {/* Diálogo de criação/edição de automação */}
-          <Dialog open={automacaoDialogOpen} onClose={() => setAutomacaoDialogOpen(false)} maxWidth="sm" fullWidth>
+          <Dialog open={automacaoDialogOpen} onClose={() => setAutomacaoDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
             <DialogTitle>{editingAutomacao ? 'Editar Automação' : 'Nova Automação'}</DialogTitle>
-            <DialogContent dividers>
+            <DialogContent dividers sx={{ p: isMobile ? 1.5 : 3 }}>
               {autoError && <Alert severity="error" sx={{ mb: 2 }}>{autoError}</Alert>}
               <Grid container spacing={2}>
                 <Grid item xs={12}>
@@ -1396,7 +1454,7 @@ const Checklists = () => {
                 </Grid>
               </Grid>
             </DialogContent>
-            <DialogActions>
+            <DialogActions sx={{ position: isMobile ? 'sticky' : 'static', bottom: 0, bgcolor: isMobile ? 'background.paper' : undefined, zIndex: 1 }}>
               <Button onClick={() => setAutomacaoDialogOpen(false)}>Cancelar</Button>
               <Button variant="contained" onClick={salvarAutomacao} disabled={autoActionLoading}>{autoActionLoading ? 'Salvando...' : 'Salvar'}</Button>
             </DialogActions>
@@ -1452,7 +1510,7 @@ const Checklists = () => {
             )}
           </Box>
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ p: isMobile ? 1.5 : 3 }}>
           {selectedItem ? (
             <Box sx={{ mt: 2 }}>
               {console.log('🔍 Renderizando diálogo de visualização com dados:', selectedItem) || null}
@@ -1542,7 +1600,7 @@ const Checklists = () => {
             </Box>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ position: isMobile ? 'sticky' : 'static', bottom: 0, bgcolor: isMobile ? 'background.paper' : undefined, zIndex: 1 }}>
           <Button onClick={handleCloseDialog}>
             Fechar
           </Button>
@@ -1573,14 +1631,14 @@ const Checklists = () => {
       />
 
       {/* Diálogo de confirmação de cancelamento */}
-      <Dialog open={deleteDialogOpen} onClose={() => { setDeleteDialogOpen(false); setCancelReason(''); }}>
+      <Dialog open={deleteDialogOpen} onClose={() => { setDeleteDialogOpen(false); setCancelReason(''); }} fullScreen={isMobile}>
         <DialogTitle sx={{ color: 'warning.main' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <WarningIcon />
             Confirmar Cancelamento
           </Box>
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ p: isMobile ? 1.5 : 3 }}>
           <Typography>
             Tem certeza que deseja cancelar este checklist?
           </Typography>
@@ -1611,7 +1669,7 @@ const Checklists = () => {
             Esta ação não pode ser desfeita!
           </Alert>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ position: isMobile ? 'sticky' : 'static', bottom: 0, bgcolor: isMobile ? 'background.paper' : undefined, zIndex: 1 }}>
           <Button onClick={() => { setDeleteDialogOpen(false); setCancelReason(''); }} disabled={actionLoading}>
             Cancelar
           </Button>
@@ -1637,7 +1695,7 @@ const Checklists = () => {
             </Typography>
           </Box>
         </DialogTitle>
-        <DialogContent sx={{ pt: 3 }}>
+        <DialogContent sx={{ p: isMobile ? 1.5 : 3 }}>
           {selectedItem ? (
             <>
               {console.log('✏️ Renderizando diálogo de edição com dados:', selectedItem) || null}
@@ -1704,18 +1762,11 @@ const Checklists = () => {
             </Box>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ position: isMobile ? 'sticky' : 'static', bottom: 0, bgcolor: isMobile ? 'background.paper' : undefined, zIndex: 1 }}>
           <Button onClick={() => setEditDialogOpen(false)} disabled={actionLoading}>
             Cancelar
           </Button>
-          <Button 
-            onClick={handleSaveEdit} 
-            variant="contained"
-            disabled={actionLoading}
-            startIcon={actionLoading ? <CircularProgress size={16} /> : <SaveIcon />}
-          >
-            {actionLoading ? 'Salvando...' : 'Salvar'}
-          </Button>
+          <Button onClick={handleSaveEdit} variant="contained" disabled={actionLoading} startIcon={actionLoading ? <CircularProgress size={16} /> : <SaveIcon />}>{actionLoading ? 'Salvando...' : 'Salvar'}</Button>
         </DialogActions>
       </Dialog>
     </Box>
