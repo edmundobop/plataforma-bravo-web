@@ -24,6 +24,8 @@ import {
   ImageList,
   ImageListItem,
   ImageListItemBar,
+  useTheme,
+  useMediaQuery,
 } from '@mui/material';
 import {
   DirectionsCar as CarIcon,
@@ -51,6 +53,8 @@ import {
 const Frota = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   
   // Estados para diálogos
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -212,7 +216,7 @@ const Frota = () => {
       </Menu>
 
       {/* Diálogo de formulário */}
-      <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="md" fullWidth>
+      <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ bgcolor: 'primary.50', borderBottom: 1, borderColor: 'divider' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             {dialogType === 'view' && selectedItem && (
@@ -242,7 +246,7 @@ const Frota = () => {
             )}
           </Box>
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ p: isMobile ? 1.5 : 3 }}>
           <Box sx={{ pt: 2 }}>
             {dialogType === 'view' && selectedItem ? (
               <Box sx={{ p: 2 }}>
@@ -991,7 +995,7 @@ const Frota = () => {
 
           </Box>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ position: isMobile ? 'sticky' : 'static', bottom: 0, bgcolor: isMobile ? 'background.paper' : undefined, zIndex: 1 }}>
           {dialogType === 'view' ? (
             <Button onClick={handleCloseDialog} variant="contained">
               Fechar
@@ -1015,6 +1019,7 @@ const Frota = () => {
         onClose={handleClosePhotoModal}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
         PaperProps={{
           sx: {
             bgcolor: 'rgba(0, 0, 0, 0.9)',
