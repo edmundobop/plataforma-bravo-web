@@ -36,6 +36,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Pagination,
   useTheme,
   useMediaQuery,
 } from '@mui/material';
@@ -124,6 +125,11 @@ const Checklists = () => {
     const byTipo = autoFilters.tipo_checklist ? a.tipo_checklist === autoFilters.tipo_checklist : true;
     return byName && byStatus && byAla && byTipo;
   });
+
+  const [autoPage, setAutoPage] = useState(1);
+  const autoPerPage = isMobile ? 5 : 8;
+  const autoPages = Math.max(1, Math.ceil(filteredAutomacoes.length / autoPerPage));
+  const paginatedAutomacoes = filteredAutomacoes.slice((autoPage - 1) * autoPerPage, autoPage * autoPerPage);
   const [autoError, setAutoError] = useState('');
   const [autoMessage, setAutoMessage] = useState('');
   const [automacaoForm, setAutomacaoForm] = useState({
@@ -769,6 +775,7 @@ const Checklists = () => {
                   Nenhuma solicitação pendente.
                 </Typography>
               ) : (
+                <Box>
                 <Grid container spacing={2} sx={{ mt: 1 }}>
                   {solicitacoes.map((s) => (
                     <Grid item xs={12} md={6} key={s.id}>
@@ -808,6 +815,7 @@ const Checklists = () => {
                     </Grid>
                   ))}
                 </Grid>
+                </Box>
               )}
             </CardContent>
           </Card>
@@ -1308,8 +1316,9 @@ const Checklists = () => {
                   Nenhuma automação cadastrada.
                 </Typography>
               ) : (
+                <Box>
                 <Grid container spacing={2} sx={{ mt: 1 }}>
-                  {filteredAutomacoes.map((auto) => {
+                  {paginatedAutomacoes.map((auto) => {
                     const template = templatesDisponiveis.find(t => t.id === auto.template_id);
                     const primeiraViaturaId = Array.isArray(auto.viaturas) && auto.viaturas.length > 0 ? auto.viaturas[0] : null;
                     const viatura = viaturasDisponiveis.find(v => v.id === primeiraViaturaId);
@@ -1323,32 +1332,43 @@ const Checklists = () => {
                               </Typography>
                               <Chip label={auto.ativo ? 'Ativo' : 'Desativado'} color={auto.ativo ? 'success' : 'default'} size="small" />
                             </Box>
-                            <Grid container spacing={1} sx={{ mt: 1 }}>
-                              <Grid item xs={6}>
-                                <Typography variant="caption" color="text.secondary">Horário</Typography>
-                                <Typography variant="body2">{auto.horario}</Typography>
+                            {isMobile ? (
+                              <Box sx={{ mt: 1, display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                                <Chip label={`Horário: ${auto.horario || '-'}`} size="small" variant="outlined" />
+                                <Chip label={`Dias: ${Array.isArray(auto.dias_semana) ? auto.dias_semana.join(', ') : '-'}`} size="small" variant="outlined" />
+                                <Chip label={`Ala: ${auto.ala_servico || '-'}`} size="small" variant="outlined" />
+                                <Chip label={`Tipo: ${auto.tipo_checklist || '-'}`} size="small" variant="outlined" />
+                                <Chip label={`Modelo: ${template ? (template.nome || `#${template.id}`) : (auto.template_id ? `#${auto.template_id}` : '-' )}`} size="small" variant="outlined" />
+                                <Chip label={`Viatura: ${viatura ? (viatura.prefixo || viatura.placa || `#${viatura.id}`) : '-'}`} size="small" variant="outlined" />
+                              </Box>
+                            ) : (
+                              <Grid container spacing={1} sx={{ mt: 1 }}>
+                                <Grid item xs={6}>
+                                  <Typography variant="caption" color="text.secondary">Horário</Typography>
+                                  <Typography variant="body2">{auto.horario}</Typography>
+                                </Grid>
+                                <Grid item xs={6}>
+                                  <Typography variant="caption" color="text.secondary">Dias</Typography>
+                                  <Typography variant="body2">{Array.isArray(auto.dias_semana) ? auto.dias_semana.join(', ') : '-'}</Typography>
+                                </Grid>
+                                <Grid item xs={6}>
+                                  <Typography variant="caption" color="text.secondary">Ala</Typography>
+                                  <Typography variant="body2">{auto.ala_servico || '-'}</Typography>
+                                </Grid>
+                                <Grid item xs={6}>
+                                  <Typography variant="caption" color="text.secondary">Tipo</Typography>
+                                  <Typography variant="body2">{auto.tipo_checklist || '-'}</Typography>
+                                </Grid>
+                                <Grid item xs={6}>
+                                  <Typography variant="caption" color="text.secondary">Modelo</Typography>
+                                  <Typography variant="body2">{template ? (template.nome || `#${template.id}`) : (auto.template_id ? `#${auto.template_id}` : '-')}</Typography>
+                                </Grid>
+                                <Grid item xs={6}>
+                                  <Typography variant="caption" color="text.secondary">Viatura</Typography>
+                                  <Typography variant="body2">{viatura ? (viatura.prefixo || viatura.placa || `#${viatura.id}`) : '-'}</Typography>
+                                </Grid>
                               </Grid>
-                              <Grid item xs={6}>
-                                <Typography variant="caption" color="text.secondary">Dias</Typography>
-                                <Typography variant="body2">{Array.isArray(auto.dias_semana) ? auto.dias_semana.join(', ') : '-'}</Typography>
-                              </Grid>
-                              <Grid item xs={6}>
-                                <Typography variant="caption" color="text.secondary">Ala</Typography>
-                                <Typography variant="body2">{auto.ala_servico || '-'}</Typography>
-                              </Grid>
-                              <Grid item xs={6}>
-                                <Typography variant="caption" color="text.secondary">Tipo</Typography>
-                                <Typography variant="body2">{auto.tipo_checklist || '-'}</Typography>
-                              </Grid>
-                              <Grid item xs={6}>
-                                <Typography variant="caption" color="text.secondary">Modelo</Typography>
-                                <Typography variant="body2">{template ? (template.nome || `#${template.id}`) : (auto.template_id ? `#${auto.template_id}` : '-')}</Typography>
-                              </Grid>
-                              <Grid item xs={6}>
-                                <Typography variant="caption" color="text.secondary">Viatura</Typography>
-                                <Typography variant="body2">{viatura ? (viatura.prefixo || viatura.placa || `#${viatura.id}`) : '-'}</Typography>
-                              </Grid>
-                            </Grid>
+                            )}
                             {(user?.perfil_nome === 'Administrador' || user?.perfil_nome === 'Chefe') && (
                               <Box sx={{ display: 'flex', gap: 1, mt: 2, flexWrap: 'wrap' }}>
                                 <Button size="small" variant="outlined" startIcon={<EditIcon />} onClick={() => abrirEditarAutomacao(auto)}>Editar</Button>
@@ -1363,6 +1383,17 @@ const Checklists = () => {
                     );
                   })}
                 </Grid>
+                {autoPages > 1 && (
+                  <Box display="flex" justifyContent="center" mt={3} width="100%">
+                    <Pagination
+                      count={autoPages}
+                      page={autoPage}
+                      onChange={(e, page) => setAutoPage(page)}
+                      color="primary"
+                    />
+                  </Box>
+                )}
+                </Box>
               )}
             </CardContent>
           </Card>
