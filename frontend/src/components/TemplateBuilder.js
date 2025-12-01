@@ -40,6 +40,8 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  useTheme,
+  useMediaQuery,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -65,6 +67,8 @@ import { useTenant } from '../contexts/TenantContext';
 
 const TemplateBuilder = () => {
   const { currentUnit } = useTenant();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -115,6 +119,8 @@ const TemplateBuilder = () => {
     { value: 'MOB', label: 'MOB - Motobomba' },
     { value: 'AV', label: 'AV - Ambulância' }
   ];
+
+  const [filters, setFilters] = useState({ nome: '', tipo_viatura: '' });
 
 
 
@@ -405,6 +411,14 @@ const TemplateBuilder = () => {
     }
   };
 
+  const filteredTemplates = templates.filter((t) => {
+    const byName = filters.nome
+      ? (t.nome || '').toLowerCase().includes(filters.nome.toLowerCase())
+      : true;
+    const byTipo = filters.tipo_viatura ? t.tipo_viatura === filters.tipo_viatura : true;
+    return byName && byTipo;
+  });
+
   return (
     <Box>
       {/* Alertas */}
@@ -421,7 +435,7 @@ const TemplateBuilder = () => {
       )}
 
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 2 : 0 }}>
         <Box>
           <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <CategoryIcon /> Templates de Checklists
@@ -434,24 +448,82 @@ const TemplateBuilder = () => {
           variant="contained"
           startIcon={<AddIcon />}
           onClick={() => handleOpenTemplateDialog('create')}
+          fullWidth={isMobile}
         >
           Novo Template
         </Button>
       </Box>
 
+      {/* Filtros */}
+      <Accordion defaultExpanded={!isMobile} sx={{ mb: 2 }}>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>Filtros</AccordionSummary>
+        <AccordionDetails>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} sm={6} md={4}>
+              <TextField
+                fullWidth
+                label="Buscar por nome"
+                value={filters.nome}
+                onChange={(e) => setFilters((prev) => ({ ...prev, nome: e.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={4}>
+              <FormControl fullWidth>
+                <InputLabel>Tipo de Viatura</InputLabel>
+                <Select
+                  value={filters.tipo_viatura}
+                  onChange={(e) => setFilters((prev) => ({ ...prev, tipo_viatura: e.target.value }))}
+                  label="Tipo de Viatura"
+                >
+                  <MenuItem value="">Todas</MenuItem>
+                  {tiposViatura.map((tipo) => (
+                    <MenuItem key={tipo.value} value={tipo.value}>{tipo.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6} md={2}>
+              <Button
+                fullWidth
+                variant="outlined"
+                onClick={() => {}}
+              >
+                Filtrar
+              </Button>
+            </Grid>
+            <Grid item xs={12} sm={6} md={2}>
+              <Button
+                fullWidth
+                variant="text"
+                onClick={() => setFilters({ nome: '', tipo_viatura: '' })}
+              >
+                Limpar
+              </Button>
+            </Grid>
+          </Grid>
+        </AccordionDetails>
+      </Accordion>
+
       {/* Tabela de Templates */}
       <TableContainer component={Paper}>
-        <Table>
+        <Table size={isMobile ? 'small' : 'medium'}>
           <TableHead>
-            <TableRow>
-              <TableCell>Nome do Template</TableCell>
-              <TableCell>Tipo de Viatura</TableCell>
-              <TableCell>Categorias</TableCell>
-              <TableCell>Itens Total</TableCell>
-              <TableCell>Criado em</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Ações</TableCell>
-            </TableRow>
+            {isMobile ? (
+              <TableRow>
+                <TableCell>Template</TableCell>
+                <TableCell>Ações</TableCell>
+              </TableRow>
+            ) : (
+              <TableRow>
+                <TableCell>Nome do Template</TableCell>
+                <TableCell>Tipo de Viatura</TableCell>
+                <TableCell>Categorias</TableCell>
+                <TableCell>Itens Total</TableCell>
+                <TableCell>Criado em</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Ações</TableCell>
+              </TableRow>
+            )}
           </TableHead>
           <TableBody>
             {templatesLoading ? (
@@ -460,7 +532,7 @@ const TemplateBuilder = () => {
                   <CircularProgress />
                 </TableCell>
               </TableRow>
-            ) : templates.length === 0 ? (
+            ) : filteredTemplates.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} align="center">
                   <Typography variant="body2" color="text.secondary">
@@ -469,60 +541,91 @@ const TemplateBuilder = () => {
                 </TableCell>
               </TableRow>
             ) : (
-              templates.map((template) => {
+              filteredTemplates.map((template) => {
                 const totalItens = template.categorias?.reduce((total, cat) => total + (cat.itens?.length || 0), 0) || 0;
                 
                 return (
                   <TableRow key={template.id}>
-                    <TableCell>
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                          {template.nome}
-                        </Typography>
-                        {template.descricao && (
-                          <Typography variant="caption" color="text.secondary">
-                            {template.descricao}
+                    {isMobile ? (
+                      <>
+                        <TableCell>
+                          <Box>
+                            <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                              {template.nome}
+                            </Typography>
+                            {template.descricao && (
+                              <Typography variant="caption" color="text.secondary">
+                                {template.descricao}
+                              </Typography>
+                            )}
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                              <Chip label={template.tipo_viatura} size="small" color="primary" variant="outlined" icon={<CarIcon />} />
+                              <Chip label={`${template.categorias?.length || 0} cat.`} size="small" variant="outlined" />
+                              <Chip label={`${totalItens} itens`} size="small" variant="outlined" />
+                              <Chip label={formatDate(template.created_at)} size="small" variant="outlined" />
+                              <Chip label={template.ativo ? 'Ativo' : 'Inativo'} size="small" color={template.ativo ? 'success' : 'default'} variant="outlined" />
+                            </Box>
+                          </Box>
+                        </TableCell>
+                        <TableCell>
+                          <IconButton onClick={(e) => handleMenuOpen(e, template)}>
+                            <MoreVertIcon />
+                          </IconButton>
+                        </TableCell>
+                      </>
+                    ) : (
+                      <>
+                        <TableCell>
+                          <Box>
+                            <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                              {template.nome}
+                            </Typography>
+                            {template.descricao && (
+                              <Typography variant="caption" color="text.secondary">
+                                {template.descricao}
+                              </Typography>
+                            )}
+                          </Box>
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={template.tipo_viatura}
+                            size="small"
+                            color="primary"
+                            variant="outlined"
+                            icon={<CarIcon />}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">
+                            {template.categorias?.length || 0} categoria(s)
                           </Typography>
-                        )}
-                      </Box>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={template.tipo_viatura}
-                        size="small"
-                        color="primary"
-                        variant="outlined"
-                        icon={<CarIcon />}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2">
-                        {template.categorias?.length || 0} categoria(s)
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2">
-                        {totalItens} item(ns)
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2">
-                        {formatDate(template.created_at)}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={template.ativo ? 'Ativo' : 'Inativo'}
-                        size="small"
-                        color={template.ativo ? 'success' : 'default'}
-                        variant="outlined"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <IconButton onClick={(e) => handleMenuOpen(e, template)}>
-                        <MoreVertIcon />
-                      </IconButton>
-                    </TableCell>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">
+                            {totalItens} item(ns)
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">
+                            {formatDate(template.created_at)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={template.ativo ? 'Ativo' : 'Inativo'}
+                            size="small"
+                            color={template.ativo ? 'success' : 'default'}
+                            variant="outlined"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <IconButton onClick={(e) => handleMenuOpen(e, template)}>
+                            <MoreVertIcon />
+                          </IconButton>
+                        </TableCell>
+                      </>
+                    )}
                   </TableRow>
                 );
               })
@@ -549,7 +652,7 @@ const TemplateBuilder = () => {
       </Menu>
 
       {/* Diálogo principal do template */}
-      <Dialog open={dialogOpen} onClose={handleCloseTemplateDialog} maxWidth="lg" fullWidth>
+      <Dialog open={dialogOpen} onClose={handleCloseTemplateDialog} maxWidth="lg" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <CategoryIcon />
@@ -558,7 +661,7 @@ const TemplateBuilder = () => {
             {dialogType === 'view' && 'Visualizar Template'}
           </Box>
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ p: isMobile ? 1.5 : 3 }}>
           {/* Informações básicas do template */}
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12} md={6}>
@@ -760,7 +863,7 @@ const TemplateBuilder = () => {
             })
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ position: isMobile ? 'sticky' : 'static', bottom: 0, bgcolor: isMobile ? 'background.paper' : undefined, zIndex: 1 }}>
           <Button onClick={handleCloseTemplateDialog}>
             Cancelar
           </Button>
@@ -778,11 +881,11 @@ const TemplateBuilder = () => {
       </Dialog>
 
       {/* Diálogo de categoria */}
-      <Dialog open={categoryDialog} onClose={() => setCategoryDialog(false)} maxWidth="md" fullWidth>
+      <Dialog open={categoryDialog} onClose={() => setCategoryDialog(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           {editingCategoryIndex >= 0 ? 'Editar Categoria' : 'Nova Categoria'}
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ p: isMobile ? 1.5 : 3 }}>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
               <TextField
@@ -866,7 +969,7 @@ const TemplateBuilder = () => {
             </List>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ position: isMobile ? 'sticky' : 'static', bottom: 0, bgcolor: isMobile ? 'background.paper' : undefined, zIndex: 1 }}>
           <Button onClick={() => setCategoryDialog(false)}>
             Cancelar
           </Button>
@@ -877,11 +980,11 @@ const TemplateBuilder = () => {
       </Dialog>
 
       {/* Diálogo de item */}
-      <Dialog open={itemDialog} onClose={() => setItemDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog open={itemDialog} onClose={() => setItemDialog(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           {editingItemIndex >= 0 ? 'Editar Item' : 'Novo Item'}
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ p: isMobile ? 1.5 : 3 }}>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
               <TextField
@@ -924,7 +1027,7 @@ const TemplateBuilder = () => {
             </Grid>
           </Grid>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ position: isMobile ? 'sticky' : 'static', bottom: 0, bgcolor: isMobile ? 'background.paper' : undefined, zIndex: 1 }}>
           <Button onClick={() => setItemDialog(false)}>
             Cancelar
           </Button>
