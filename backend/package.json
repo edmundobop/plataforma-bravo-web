@@ -7,6 +7,8 @@
     "start": "node --max-http-header-size=16384 server.js",
     "dev": "nodemon --exec \"node --max-http-header-size=16384\" server.js",
     "migrate": "node database/migrate.js",
+    "db:migrate": "node-pg-migrate -m ./database/migrations",
+    "db:migrate:down": "node-pg-migrate down -m ./database/migrations",
     "seed": "node database/seed.js",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -44,6 +46,7 @@
   "devDependencies": {
     "eslint": "^8.57.0",
     "jest": "^30.0.5",
+    "node-pg-migrate": "^8.0.3",
     "nodemon": "^3.0.2",
     "supertest": "^7.1.4"
   }
