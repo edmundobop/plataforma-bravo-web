@@ -19,40 +19,23 @@ import {
   FormControlLabel,
   Radio,
   IconButton,
-  Chip,
-  Stepper,
-  Step,
-  StepLabel,
   Alert,
   CircularProgress,
   LinearProgress,
-  Autocomplete,
   ImageList,
   ImageListItem,
   ImageListItemBar,
-  FormLabel,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Snackbar,
   Divider,
-  Tooltip
+  useTheme,
+  useMediaQuery
 } from '@mui/material';
 import {
-  PhotoCamera,
-  Delete,
-  NavigateNext,
-  NavigateBefore,
   Warning as WarningIcon,
   CheckCircle as CheckIcon,
   PhotoCamera as PhotoIcon,
   Delete as DeleteIcon,
   Save as SaveIcon,
-  Send as SendIcon,
-  ExpandMore as ExpandMoreIcon,
-  CheckCircle as CheckCircleIcon,
-  Cancel as CancelIcon,
-  Close as CloseIcon
+  Send as SendIcon
 } from '@mui/icons-material';
 import { frotaService, checklistService, uploadService, templateService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -61,6 +44,8 @@ import { useTenant } from '../contexts/TenantContext';
 const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, selectedViatura: selectedViaturaProps, prefill }) => {
   const { user } = useAuth(); // Obter usuário logado
   const { currentUnit } = useTenant(); // Obter unidade atual
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -93,7 +78,6 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   ]);
   
   // Autenticação
-  const [usuarios, setUsuarios] = useState([]);
   const [usuarioAutenticacao, setUsuarioAutenticacao] = useState(user || null);
   const [senhaAutenticacao, setSenhaAutenticacao] = useState('');
   const [observacoesGerais, setObservacoesGerais] = useState('');
@@ -191,7 +175,6 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
       setObservacoesGerais('');
       setUsuarioAutenticacao(null);
       setSenhaAutenticacao('');
-      setUsuarios([]);
       setError('');
       setSuccess('');
       // Reset itens checklist para o estado inicial
@@ -242,23 +225,6 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
     }
   };
 
-  const searchUsuarios = async (query) => {
-    if (!query || query.length < 2) {
-      setUsuarios([]);
-      return [];
-    }
-    
-    try {
-      const data = await checklistService.searchUsuarios(query);
-      const usuariosArray = Array.isArray(data) ? data : [];
-      setUsuarios(usuariosArray);
-      return usuariosArray;
-    } catch (error) {
-      console.error('Erro ao buscar usuários:', error);
-      setUsuarios([]);
-      return [];
-    }
-  };
 
   const handleItemStatusChange = (index, status) => {
     const newItens = [...itensChecklist];
@@ -543,7 +509,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   };
 
   const renderStep1 = () => (
-    <Grid container spacing={3}>
+    <Grid container spacing={isMobile ? 2 : 3}>
       <Grid item xs={12}>
         <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', letterSpacing: '0.5px' }}>
           Dados Iniciais do Checklist
@@ -579,7 +545,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
           value={kmInicial}
           onChange={(e) => setKmInicial(e.target.value)}
           required
-          inputProps={{ min: 0 }}
+          inputProps={{ min: 0, inputMode: 'numeric', pattern: '[0-9]*' }}
         />
       </Grid>
       
@@ -598,7 +564,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
             }
           }}
           required
-          inputProps={{ min: 0, max: 100 }}
+          inputProps={{ min: 0, max: 100, inputMode: 'numeric', pattern: '[0-9]*' }}
           helperText="Digite um valor entre 0 e 100"
         />
       </Grid>
@@ -736,7 +702,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
           Categoria {Math.min(currentCategoryIndex + 1, totalCategories)} de {totalCategories}: {currentCategoryName}
         </Typography>
 
-        <Grid container spacing={2} sx={{ mt: 1 }}>
+        <Grid container spacing={isMobile ? 1.5 : 2} sx={{ mt: 1 }}>
           {/* Header da Categoria */}
           <Grid item xs={12}>
             <Box sx={{ my: 2, p: 2, backgroundColor: '#f5f5f5', borderRadius: 1, border: '1px solid #e0e0e0' }}>
@@ -758,7 +724,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
                     </Typography>
                   </Box>
 
-                  <RadioGroup row value={item.status} onChange={(e) => handleItemStatusChange(item.originalIndex, e.target.value)}>
+                  <RadioGroup row={!isMobile} value={item.status} onChange={(e) => handleItemStatusChange(item.originalIndex, e.target.value)}>
                     <FormControlLabel
                       value="ok"
                       control={<Radio color="success" />}
@@ -789,7 +755,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
                       <Typography variant="body2" sx={{ mr: 2 }}>
                         Fotos:
                       </Typography>
-                      <input accept="image/*" style={{ display: 'none' }} id={`photo-upload-${item.originalIndex}`} multiple type="file" onChange={(e) => handlePhotoUpload(item.originalIndex, e)} />
+                      <input accept="image/*" capture="environment" style={{ display: 'none' }} id={`photo-upload-${item.originalIndex}`} multiple type="file" onChange={(e) => handlePhotoUpload(item.originalIndex, e)} />
                       <label htmlFor={`photo-upload-${item.originalIndex}`}>
                         <IconButton color="primary" component="span">
                           <PhotoIcon />
@@ -798,7 +764,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
                     </Box>
 
                     {item.fotos && item.fotos.length > 0 && (
-                      <ImageList cols={3} rowHeight={100}>
+                      <ImageList cols={isMobile ? 2 : 3} rowHeight={isMobile ? 90 : 100}>
                         {item.fotos.map((foto, photoIndex) => (
                           <ImageListItem key={photoIndex}>
                             <img src={foto.url} alt={foto.name} loading="lazy" style={{ height: 100, objectFit: 'cover' }} />
@@ -823,23 +789,6 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
     );
   };
 
-  const renderObservacoes = () => (
-    <Box>
-      <Grid container spacing={2}>
-        <Grid item xs={12}>
-          <TextField
-            fullWidth
-            label="Observações Gerais"
-            multiline
-            rows={3}
-            value={observacoesGerais}
-            onChange={(e) => setObservacoesGerais(e.target.value)}
-            placeholder="Observações gerais sobre o checklist..."
-          />
-        </Grid>
-      </Grid>
-    </Box>
-  );
 
   const renderStep3 = () => (
     <Grid container spacing={3}>
@@ -892,14 +841,14 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   );
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
+    <Dialog open={open} onClose={handleClose} fullScreen={isMobile} maxWidth="md" fullWidth>
       <DialogTitle>
         {step === 2 && (Array.isArray(categories) && categories.length > 0)
           ? `Checklist de Viatura - Categoria ${currentCategoryIndex + 1} de ${categories.length}`
           : `Checklist de Viatura - Passo ${step} de 3`}
       </DialogTitle>
       
-      <DialogContent>
+      <DialogContent sx={{ p: isMobile ? 1.5 : 3 }}>
         {/* Barra de Progresso */}
         {(function() {
           const grouped = groupItemsByCategory(itensChecklist);
@@ -941,7 +890,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         {step === 3 && renderStep3()}
       </DialogContent>
       
-      <DialogActions>
+      <DialogActions sx={{ position: isMobile ? 'sticky' : 'static', bottom: 0, bgcolor: isMobile ? 'background.paper' : undefined, zIndex: 1 }}>
         <Button onClick={handleClose}>Cancelar</Button>
         
         {step > 1 && (

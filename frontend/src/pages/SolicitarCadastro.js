@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
-  Card,
   CardContent,
   TextField,
   Button,
@@ -27,7 +26,6 @@ import {
   Badge as BadgeIcon,
   Work as WorkIcon,
   CalendarToday as CalendarIcon,
-  LocationOn as LocationIcon,
   Send as SendIcon,
   ArrowBack as ArrowBackIcon,
   LocalFireDepartment as FireIcon,
@@ -50,6 +48,7 @@ const SolicitarCadastro = () => {
     unidade_id: '',
     data_nascimento: '',
     data_incorporacao: '',
+    categoria_cnh: '',
     observacoes: '',
   });
   
@@ -482,6 +481,24 @@ const SolicitarCadastro = () => {
                       {errors.unidade_id}
                     </Typography>
                   )}
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Categoria CNH</InputLabel>
+                  <Select
+                    name="categoria_cnh"
+                    value={formData.categoria_cnh}
+                    onChange={handleChange}
+                    label="Categoria CNH"
+                  >
+                    {['A','B','AB','C','D','E'].map((cat) => (
+                      <MenuItem key={cat} value={cat}>
+                        {cat}
+                      </MenuItem>
+                    ))}
+                  </Select>
                 </FormControl>
               </Grid>
 

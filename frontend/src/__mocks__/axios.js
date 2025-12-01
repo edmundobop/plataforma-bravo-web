@@ -1,4 +1,4 @@
-export default {
+const mockAxios = {
   create: jest.fn(() => ({
     get: jest.fn(() => Promise.resolve({ data: {} })),
     post: jest.fn(() => Promise.resolve({ data: {} })),
@@ -30,3 +30,5 @@ export default {
     }
   }
 };
+
+export default mockAxios;

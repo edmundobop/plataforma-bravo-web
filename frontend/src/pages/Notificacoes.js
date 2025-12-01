@@ -43,14 +43,12 @@ import {
   Add as AddIcon,
   Notifications as NotificationsIcon,
   NotificationsActive as NotificationsActiveIcon,
-  NotificationsOff as NotificationsOffIcon,
   MoreVert as MoreVertIcon,
   Delete as DeleteIcon,
   DeleteSweep as DeleteSweepIcon,
   MarkEmailRead as MarkReadIcon,
   MarkEmailUnread as MarkUnreadIcon,
   Visibility as ViewIcon,
-  FilterList as FilterIcon,
   Info as InfoIcon,
   Warning as WarningIcon,
   Error as ErrorIcon,
@@ -63,7 +61,6 @@ import {
   Person as PersonIcon,
   Dashboard as DashboardIcon,
   Send as SendIcon,
-  Clear as ClearIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
@@ -72,7 +69,7 @@ import { notificacoesService, usuariosService } from '../services/api';
 const Notificacoes = () => {
   const navigate = useNavigate();
   const theme = useTheme();
-  const { user, hasRole } = useAuth();
+  const { hasRole } = useAuth();
   const { markAsRead, markAllAsRead, markAsUnread } = useNotifications();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -390,11 +387,6 @@ const Notificacoes = () => {
     }
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return '-';
-    const date = new Date(dateString);
-    return isNaN(date.getTime()) ? '-' : date.toLocaleDateString('pt-BR');
-  };
 
   const formatDateTime = (dateString) => {
     if (!dateString) return '-';

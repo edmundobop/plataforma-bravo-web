@@ -33,6 +33,11 @@ import {
   Switch,
   FormControlLabel,
   Tooltip,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  useTheme,
+  useMediaQuery,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -51,6 +56,7 @@ import {
   Description as TemplateIcon,
   Save as SaveIcon,
   Schedule as ScheduleIcon,
+  ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
 import { checklistService, frotaService, templateService } from '../services/api';
 import ChecklistViatura from '../components/ChecklistViatura';
@@ -61,6 +67,8 @@ import TemplateBuilder from '../components/TemplateBuilder';
 const Checklists = () => {
   const { currentUnit } = useTenant();
   const { user } = useAuth();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
@@ -798,6 +806,124 @@ const Checklists = () => {
           {/* Dialogo para criar nova solicitação - removido conforme feedback do usuário */}
 
           {/* Filtros */}
+          {isMobile ? (
+            <Accordion sx={{ mb: 3 }}>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <FilterIcon /> Filtros de Pesquisa
+                </Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+        <Grid container spacing={2}>
+          <Grid item xs={12} sm={6} md={3}>
+            <FormControl fullWidth>
+              <InputLabel>Viatura</InputLabel>
+              <Select
+                value={checklistsFilters.viatura_id || ''}
+                onChange={(e) => setChecklistsFilters(prev => ({ ...prev, viatura_id: e.target.value }))}
+                label="Viatura"
+              >
+                <MenuItem key="todas-viaturas-checklist" value="">Todas</MenuItem>
+                {viaturasDisponiveis.map((v) => (
+                  <MenuItem key={v.id} value={v.id}>
+                    {(v.prefixo || v.placa || v.viatura_prefixo || v.viatura_placa || `#${v.id}`)}{v.modelo || v.viatura_modelo ? ` - ${v.modelo || v.viatura_modelo}` : ''}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={6} md={2}>
+            <FormControl fullWidth>
+              <InputLabel>Status</InputLabel>
+              <Select
+                value={checklistsFilters.status || ''}
+                onChange={(e) => setChecklistsFilters(prev => ({ ...prev, status: e.target.value }))}
+                label="Status"
+              >
+                <MenuItem key="todos-status-checklist" value="">Todos</MenuItem>
+                <MenuItem key="pendente-checklist" value="pendente">Pendente</MenuItem>
+                <MenuItem key="finalizado-checklist" value="finalizado">Finalizado</MenuItem>
+                <MenuItem key="cancelado-checklist" value="cancelado">Cancelado</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={6} md={2}>
+            <TextField
+              fullWidth
+              label="Data Início"
+              type="date"
+              value={checklistsFilters.data_inicio}
+              onChange={(e) => setChecklistsFilters(prev => ({ ...prev, data_inicio: e.target.value }))}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={2}>
+            <TextField
+              fullWidth
+              label="Data Fim"
+              type="date"
+              value={checklistsFilters.data_fim}
+              onChange={(e) => setChecklistsFilters(prev => ({ ...prev, data_fim: e.target.value }))}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={2}>
+            <FormControl fullWidth>
+              <InputLabel>Tipo de Checklist</InputLabel>
+              <Select
+                value={checklistsFilters.tipo_checklist || ''}
+                onChange={(e) => setChecklistsFilters(prev => ({ ...prev, tipo_checklist: e.target.value }))}
+                label="Tipo de Checklist"
+              >
+                <MenuItem key="todos-tipos-checklist" value="">Todos</MenuItem>
+                <MenuItem key="diario-checklist" value="Diário">Diário</MenuItem>
+                <MenuItem key="semanal-checklist" value="Semanal">Semanal</MenuItem>
+                <MenuItem key="mensal-checklist" value="Mensal">Mensal</MenuItem>
+                <MenuItem key="pre-operacional-checklist" value="Pré-Operacional">Pré-Operacional</MenuItem>
+                <MenuItem key="pos-operacional-checklist" value="Pós-Operacional">Pós-Operacional</MenuItem>
+                <MenuItem key="manutencao-preventiva-checklist" value="Manutenção Preventiva">Manutenção Preventiva</MenuItem>
+                <MenuItem key="inspecao-seguranca-checklist" value="Inspeção de Segurança">Inspeção de Segurança</MenuItem>
+                <MenuItem key="vistoria-tecnica-checklist" value="Vistoria Técnica">Vistoria Técnica</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={6} md={1}>
+            <FormControl fullWidth>
+              <InputLabel>Ala</InputLabel>
+              <Select
+                value={checklistsFilters.ala_servico || ''}
+                onChange={(e) => setChecklistsFilters(prev => ({ ...prev, ala_servico: e.target.value }))}
+                label="Ala"
+              >
+                <MenuItem key="todas-alas-checklist" value="">Todas</MenuItem>
+                <MenuItem key="alpha-ala" value="Alpha">Alpha</MenuItem>
+                <MenuItem key="bravo-ala" value="Bravo">Bravo</MenuItem>
+                <MenuItem key="charlie-ala" value="Charlie">Charlie</MenuItem>
+                <MenuItem key="delta-ala" value="Delta">Delta</MenuItem>
+                <MenuItem key="adm-ala" value="ADM">ADM</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+        </Grid>
+        <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+          <Button
+            variant="outlined"
+            onClick={() => setChecklistsFilters({
+              viatura_id: '',
+              status: '',
+              data_inicio: '',
+              data_fim: '',
+              tipo_checklist: '',
+              ala_servico: '',
+            })}
+            startIcon={<FilterIcon />}
+          >
+            Limpar Filtros
+          </Button>
+        </Box>
+              </AccordionDetails>
+            </Accordion>
+          ) : (
           <Box sx={{ mb: 3 }}>
             <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <FilterIcon /> Filtros de Pesquisa
@@ -910,8 +1036,10 @@ const Checklists = () => {
           </Button>
         </Box>
       </Box>
+          )}
 
-      {/* Tabela */}
+      {/* Lista de resultados */}
+      {!isMobile && (
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
@@ -1043,6 +1171,49 @@ const Checklists = () => {
           </TableBody>
         </Table>
             </TableContainer>
+      )}
+      {isMobile && (
+        <Box>
+          {checklistsLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : checklists.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 2, textAlign: 'center' }}>
+              Nenhum checklist encontrado
+            </Typography>
+          ) : (
+            <Grid container spacing={2}>
+              {checklists.map((checklist) => (
+                <Grid item xs={12} key={checklist.id}>
+                  <Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => handleViewChecklist(checklist)}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <CarIcon sx={{ color: 'primary.main' }} />
+                          <Box>
+                            <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                              {checklist.placa || checklist.viatura_prefixo || 'N/A'}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {formatDate(checklist.data_checklist)}
+                            </Typography>
+                          </Box>
+                        </Box>
+                        <Chip label={checklist.status} color={getStatusColor(checklist.status)} size="small" />
+                      </Box>
+                      <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                        <Chip label={checklist.tipo_checklist || 'N/A'} size="small" variant="outlined" />
+                        <Chip label={checklist.ala_servico || 'N/A'} size="small" variant="outlined" />
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          )}
+        </Box>
+      )}
         </>
       )}
 
@@ -1263,7 +1434,7 @@ const Checklists = () => {
       </Menu>
 
       {/* Diálogo de visualização */}
-      <Dialog open={dialogOpen && dialogType === 'view'} onClose={handleCloseDialog} maxWidth="md" fullWidth>
+      <Dialog open={dialogOpen && dialogType === 'view'} onClose={handleCloseDialog} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ bgcolor: 'primary.50', borderBottom: 1, borderColor: 'divider' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <ViewIcon sx={{ color: 'primary.main' }} />
@@ -1457,7 +1628,7 @@ const Checklists = () => {
       </Dialog>
 
       {/* Diálogo de edição */}
-      <Dialog open={editDialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+      <Dialog open={editDialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ bgcolor: 'warning.50', borderBottom: 1, borderColor: 'divider' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <EditIcon sx={{ color: 'warning.main' }} />
