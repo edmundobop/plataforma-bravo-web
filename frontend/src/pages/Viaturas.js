@@ -27,6 +27,11 @@ import {
   Select,
   Fab,
   Avatar,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  useTheme,
+  useMediaQuery,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -45,6 +50,8 @@ import { useAuth } from '../contexts/AuthContext';
 const Viaturas = () => {
   const { currentUnit, availableUnits } = useTenant();
   const { isOperador } = useAuth();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
@@ -324,108 +331,186 @@ const Viaturas = () => {
 
   const renderViaturasTab = () => (
     <Box>
-      <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
-        <TextField
-          size="small"
-          placeholder="Buscar por prefixo, modelo ou placa..."
-          value={viaturasFilters.search}
-          onChange={(e) => setViaturasFilters(prev => ({ ...prev, search: e.target.value }))}
-          InputProps={{
-            startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />
-          }}
-          sx={{ minWidth: 300 }}
-        />
-        <FormControl size="small" sx={{ minWidth: 120 }}>
-          <InputLabel>Status</InputLabel>
-          <Select
-            value={viaturasFilters.status}
-            onChange={(e) => setViaturasFilters(prev => ({ ...prev, status: e.target.value }))}
-            label="Status"
-          >
-            <MenuItem key="todos-status" value="">Todos</MenuItem>
-            <MenuItem key="ativo" value="Ativo">Ativo</MenuItem>
-            <MenuItem key="inativo" value="Inativo">Inativo</MenuItem>
-            <MenuItem key="manutencao" value="Manutenção">Manutenção</MenuItem>
-          </Select>
-        </FormControl>
-      </Box>
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Foto</TableCell>
-              <TableCell>Prefixo</TableCell>
-              <TableCell>Modelo</TableCell>
-              <TableCell>Placa</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Setor</TableCell>
-              <TableCell>Ações</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {viaturasLoading ? (
+      {isMobile ? (
+        <Accordion sx={{ mb: 2 }}>
+          <AccordionSummary expandIcon={<MoreVertIcon />}>Filtros</AccordionSummary>
+          <AccordionDetails>
+            <Grid container spacing={2} alignItems="center">
+              <Grid item xs={12} sm={6} md={6}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  placeholder="Buscar por prefixo, modelo ou placa..."
+                  value={viaturasFilters.search}
+                  onChange={(e) => setViaturasFilters(prev => ({ ...prev, search: e.target.value }))}
+                  InputProps={{
+                    startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={4}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Status</InputLabel>
+                  <Select
+                    value={viaturasFilters.status}
+                    onChange={(e) => setViaturasFilters(prev => ({ ...prev, status: e.target.value }))}
+                    label="Status"
+                  >
+                    <MenuItem key="todos-status" value="">Todos</MenuItem>
+                    <MenuItem key="ativo" value="Ativo">Ativo</MenuItem>
+                    <MenuItem key="inativo" value="Inativo">Inativo</MenuItem>
+                    <MenuItem key="manutencao" value="Manutenção">Manutenção</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+            </Grid>
+          </AccordionDetails>
+        </Accordion>
+      ) : (
+        <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
+          <TextField
+            size="small"
+            placeholder="Buscar por prefixo, modelo ou placa..."
+            value={viaturasFilters.search}
+            onChange={(e) => setViaturasFilters(prev => ({ ...prev, search: e.target.value }))}
+            InputProps={{
+              startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />
+            }}
+            sx={{ minWidth: 300 }}
+          />
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <InputLabel>Status</InputLabel>
+            <Select
+              value={viaturasFilters.status}
+              onChange={(e) => setViaturasFilters(prev => ({ ...prev, status: e.target.value }))}
+              label="Status"
+            >
+              <MenuItem key="todos-status" value="">Todos</MenuItem>
+              <MenuItem key="ativo" value="Ativo">Ativo</MenuItem>
+              <MenuItem key="inativo" value="Inativo">Inativo</MenuItem>
+              <MenuItem key="manutencao" value="Manutenção">Manutenção</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
+      )}
+
+      {!isMobile ? (
+        <TableContainer component={Paper}>
+          <Table size={isMobile ? 'small' : 'medium'}>
+            <TableHead>
               <TableRow>
-                <TableCell colSpan={7} align="center">
-                  <CircularProgress />
-                </TableCell>
+                <TableCell>Foto</TableCell>
+                <TableCell>Prefixo</TableCell>
+                <TableCell>Modelo</TableCell>
+                <TableCell>Placa</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Setor</TableCell>
+                <TableCell>Ações</TableCell>
               </TableRow>
-            ) : filteredViaturas.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} align="center">
-                  Nenhuma viatura encontrada
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredViaturas.map((viatura) => (
-                <TableRow key={viatura.id}>
-                  <TableCell>
-                    {viatura.foto ? (
-                      <Avatar
-                        src={viatura.foto}
-                        alt={`Viatura ${viatura.prefixo}`}
-                        sx={{ width: 60, height: 60 }}
-                        variant="rounded"
+            </TableHead>
+            <TableBody>
+              {viaturasLoading ? (
+                <TableRow>
+                  <TableCell colSpan={7} align="center">
+                    <CircularProgress />
+                  </TableCell>
+                </TableRow>
+              ) : filteredViaturas.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} align="center">
+                    Nenhuma viatura encontrada
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredViaturas.map((viatura) => (
+                  <TableRow key={viatura.id}>
+                    <TableCell>
+                      {viatura.foto ? (
+                        <Avatar
+                          src={viatura.foto}
+                          alt={`Viatura ${viatura.prefixo}`}
+                          sx={{ width: 60, height: 60 }}
+                          variant="rounded"
+                        />
+                      ) : (
+                        <Avatar
+                          sx={{ width: 60, height: 60, bgcolor: 'grey.300' }}
+                          variant="rounded"
+                        >
+                          <CarIcon />
+                        </Avatar>
+                      )}
+                    </TableCell>
+                    <TableCell>{viatura.prefixo}</TableCell>
+                    <TableCell>{viatura.modelo}</TableCell>
+                    <TableCell>{viatura.placa}</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={viatura.status}
+                        color={getStatusColor(viatura.status)}
+                        size="small"
                       />
-                    ) : (
-                      <Avatar
-                        sx={{ width: 60, height: 60, bgcolor: 'grey.300' }}
-                        variant="rounded"
-                      >
-                        <CarIcon />
-                      </Avatar>
-                    )}
-                  </TableCell>
-                  <TableCell>{viatura.prefixo}</TableCell>
-                  <TableCell>{viatura.modelo}</TableCell>
-                  <TableCell>{viatura.placa}</TableCell>
-                  <TableCell>
-                    <Chip
-                      label={viatura.status}
-                      color={getStatusColor(viatura.status)}
-                      size="small"
-                    />
-                  </TableCell>
-                  <TableCell>{viatura.setor_responsavel || '-'}</TableCell>
-                  <TableCell>
+                    </TableCell>
+                    <TableCell>{viatura.setor_responsavel || '-'}</TableCell>
+                    <TableCell>
+                      <IconButton onClick={(e) => handleMenuOpen(e, viatura)}>
+                        <MoreVertIcon />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      ) : (
+        <Grid container spacing={2}>
+          {viaturasLoading ? (
+            <Grid item xs={12}>
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress />
+              </Box>
+            </Grid>
+          ) : filteredViaturas.length === 0 ? (
+            <Grid item xs={12}>
+              <Typography variant="body2" color="text.secondary">Nenhuma viatura encontrada</Typography>
+            </Grid>
+          ) : (
+            filteredViaturas.map((viatura) => (
+              <Grid item xs={12} key={viatura.id}>
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {viatura.foto ? (
+                        <Avatar src={viatura.foto} alt={`Viatura ${viatura.prefixo}`} sx={{ width: 40, height: 40 }} variant="rounded" />
+                      ) : (
+                        <Avatar sx={{ width: 40, height: 40, bgcolor: 'grey.300' }} variant="rounded"><CarIcon /></Avatar>
+                      )}
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>{viatura.prefixo}</Typography>
+                        <Typography variant="caption" color="text.secondary">{viatura.modelo} • {viatura.placa}</Typography>
+                      </Box>
+                    </Box>
+                    <Chip label={viatura.status} color={getStatusColor(viatura.status)} size="small" />
                     <IconButton onClick={(e) => handleMenuOpen(e, viatura)}>
                       <MoreVertIcon />
                     </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+                  </Box>
+                </Paper>
+              </Grid>
+            ))
+          )}
+        </Grid>
+      )}
     </Box>
   );
 
   const renderViaturasDialog = () => (
-    <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="md" fullWidth>
+    <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="md" fullWidth fullScreen={isMobile}>
       <DialogTitle>
         {dialogType === 'view' ? 'Detalhes da Viatura' : selectedItem ? 'Editar Viatura' : 'Nova Viatura'}
       </DialogTitle>
-      <DialogContent>
+      <DialogContent sx={{ p: isMobile ? 1.5 : 3 }}>
         {error && (
           <Alert severity={error.includes('✅') ? 'success' : 'error'} sx={{ mb: 2 }}>
             {error}
@@ -695,7 +780,7 @@ const Viaturas = () => {
           </Grid>
         )}
       </DialogContent>
-      <DialogActions>
+      <DialogActions sx={{ position: isMobile ? 'sticky' : 'static', bottom: 0, bgcolor: isMobile ? 'background.paper' : undefined, zIndex: 1 }}>
         <Button onClick={handleCloseDialog}>Cancelar</Button>
         {dialogType !== 'view' && (
           <Button onClick={handleSubmit} variant="contained" disabled={loading}>
