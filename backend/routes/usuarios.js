@@ -104,7 +104,15 @@ router.post('/solicitar-cadastro',
     body('nome_guerra').if(body('tipo').equals('militar'))
       .notEmpty().withMessage('Nome de guerra é obrigatório para militares'),
     body('matricula').if(body('tipo').equals('militar'))
-      .notEmpty().withMessage('Matrícula é obrigatória para militares'),
+      .custom((value, { req }) => {
+        const v = (value !== undefined && String(value).trim() !== '')
+          ? String(value).trim()
+          : '';
+        const identidade = (req.body?.identidade_militar !== undefined && String(req.body.identidade_militar).trim() !== '')
+          ? String(req.body.identidade_militar).trim()
+          : '';
+        return v !== '' || identidade !== '';
+      }).withMessage('Matrícula ou Identidade militar é obrigatória para militares'),
     
     body('cpf').notEmpty().withMessage('CPF é obrigatório'),
     body('telefone').notEmpty().withMessage('Telefone é obrigatório'),
@@ -154,6 +162,8 @@ router.post('/solicitar-cadastro',
         observacoes
       } = req.body;
 
+      const matriculaValue = matricula || req.body.identidade_militar || null;
+
       // Verificar se email ou CPF já existem
       const existingUser = await query(
         'SELECT id FROM usuarios WHERE email = $1 OR cpf = $2',
@@ -168,10 +178,10 @@ router.post('/solicitar-cadastro',
       }
 
       // Se for militar, verificar se matrícula já existe
-      if (tipo === 'militar' && matricula) {
+      if (tipo === 'militar' && matriculaValue) {
         const existingMatricula = await query(
           'SELECT id FROM usuarios WHERE matricula = $1',
-          [matricula]
+          [matriculaValue]
         );
         
         if (existingMatricula.rows.length > 0) {
@@ -214,7 +224,7 @@ router.post('/solicitar-cadastro',
           RETURNING id, nome_completo, email, tipo
         `, [
           nome_completo, nome_completo, email, cpf, telefone, tipo,
-          posto_graduacao, nome_guerra, matricula,
+          posto_graduacao, nome_guerra, matriculaValue,
           data_nascimento, data_incorporacao || null, unidadeIdResolved,
           5, // Perfil Operador por padrão
           '$2b$10$defaulthashedpassword' // Senha temporária (hash dummy)
@@ -231,7 +241,7 @@ router.post('/solicitar-cadastro',
           RETURNING id, nome_completo, email, tipo
         `, [
           nome_completo, email, cpf, telefone, tipo,
-          posto_graduacao, nome_guerra, matricula,
+          posto_graduacao, nome_guerra, matriculaValue,
           data_nascimento, data_incorporacao || null, unidadeIdResolved,
           5, // Perfil Operador por padrão
           '$2b$10$defaulthashedpassword' // Senha temporária (hash dummy)
@@ -323,6 +333,33 @@ router.get('/postos-graduacoes', async (req, res) => {
   } catch (error) {
     console.error('Erro ao listar postos/graduações:', error);
     res.status(500).json({ success: false, error: 'Erro interno do servidor' });
+  }
+});
+
+/**
+ * @route GET /api/usuarios/unidades-publicas
+ * @desc Listar unidades ativas (público)
+ * @access Public
+ */
+router.get('/unidades-publicas', async (req, res) => {
+  try {
+    const unidadesResult = await query(`
+      SELECT id, nome, sigla, endereco, telefone, ativa
+      FROM unidades 
+      WHERE ativa = true
+      ORDER BY nome ASC
+    `);
+
+    res.json({
+      success: true,
+      unidades: unidadesResult.rows
+    });
+  } catch (error) {
+    console.error('Erro ao listar unidades públicas:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro interno do servidor' 
+    });
   }
 });
 // =====================================================
@@ -784,6 +821,25 @@ router.post('/aprovar-cadastro/:id', authorizeRoles(['Administrador', 'Comandant
         // Não bloquear aprovação por falhas em relação de membros; logar somente
         console.error('Aviso: falha ao ajustar membros_unidade na aprovação:', e?.message);
       }
+
+      // Definir senha temporária e marcar troca obrigatória no primeiro login
+      try {
+        const hasSenhaHashCol = await columnExists('usuarios', 'senha_hash');
+        const hasPrecisaTrocarCol = await columnExists('usuarios', 'precisa_trocar_senha');
+        if (hasSenhaHashCol) {
+          const senhaTemporaria = (typeof req.body.senha_temporaria === 'string' && req.body.senha_temporaria.length >= 6)
+            ? req.body.senha_temporaria
+            : 'senha123';
+          const rounds = parseInt(process.env.BCRYPT_ROUNDS, 10) || 12;
+          const hashTemp = await bcrypt.hash(senhaTemporaria, rounds);
+          const sql = hasPrecisaTrocarCol
+            ? 'UPDATE usuarios SET senha_hash = $1, precisa_trocar_senha = true WHERE id = $2'
+            : 'UPDATE usuarios SET senha_hash = $1 WHERE id = $2';
+          await query(sql, [hashTemp, usuarioAtualizado.id]);
+        }
+      } catch (e) {
+        console.warn('Falha ao definir senha temporária na aprovação:', e?.message);
+      }
     }
 
     // Notificar via socket se disponível
@@ -1014,7 +1070,7 @@ router.put('/:id', async (req, res) => {
         'perfil_id',
         'ativo'
       ]
-      : ['nome_completo', 'email', 'telefone'];
+      : ['nome_completo', 'email', 'telefone', 'data_nascimento', 'posto_graduacao', 'nome_guerra', 'matricula'];
 
     // Normalizações leves no corpo (tipos e datas) para evitar erros de tipo
     // Comentário: conversões defensivas antes de montar o SQL.
@@ -1073,6 +1129,18 @@ router.put('/:id', async (req, res) => {
           idx++;
         }
       }
+    }
+
+    // Regras de unicidade básicas antes do UPDATE
+    // Evitar conflito de matrícula ao usuário alterar própria matrícula
+    if (req.body.matricula !== undefined && req.body.matricula !== null && String(req.body.matricula).trim() !== '') {
+      const matVal = String(req.body.matricula).trim();
+      try {
+        const dupe = await query('SELECT id FROM usuarios WHERE matricula = $1 AND id <> $2', [matVal, id]);
+        if (dupe.rows.length > 0) {
+          return res.status(400).json({ success: false, message: 'Matrícula já está em uso' });
+        }
+      } catch (_) { /* ignore */ }
     }
 
     // Atualizar Setor quando não existe coluna setor_id (fallback para coluna texto 'setor')
@@ -1505,7 +1573,11 @@ router.put('/:id/senha', async (req, res) => {
     const saltRounds = parseInt(process.env.BCRYPT_ROUNDS, 10) || 12;
     const hashed = await bcrypt.hash(nova_senha, saltRounds);
 
-    await query('UPDATE usuarios SET senha_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [hashed, id]);
+    const hasFlag = await columnExists('usuarios', 'precisa_trocar_senha');
+    const sql = hasFlag
+      ? 'UPDATE usuarios SET senha_hash = $1, precisa_trocar_senha = false, updated_at = CURRENT_TIMESTAMP WHERE id = $2'
+      : 'UPDATE usuarios SET senha_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2';
+    await query(sql, [hashed, id]);
 
     return res.json({ success: true, message: 'Senha alterada com sucesso' });
   } catch (error) {
@@ -1632,8 +1704,33 @@ router.get('/me/perfil', async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // Seleções dinâmicas para colunas opcionais em perfis
     const selectPerfilNivel = (await columnExists('perfis', 'nivel_hierarquia')) ? 'p.nivel_hierarquia' : 'NULL as nivel_hierarquia';
+
+    const hasUsuariosSetorId = await columnExists('usuarios', 'setor_id');
+    const hasUsuariosSetorText = await columnExists('usuarios', 'setor');
+    const hasSetorSigla = await columnExists('setores', 'sigla');
+    const setorJoin = hasUsuariosSetorId ? 'LEFT JOIN setores s ON u.setor_id = s.id' : '';
+    let selectSetorNome;
+    if (hasUsuariosSetorId) {
+      if (hasUsuariosSetorText) {
+        selectSetorNome = 'COALESCE(NULLIF(u.setor, \'\'), s.nome) as setor_nome';
+      } else {
+        selectSetorNome = 's.nome as setor_nome';
+      }
+    } else {
+      if (hasUsuariosSetorText) {
+        selectSetorNome = 'u.setor as setor_nome';
+      } else {
+        selectSetorNome = 'NULL as setor_nome';
+      }
+    }
+    const selectSetorSigla = (hasUsuariosSetorId && hasSetorSigla) ? 's.sigla as setor_sigla' : 'NULL as setor_sigla';
+
+    const hasUsuariosFuncaoId = await columnExists('usuarios', 'funcao_id');
+    const funcaoJoin = hasUsuariosFuncaoId ? 'LEFT JOIN funcoes f ON u.funcao_id = f.id' : '';
+    const selectFuncaoNome = hasUsuariosFuncaoId ? 'f.nome as funcao_nome' : 'NULL as funcao_nome';
+
+    const lotacaoCol = await getUsuariosUnidadeColumn() || 'unidade_id';
 
     const usuarioResult = await query(`
       SELECT 
@@ -1649,27 +1746,23 @@ router.get('/me/perfil', async (req, res) => {
         u.created_at as data_criacao,
         u.ultimo_login,
         
-        -- Informações do perfil
         p.nome as perfil_nome,
         ${selectPerfilNivel},
         p.permissoes,
         
-        -- Informações da unidade
         un.nome as unidade_nome,
         un.sigla as unidade_sigla,
         
-        -- Informações do setor
-        s.nome as setor_nome,
-        s.sigla as setor_sigla,
+        ${selectSetorNome},
+        ${selectSetorSigla},
         
-        -- Informações da função
-        f.nome as funcao_nome
+        ${selectFuncaoNome}
         
       FROM usuarios u
       LEFT JOIN perfis p ON u.perfil_id = p.id
-      LEFT JOIN unidades un ON u.unidade_id = un.id
-      LEFT JOIN setores s ON u.setor_id = s.id
-      LEFT JOIN funcoes f ON u.funcao_id = f.id
+      LEFT JOIN unidades un ON u.${lotacaoCol} = un.id
+      ${setorJoin}
+      ${funcaoJoin}
       WHERE u.id = $1
     `, [userId]);
 
@@ -1678,17 +1771,14 @@ router.get('/me/perfil', async (req, res) => {
     }
 
     const usuarioRaw = usuarioResult.rows[0];
-    
-    // Mapear campos para compatibilidade com frontend
     const usuario = {
       ...usuarioRaw,
-      papel: usuarioRaw.perfil_nome, // Mapear perfil para papel
-      setor: usuarioRaw.setor_nome,  // Mapear setor_nome para setor
-      unidade: usuarioRaw.unidade_nome, // Adicionar unidade
-      funcao: usuarioRaw.funcao_nome // Adicionar função
+      papel: usuarioRaw.perfil_nome,
+      setor: usuarioRaw.setor_nome,
+      unidade: usuarioRaw.unidade_nome,
+      funcao: usuarioRaw.funcao_nome,
     };
 
-    // Estatísticas de atividade do usuário
     const estatisticas = await query(`
       SELECT 
         (SELECT COUNT(*) FROM movimentacoes_estoque WHERE usuario_id = $1) as total_movimentacoes,
