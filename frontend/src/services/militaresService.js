@@ -94,7 +94,7 @@ export const militaresService = {
       },
     });
     
-    return publicApi.get('/usuarios/config/unidades');
+    return publicApi.get('/usuarios/unidades-publicas');
   },
   
   // Buscar setores disponíveis
@@ -150,6 +150,9 @@ export const militaresService = {
     });
     
     const dadosComTipo = { ...dadosMilitar, tipo: 'militar' };
+    if (!dadosComTipo.matricula && dadosComTipo.identidade_militar) {
+      dadosComTipo.matricula = dadosComTipo.identidade_militar;
+    }
     return publicApi.post('/usuarios/solicitar-cadastro', dadosComTipo);
   },
 

@@ -60,6 +60,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { usuariosService } from '../services/api';
+import { militaresService } from '../services/militaresService';
 
 const Perfil = () => {
   const theme = useTheme();
@@ -75,6 +76,10 @@ const Perfil = () => {
     nome: '',
     email: '',
     telefone: '',
+    data_nascimento: '',
+    posto_graduacao: '',
+    nome_guerra: '',
+    matricula: '',
   });
   
   // Estados para alteração de senha
@@ -93,18 +98,24 @@ const Perfil = () => {
   // Estados para dados do perfil
   const [perfilData, setPerfilData] = useState(null);
   const [setores, setSetores] = useState([]);
+  const [postosGraduacoes, setPostosGraduacoes] = useState([]);
 
   useEffect(() => {
     loadPerfilData();
     loadSetores();
+    loadPostos();
   }, []);
 
   useEffect(() => {
     if (user) {
       setFormData({
-        nome: user.nome || '',
+        nome: user.nome_completo || user.nome || '',
         email: user.email || '',
         telefone: user.telefone || '',
+        data_nascimento: toInputDate(user.data_nascimento) || '',
+        posto_graduacao: user.posto_graduacao || '',
+        nome_guerra: user.nome_guerra || '',
+        matricula: user.matricula || '',
       });
     }
   }, [user]);
@@ -129,6 +140,40 @@ const Perfil = () => {
     } catch (err) {
       console.error('Erro ao carregar setores:', err);
     }
+  };
+
+  const loadPostos = async () => {
+    try {
+      const res = await militaresService.getPostosGraduacoes();
+      const data = res?.data?.postos || res?.data?.data || res?.data || [];
+      if (Array.isArray(data) && data.length > 0) {
+        setPostosGraduacoes(data);
+      } else {
+        setPostosGraduacoes([
+          'Coronel', 'Tenente-Coronel', 'Major',
+          'Capitão', '1º Tenente', '2º Tenente', 'Aspirante a Oficial',
+          'Subtenente', '1º Sargento', '2º Sargento', '3º Sargento',
+          'Cabo', 'Soldado'
+        ]);
+      }
+    } catch (err) {
+      setPostosGraduacoes([
+        'Coronel', 'Tenente-Coronel', 'Major',
+        'Capitão', '1º Tenente', '2º Tenente', 'Aspirante a Oficial',
+        'Subtenente', '1º Sargento', '2º Sargento', '3º Sargento',
+        'Cabo', 'Soldado'
+      ]);
+    }
+  };
+
+  const toInputDate = (dateString) => {
+    if (!dateString) return '';
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return '';
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
   };
 
   const handleEditToggle = () => {
@@ -163,8 +208,16 @@ const Perfil = () => {
         return;
       }
       
-      const response = await usuariosService.updateUsuario(user.id, formData);
-      updateUser(response.data.usuario);
+      const payload = {
+        ...formData,
+        nome_completo: formData.nome,
+      };
+      await usuariosService.updateUsuario(user.id, payload);
+      const fresh = await usuariosService.getUsuarioById(user.id);
+      const usuarioAtualizado = fresh.data?.usuario || fresh.data?.user || fresh.data;
+      if (usuarioAtualizado) {
+        updateUser(usuarioAtualizado);
+      }
       setSuccess('Perfil atualizado com sucesso!');
       setEditMode(false);
     } catch (err) {
@@ -326,6 +379,46 @@ const Perfil = () => {
                   onChange={(e) => handleFormChange('telefone', e.target.value)}
                   margin="normal"
                 />
+                <TextField
+                  fullWidth
+                  label="Data de Nascimento"
+                  type="date"
+                  value={formData.data_nascimento}
+                  onChange={(e) => handleFormChange('data_nascimento', e.target.value)}
+                  margin="normal"
+                  InputLabelProps={{ shrink: true }}
+                />
+                {(user?.tipo === 'militar') && (
+                  <Box>
+                    <Typography variant="subtitle1" sx={{ mt: 2 }}>Dados Militares</Typography>
+                    <FormControl fullWidth sx={{ mt: 1 }}>
+                      <InputLabel>Posto/Graduação</InputLabel>
+                      <Select
+                        value={formData.posto_graduacao}
+                        label="Posto/Graduação"
+                        onChange={(e) => handleFormChange('posto_graduacao', e.target.value)}
+                      >
+                        {postosGraduacoes.map((p) => (
+                          <MenuItem key={p} value={p}>{p}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <TextField
+                      fullWidth
+                      label="Nome de Guerra"
+                      value={formData.nome_guerra}
+                      onChange={(e) => handleFormChange('nome_guerra', e.target.value)}
+                      margin="normal"
+                    />
+                    <TextField
+                      fullWidth
+                      label="Matrícula"
+                      value={formData.matricula}
+                      onChange={(e) => handleFormChange('matricula', e.target.value)}
+                      margin="normal"
+                    />
+                  </Box>
+                )}
                 
                 <Box mt={3} display="flex" gap={2}>
                   <Button
@@ -347,7 +440,7 @@ const Perfil = () => {
                   </ListItemIcon>
                   <ListItemText
                     primary="Nome"
-                    secondary={user?.nome}
+                    secondary={user?.nome_completo || user?.nome}
                   />
                 </ListItem>
                 <ListItem>
@@ -361,6 +454,15 @@ const Perfil = () => {
                 </ListItem>
                 <ListItem>
                   <ListItemIcon>
+                    <CalendarIcon color="primary" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Data de Nascimento"
+                    secondary={formatDate(user?.data_nascimento)}
+                  />
+                </ListItem>
+                <ListItem>
+                  <ListItemIcon>
                     <BadgeIcon color="primary" />
                   </ListItemIcon>
                   <ListItemText
@@ -368,6 +470,28 @@ const Perfil = () => {
                     secondary={user?.matricula}
                   />
                 </ListItem>
+                {user?.tipo === 'militar' && (
+                  <>
+                    <ListItem>
+                      <ListItemIcon>
+                        <WorkIcon color="primary" />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary="Posto/Graduação"
+                        secondary={user?.posto_graduacao || '-'}
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon>
+                        <BadgeIcon color="primary" />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary="Nome de Guerra"
+                        secondary={user?.nome_guerra || '-'}
+                      />
+                    </ListItem>
+                  </>
+                )}
                 {user?.telefone && (
                   <ListItem>
                     <ListItemIcon>
@@ -392,6 +516,7 @@ const Perfil = () => {
                         size="small"
                       />
                     }
+                    secondaryTypographyProps={{ component: 'div' }}
                   />
                 </ListItem>
                 <ListItem>
