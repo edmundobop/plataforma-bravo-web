@@ -139,6 +139,11 @@ export const usuariosService = {
   getFuncoes: () => {
     return api.get('/usuarios/data/funcoes');
   },
+
+  // Aprovar ou rejeitar solicitação de cadastro
+  aprovarSolicitacao: (id, payload) => {
+    return api.post(`/usuarios/aprovar-cadastro/${id}`, payload);
+  },
 };
 
 // Serviços de frota

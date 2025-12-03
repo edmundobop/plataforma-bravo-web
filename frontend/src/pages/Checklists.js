@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box,
   Grid,
@@ -70,6 +71,8 @@ const Checklists = () => {
   const { user } = useAuth();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const navigate = useNavigate();
+  const location = useLocation();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
@@ -91,6 +94,31 @@ const Checklists = () => {
     tipo_checklist: '',
     ala_servico: '',
   });
+  const [checklistsPage, setChecklistsPage] = useState(1);
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(location.search);
+      const qp = Number(params.get('page') || '1');
+      if (!Number.isNaN(qp) && qp > 0 && qp !== checklistsPage) {
+        setChecklistsPage(qp);
+      }
+    } catch (e) {}
+  }, [location.search]);
+
+  const setQueryParam = (key, value) => {
+    const params = new URLSearchParams(location.search);
+    if (value === null || value === undefined) {
+      params.delete(key);
+    } else {
+      params.set(key, String(value));
+    }
+    navigate({ pathname: location.pathname, search: `?${params.toString()}` }, { replace: true });
+  };
+
+  const handleChecklistsPageChange = (page) => {
+    setChecklistsPage(page);
+    setQueryParam('page', page);
+  };
   const [checklistDialogOpen, setChecklistDialogOpen] = useState(false);
   // Prefill para iniciar a partir de uma solicitação
   const [prefillData, setPrefillData] = useState(null);
@@ -242,6 +270,11 @@ const Checklists = () => {
       loadSolicitacoes();
     }
   }, [currentUnit, loadChecklists, loadSolicitacoes]);
+
+  useEffect(() => {
+    setChecklistsPage(1);
+    setQueryParam('page', 1);
+  }, [checklistsFilters, isMobile]);
 
   // Polling para manter Solicitações atualizadas enquanto estiver na aba de Checklists
   useEffect(() => {
@@ -704,6 +737,10 @@ const Checklists = () => {
     <TemplateBuilder />
   );
 
+  const checklistsPerPage = isMobile ? 5 : 10;
+  const checklistsPages = Math.max(1, Math.ceil(checklists.length / checklistsPerPage));
+  const paginatedChecklists = checklists.slice((checklistsPage - 1) * checklistsPerPage, checklistsPage * checklistsPerPage);
+
   return (
     <Box sx={{ p: 3 }}>
       {/* Header com Abas */}
@@ -833,7 +870,7 @@ const Checklists = () => {
               <AccordionDetails>
         <Grid container spacing={2}>
           <Grid item xs={12} sm={6} md={3}>
-            <FormControl fullWidth>
+            <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
               <InputLabel>Viatura</InputLabel>
               <Select
                 value={checklistsFilters.viatura_id || ''}
@@ -850,7 +887,7 @@ const Checklists = () => {
             </FormControl>
           </Grid>
           <Grid item xs={12} sm={6} md={2}>
-            <FormControl fullWidth>
+            <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
               <InputLabel>Status</InputLabel>
               <Select
                 value={checklistsFilters.status || ''}
@@ -872,6 +909,7 @@ const Checklists = () => {
               value={checklistsFilters.data_inicio}
               onChange={(e) => setChecklistsFilters(prev => ({ ...prev, data_inicio: e.target.value }))}
               InputLabelProps={{ shrink: true }}
+              size={isMobile ? 'small' : 'medium'}
             />
           </Grid>
           <Grid item xs={12} sm={6} md={2}>
@@ -882,10 +920,11 @@ const Checklists = () => {
               value={checklistsFilters.data_fim}
               onChange={(e) => setChecklistsFilters(prev => ({ ...prev, data_fim: e.target.value }))}
               InputLabelProps={{ shrink: true }}
+              size={isMobile ? 'small' : 'medium'}
             />
           </Grid>
           <Grid item xs={12} sm={6} md={2}>
-            <FormControl fullWidth>
+            <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
               <InputLabel>Tipo de Checklist</InputLabel>
               <Select
                 value={checklistsFilters.tipo_checklist || ''}
@@ -905,7 +944,7 @@ const Checklists = () => {
             </FormControl>
           </Grid>
           <Grid item xs={12} sm={6} md={1}>
-            <FormControl fullWidth>
+            <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
               <InputLabel>Ala</InputLabel>
               <Select
                 value={checklistsFilters.ala_servico || ''}
@@ -947,7 +986,7 @@ const Checklists = () => {
             </Typography>
         <Grid container spacing={2}>
           <Grid item xs={12} sm={6} md={3}>
-            <FormControl fullWidth>
+            <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
               <InputLabel>Viatura</InputLabel>
               <Select
                 value={checklistsFilters.viatura_id || ''}
@@ -964,7 +1003,7 @@ const Checklists = () => {
             </FormControl>
           </Grid>
           <Grid item xs={12} sm={6} md={2}>
-            <FormControl fullWidth>
+            <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
               <InputLabel>Status</InputLabel>
               <Select
                 value={checklistsFilters.status || ''}
@@ -986,6 +1025,7 @@ const Checklists = () => {
               value={checklistsFilters.data_inicio}
               onChange={(e) => setChecklistsFilters(prev => ({ ...prev, data_inicio: e.target.value }))}
               InputLabelProps={{ shrink: true }}
+              size={isMobile ? 'small' : 'medium'}
             />
           </Grid>
           <Grid item xs={12} sm={6} md={2}>
@@ -996,10 +1036,11 @@ const Checklists = () => {
               value={checklistsFilters.data_fim}
               onChange={(e) => setChecklistsFilters(prev => ({ ...prev, data_fim: e.target.value }))}
               InputLabelProps={{ shrink: true }}
+              size={isMobile ? 'small' : 'medium'}
             />
           </Grid>
           <Grid item xs={12} sm={6} md={2}>
-            <FormControl fullWidth>
+            <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
               <InputLabel>Tipo de Checklist</InputLabel>
               <Select
                 value={checklistsFilters.tipo_checklist || ''}
@@ -1019,7 +1060,7 @@ const Checklists = () => {
             </FormControl>
           </Grid>
           <Grid item xs={12} sm={6} md={1}>
-            <FormControl fullWidth>
+            <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
               <InputLabel>Ala</InputLabel>
               <Select
                 value={checklistsFilters.ala_servico || ''}
@@ -1057,6 +1098,7 @@ const Checklists = () => {
 
       {/* Lista de resultados */}
       {!isMobile && (
+        <>
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
@@ -1087,7 +1129,7 @@ const Checklists = () => {
                 </TableCell>
               </TableRow>
             ) : (
-              checklists.map((checklist) => (
+              paginatedChecklists.map((checklist) => (
                 <TableRow 
                   key={checklist.id}
                   hover
@@ -1188,6 +1230,17 @@ const Checklists = () => {
           </TableBody>
         </Table>
             </TableContainer>
+            {checklistsPages > 1 && (
+              <Box display="flex" justifyContent="center" mt={3}>
+                <Pagination
+                  count={checklistsPages}
+                  page={checklistsPage}
+                  onChange={(e, page) => handleChecklistsPageChange(page)}
+                  color="primary"
+                />
+              </Box>
+            )}
+        </>
       )}
       {isMobile && (
         <Box>
@@ -1201,7 +1254,7 @@ const Checklists = () => {
             </Typography>
           ) : (
             <Grid container spacing={2}>
-              {checklists.map((checklist) => (
+              {paginatedChecklists.map((checklist) => (
                 <Grid item xs={12} key={checklist.id}>
                   <Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => handleViewChecklist(checklist)}>
                     <CardContent>
@@ -1228,6 +1281,16 @@ const Checklists = () => {
                 </Grid>
               ))}
             </Grid>
+          )}
+          {checklistsPages > 1 && (
+            <Box display="flex" justifyContent="center" mt={1}>
+              <Pagination
+                count={checklistsPages}
+                page={checklistsPage}
+                onChange={(e, page) => handleChecklistsPageChange(page)}
+                color="primary"
+              />
+            </Box>
           )}
         </Box>
       )}
@@ -1257,10 +1320,10 @@ const Checklists = () => {
                 <AccordionDetails>
                   <Grid container spacing={2} alignItems="center">
                     <Grid item xs={12} sm={6} md={4}>
-                      <TextField fullWidth label="Buscar por nome" value={autoFilters.nome} onChange={(e) => setAutoFilters(prev => ({ ...prev, nome: e.target.value }))} />
+                      <TextField fullWidth label="Buscar por nome" value={autoFilters.nome} onChange={(e) => setAutoFilters(prev => ({ ...prev, nome: e.target.value }))} size={isMobile ? 'small' : 'medium'} />
                     </Grid>
                     <Grid item xs={12} sm={6} md={3}>
-                      <FormControl fullWidth>
+                      <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
                         <InputLabel>Status</InputLabel>
                         <Select value={autoFilters.ativo} onChange={(e) => setAutoFilters(prev => ({ ...prev, ativo: e.target.value }))} label="Status">
                           <MenuItem value="">Todos</MenuItem>
@@ -1270,7 +1333,7 @@ const Checklists = () => {
                       </FormControl>
                     </Grid>
                     <Grid item xs={12} sm={6} md={3}>
-                      <FormControl fullWidth>
+                      <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
                         <InputLabel>Ala</InputLabel>
                         <Select value={autoFilters.ala_servico} onChange={(e) => setAutoFilters(prev => ({ ...prev, ala_servico: e.target.value }))} label="Ala">
                           <MenuItem value="">Todas</MenuItem>
@@ -1283,7 +1346,7 @@ const Checklists = () => {
                       </FormControl>
                     </Grid>
                     <Grid item xs={12} sm={6} md={2}>
-                      <FormControl fullWidth>
+                      <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
                         <InputLabel>Tipo</InputLabel>
                         <Select value={autoFilters.tipo_checklist} onChange={(e) => setAutoFilters(prev => ({ ...prev, tipo_checklist: e.target.value }))} label="Tipo">
                           <MenuItem value="">Todos</MenuItem>

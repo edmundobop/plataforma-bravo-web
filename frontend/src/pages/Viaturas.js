@@ -32,6 +32,7 @@ import {
   AccordionDetails,
   useTheme,
   useMediaQuery,
+  Pagination,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -64,6 +65,7 @@ const Viaturas = () => {
     search: '',
   });
   const [filteredViaturas, setFilteredViaturas] = useState([]);
+  const [viaturasPage, setViaturasPage] = useState(1);
   
   // Estados para diálogos
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -116,6 +118,10 @@ const Viaturas = () => {
 
     setFilteredViaturas(filtered);
   }, [viaturas, viaturasFilters]);
+
+  useEffect(() => {
+    setViaturasPage(1);
+  }, [viaturasFilters, isMobile]);
 
   // useEffect para carregar dados iniciais
   useEffect(() => {
@@ -319,9 +325,11 @@ const Viaturas = () => {
   };
 
   const getStatusColor = (status) => {
-    switch (status) {
+    const s = (status || '').toLowerCase();
+    switch (s) {
       case 'ativo': return 'success';
       case 'inativo': return 'default';
+      case 'manutenção': return 'warning';
       case 'manutencao': return 'warning';
       default: return 'default';
     }
@@ -329,7 +337,12 @@ const Viaturas = () => {
 
   // (removido) formatDate não utilizado
 
-  const renderViaturasTab = () => (
+  const renderViaturasTab = () => {
+    const viaturasPerPage = isMobile ? 5 : 10;
+    const viaturasPages = Math.max(1, Math.ceil(filteredViaturas.length / viaturasPerPage));
+    const paginatedViaturas = filteredViaturas.slice((viaturasPage - 1) * viaturasPerPage, viaturasPage * viaturasPerPage);
+
+    return (
     <Box>
       {isMobile ? (
         <Accordion sx={{ mb: 2 }}>
@@ -363,6 +376,30 @@ const Viaturas = () => {
                   </Select>
                 </FormControl>
               </Grid>
+              <Grid item xs={12} sm={6} md={4}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Unidade BM</InputLabel>
+                  <Select
+                    value={viaturasFilters.unidade_id || ''}
+                    onChange={(e) => setViaturasFilters(prev => ({ ...prev, unidade_id: e.target.value }))}
+                    label="Unidade BM"
+                  >
+                    <MenuItem key="todas-unidades" value="">Todas</MenuItem>
+                    {availableUnits.map((unit) => (
+                      <MenuItem key={unit.id} value={unit.id}>{unit.codigo} - {unit.nome}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6} md={4}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  label="Setor Responsável"
+                  value={viaturasFilters.setor}
+                  onChange={(e) => setViaturasFilters(prev => ({ ...prev, setor: e.target.value }))}
+                />
+              </Grid>
             </Grid>
           </AccordionDetails>
         </Accordion>
@@ -391,10 +428,31 @@ const Viaturas = () => {
               <MenuItem key="manutencao" value="Manutenção">Manutenção</MenuItem>
             </Select>
           </FormControl>
+          <FormControl size="small" sx={{ minWidth: 240 }}>
+            <InputLabel>Unidade BM</InputLabel>
+            <Select
+              value={viaturasFilters.unidade_id || ''}
+              onChange={(e) => setViaturasFilters(prev => ({ ...prev, unidade_id: e.target.value }))}
+              label="Unidade BM"
+            >
+              <MenuItem key="todas-unidades" value="">Todas</MenuItem>
+              {availableUnits.map((unit) => (
+                <MenuItem key={unit.id} value={unit.id}>{unit.codigo} - {unit.nome}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <TextField
+            size="small"
+            label="Setor Responsável"
+            value={viaturasFilters.setor}
+            onChange={(e) => setViaturasFilters(prev => ({ ...prev, setor: e.target.value }))}
+            sx={{ minWidth: 200 }}
+          />
         </Box>
       )}
 
       {!isMobile ? (
+        <>
         <TableContainer component={Paper}>
           <Table size={isMobile ? 'small' : 'medium'}>
             <TableHead>
@@ -422,7 +480,7 @@ const Viaturas = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredViaturas.map((viatura) => (
+                paginatedViaturas.map((viatura) => (
                   <TableRow key={viatura.id}>
                     <TableCell>
                       {viatura.foto ? (
@@ -463,6 +521,17 @@ const Viaturas = () => {
             </TableBody>
           </Table>
         </TableContainer>
+        {viaturasPages > 1 && (
+          <Box display="flex" justifyContent="center" mt={3}>
+            <Pagination
+              count={viaturasPages}
+              page={viaturasPage}
+              onChange={(e, page) => setViaturasPage(page)}
+              color="primary"
+            />
+          </Box>
+        )}
+        </>
       ) : (
         <Grid container spacing={2}>
           {viaturasLoading ? (
@@ -476,7 +545,7 @@ const Viaturas = () => {
               <Typography variant="body2" color="text.secondary">Nenhuma viatura encontrada</Typography>
             </Grid>
           ) : (
-            filteredViaturas.map((viatura) => (
+            paginatedViaturas.map((viatura) => (
               <Grid item xs={12} key={viatura.id}>
                 <Paper variant="outlined" sx={{ p: 2 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -500,10 +569,23 @@ const Viaturas = () => {
               </Grid>
             ))
           )}
+          {viaturasPages > 1 && (
+            <Grid item xs={12}>
+              <Box display="flex" justifyContent="center" mt={1}>
+                <Pagination
+                  count={viaturasPages}
+                  page={viaturasPage}
+                  onChange={(e, page) => setViaturasPage(page)}
+                  color="primary"
+                />
+              </Box>
+            </Grid>
+          )}
         </Grid>
       )}
     </Box>
   );
+  };
 
   const renderViaturasDialog = () => (
     <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="md" fullWidth fullScreen={isMobile}>
