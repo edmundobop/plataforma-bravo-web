@@ -11,6 +11,7 @@ const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const { query } = require('../config/database');
 const { authenticateToken, authorizeRoles } = require('../middleware/auth');
+const { columnExists } = require('../utils/schema');
 
 const router = express.Router();
 
@@ -159,6 +160,9 @@ router.post('/login', loginValidation, async (req, res) => {
       delete userWithoutPassword.senha_hash;
     }
     userWithoutPassword.papel = userWithoutPassword.perfil_nome;
+    if (Object.prototype.hasOwnProperty.call(user, 'precisa_trocar_senha')) {
+      userWithoutPassword.precisa_trocar_senha = !!user.precisa_trocar_senha;
+    }
 
     res.json({
       message: 'Login realizado com sucesso',
@@ -294,8 +298,12 @@ const handleChangePassword = async (req, res) => {
     // Hash da nova senha
     const hashedNewPassword = await bcrypt.hash(novaSenha, parseInt(process.env.BCRYPT_ROUNDS) || 12);
 
-    // Atualizar senha
-    await query('UPDATE usuarios SET senha_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [hashedNewPassword, userId]);
+    // Atualizar senha e limpar flag de troca obrigatória se existir
+    const hasFlag = await columnExists('usuarios', 'precisa_trocar_senha');
+    const sql = hasFlag
+      ? 'UPDATE usuarios SET senha_hash = $1, precisa_trocar_senha = false, updated_at = CURRENT_TIMESTAMP WHERE id = $2'
+      : 'UPDATE usuarios SET senha_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2';
+    await query(sql, [hashedNewPassword, userId]);
 
     res.json({ message: 'Senha alterada com sucesso' });
   } catch (error) {
