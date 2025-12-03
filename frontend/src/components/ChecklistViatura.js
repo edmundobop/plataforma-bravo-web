@@ -42,6 +42,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 
 const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, selectedViatura: selectedViaturaProps, prefill }) => {
+  const BACKEND_ORIGIN = process.env.REACT_APP_API_ORIGIN || (window.location.origin.replace(':3003', ':5000'));
   const { user } = useAuth(); // Obter usuário logado
   const { currentUnit } = useTenant(); // Obter unidade atual
   const theme = useTheme();
@@ -255,12 +256,14 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
       });
       
       // Adicionar as fotos retornadas pela API
-      response.data.fotos.forEach(foto => {
+      response.data.fotos.forEach((foto) => {
+        const relativeUrl = foto.url || '';
+        const absoluteUrl = relativeUrl.startsWith('http') ? relativeUrl : `${BACKEND_ORIGIN}${relativeUrl}`;
         newItens[index].fotos.push({
-          url: `http://localhost:3000${foto.url}`,
+          url: absoluteUrl,
           name: foto.originalName,
           size: foto.size,
-          filename: foto.filename
+          filename: foto.filename,
         });
       });
       
