@@ -197,9 +197,8 @@ const Viaturas = () => {
   };
 
   const openPhotoViewer = (url) => {
-    const origin = process.env.REACT_APP_API_ORIGIN || (window.location.origin.replace(':3003', ':5000'));
-    const absolute = String(url || '').startsWith('http') ? url : `${origin}${url || ''}`;
-    setPhotoViewerUrl(absolute);
+    const src = String(url || '');
+    setPhotoViewerUrl(src);
     setPhotoViewerOpen(true);
   };
 
@@ -916,7 +915,21 @@ const Viaturas = () => {
         <DialogContent sx={{ p: isMobile ? 0 : 2 }}>
           {photoViewerUrl && (
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <img src={photoViewerUrl} alt="Foto da viatura" style={{ maxWidth: isMobile ? '100vw' : '90vw', maxHeight: isMobile ? '85vh' : '70vh', objectFit: 'contain', display: 'block' }} />
+              <img
+                src={photoViewerUrl}
+                alt="Foto da viatura"
+                style={{ maxWidth: isMobile ? '100vw' : '90vw', maxHeight: isMobile ? '85vh' : '70vh', objectFit: 'contain', display: 'block' }}
+                onError={(e) => {
+                  const origin = process.env.REACT_APP_API_ORIGIN || (window.location.origin.replace(':3003', ':5000'));
+                  const current = e.currentTarget.src || '';
+                  const raw = photoViewerUrl || '';
+                  if (raw && !String(raw).startsWith('http')) {
+                    e.currentTarget.src = `${origin}${raw}`;
+                  } else if (current.includes('localhost:3003')) {
+                    e.currentTarget.src = current.replace('localhost:3003', 'localhost:5000');
+                  }
+                }}
+              />
             </Box>
           )}
         </DialogContent>
