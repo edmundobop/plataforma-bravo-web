@@ -865,6 +865,21 @@ router.post('/viaturas', [
       ]);
     }
 
+    try {
+      await query(
+        `UPDATE viaturas
+         SET km_atual = $2, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1`,
+        [viatura_id, km_inicial]
+      );
+    } catch (e) {
+      console.warn('Falha ao atualizar km_atual da viatura a partir do checklist', {
+        viatura_id,
+        km_inicial,
+        error: e?.message
+      });
+    }
+
     res.status(201).json({
       message: 'Checklist criado com sucesso',
       checklist: checklistResult.rows[0]

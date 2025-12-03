@@ -80,6 +80,25 @@ const Viaturas = () => {
   const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
   const [photoViewerUrl, setPhotoViewerUrl] = useState('');
 
+  const getApiOrigin = () => {
+    const envOrigin = process.env.REACT_APP_API_ORIGIN;
+    if (envOrigin) return envOrigin;
+    const origin = window.location.origin;
+    if (origin.includes(':3003')) return origin.replace(':3003', ':5000');
+    return 'http://localhost:5000';
+  };
+
+  const resolveSrc = (v) => {
+    const s = String(v || '');
+    if (!s) return '';
+    if (/^(data:|blob:)/i.test(s)) return s;
+    if (s.startsWith('http')) {
+      return s.includes(':3003') ? s.replace(':3003', ':5000') : s;
+    }
+    const base = getApiOrigin();
+    return `${base}${s.startsWith('/') ? s : `/${s}`}`;
+  };
+
   // Carregar viaturas
   const loadViaturas = useCallback(async () => {
     try {
@@ -180,8 +199,9 @@ const Viaturas = () => {
       const response = await uploadService.uploadFoto(file, (progress) => {
         console.log(`Upload progress: ${progress}%`);
       });
-      
-      const fotoUrl = `http://localhost:5000${response.data.url}`;
+
+      const rawUrl = String(response.data.url || '');
+      const fotoUrl = rawUrl.startsWith('http') ? rawUrl : resolveSrc(rawUrl);
       handleFormChange('foto', fotoUrl);
     } catch (error) {
       console.error('Erro ao fazer upload da foto:', error);
@@ -197,8 +217,7 @@ const Viaturas = () => {
   };
 
   const openPhotoViewer = (url) => {
-    const src = String(url || '');
-    setPhotoViewerUrl(src);
+    setPhotoViewerUrl(resolveSrc(url));
     setPhotoViewerOpen(true);
   };
 
@@ -493,10 +512,16 @@ const Viaturas = () => {
                     <TableCell onClick={() => handleOpenDialog('view', viatura)} sx={{ cursor: 'pointer' }}>
                       {viatura.foto ? (
                         <Avatar
-                          src={viatura.foto}
+                          src={resolveSrc(viatura.foto)}
                           alt={`Viatura ${viatura.prefixo}`}
                           sx={{ width: 60, height: 60 }}
                           variant="rounded"
+                          onError={(e) => {
+                            const current = e.currentTarget.src || '';
+                            if (current.includes('localhost:3003')) {
+                              e.currentTarget.src = current.replace('localhost:3003', 'localhost:5000');
+                            }
+                          }}
                         />
                       ) : (
                         <Avatar
@@ -563,7 +588,7 @@ const Viaturas = () => {
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       {viatura.foto ? (
-                        <Avatar src={viatura.foto} alt={`Viatura ${viatura.prefixo}`} sx={{ width: 40, height: 40 }} variant="rounded" />
+                        <Avatar src={resolveSrc(viatura.foto)} alt={`Viatura ${viatura.prefixo}`} sx={{ width: 40, height: 40 }} variant="rounded" />
                       ) : (
                         <Avatar sx={{ width: 40, height: 40, bgcolor: 'grey.300' }} variant="rounded"><CarIcon /></Avatar>
                       )}
@@ -616,7 +641,19 @@ const Viaturas = () => {
             {selectedItem?.foto && (
               <Grid item xs={12}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <Avatar src={selectedItem.foto} alt="Foto da viatura" sx={{ width: 120, height: 120, cursor: 'pointer' }} variant="rounded" onClick={() => openPhotoViewer(selectedItem.foto)} />
+                  <Avatar 
+                    src={resolveSrc(selectedItem?.foto)}
+                    alt="Foto da viatura"
+                    sx={{ width: 120, height: 120, cursor: 'pointer' }}
+                    variant="rounded"
+                    onClick={() => openPhotoViewer(selectedItem.foto)}
+                    onError={(e) => {
+                      const current = e.currentTarget.src || '';
+                      if (current.includes('localhost:3003')) {
+                        e.currentTarget.src = current.replace('localhost:3003', 'localhost:5000');
+                      }
+                    }}
+                  />
                 </Box>
               </Grid>
             )}
