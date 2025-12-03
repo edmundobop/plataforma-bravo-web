@@ -490,7 +490,7 @@ const Viaturas = () => {
                 </TableRow>
               ) : (
                 paginatedViaturas.map((viatura) => (
-                  <TableRow key={viatura.id}>
+                  <TableRow key={viatura.id} onClick={() => handleOpenDialog('view', viatura)} sx={{ cursor: 'pointer' }}>
                     <TableCell onClick={() => handleOpenDialog('view', viatura)} sx={{ cursor: 'pointer' }}>
                       {viatura.foto ? (
                         <Avatar
@@ -617,8 +617,7 @@ const Viaturas = () => {
             {selectedItem?.foto && (
               <Grid item xs={12}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <Avatar src={selectedItem.foto} alt="Foto da viatura" sx={{ width: 120, height: 120 }} variant="rounded" onClick={() => openPhotoViewer(selectedItem.foto)} />
-                  <Button variant="outlined" size="small" onClick={() => openPhotoViewer(selectedItem.foto)}>Abrir foto</Button>
+                  <Avatar src={selectedItem.foto} alt="Foto da viatura" sx={{ width: 120, height: 120, cursor: 'pointer' }} variant="rounded" onClick={() => openPhotoViewer(selectedItem.foto)} />
                 </Box>
               </Grid>
             )}
