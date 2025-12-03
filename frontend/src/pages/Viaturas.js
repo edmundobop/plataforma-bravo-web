@@ -547,7 +547,11 @@ const Viaturas = () => {
           ) : (
             paginatedViaturas.map((viatura) => (
               <Grid item xs={12} key={viatura.id}>
-                <Paper variant="outlined" sx={{ p: 2 }}>
+                <Paper 
+                  variant="outlined" 
+                  sx={{ p: 2, cursor: 'pointer', transition: 'all 0.2s', '&:hover': { boxShadow: theme.shadows[2] } }}
+                  onClick={() => handleOpenDialog('view', viatura)}
+                >
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       {viatura.foto ? (
@@ -561,7 +565,7 @@ const Viaturas = () => {
                       </Box>
                     </Box>
                     <Chip label={viatura.status} color={getStatusColor(viatura.status)} size="small" />
-                    <IconButton onClick={(e) => handleMenuOpen(e, viatura)}>
+                    <IconButton onClick={(e) => { e.stopPropagation(); handleMenuOpen(e, viatura); }}>
                       <MoreVertIcon />
                     </IconButton>
                   </Box>
