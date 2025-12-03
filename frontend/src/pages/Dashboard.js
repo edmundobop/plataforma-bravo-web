@@ -31,7 +31,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
-import { dashboardService } from '../services/api';
+import { dashboardService, checklistService, operacionalService } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 
 const Dashboard = () => {
@@ -42,6 +42,10 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [dashboardData, setDashboardData] = useState(null);
+  const [opsLoading, setOpsLoading] = useState(false);
+  const [opsError, setOpsError] = useState('');
+  const [solicitacoesPendentes, setSolicitacoesPendentes] = useState([]);
+  const [escalasHoje, setEscalasHoje] = useState([]);
 
   useEffect(() => {
     loadDashboardData();
@@ -65,6 +69,43 @@ const Dashboard = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const role = user?.perfil_nome || '';
+    const isOperacional = ['Operacional', 'Motorista', 'Condutor', 'Soldado', 'Cabo'].includes(role);
+    if (!currentUnit) return;
+    if (!isOperacional) {
+      setSolicitacoesPendentes([]);
+      setEscalasHoje([]);
+      return;
+    }
+    const run = async () => {
+      try {
+        setOpsLoading(true);
+        setOpsError('');
+        const [solResp, escResp] = await Promise.all([
+          checklistService.getSolicitacoes({ status: 'pendente', page: 1, limit: 10 }),
+          operacionalService.getEscalas({ page: 1, limit: 20 })
+        ]);
+        const solicitacoes = Array.isArray(solResp.data?.solicitacoes) ? solResp.data.solicitacoes : [];
+        const hoje = new Date();
+        const isSameDay = (d) => {
+          const dt = new Date(d);
+          return dt.getFullYear() === hoje.getFullYear() && dt.getMonth() === hoje.getMonth() && dt.getDate() === hoje.getDate();
+        };
+        const escalas = Array.isArray(escResp.data?.escalas) ? escResp.data.escalas : [];
+        const escalasDia = escalas.filter(e => isSameDay(e.data_inicio) || isSameDay(e.data_fim));
+        setSolicitacoesPendentes(solicitacoes);
+        setEscalasHoje(escalasDia);
+      } catch (e) {
+        console.error('Erro ao carregar dados operacionais:', e);
+        setOpsError('Erro ao carregar dados operacionais');
+      } finally {
+        setOpsLoading(false);
+      }
+    };
+    run();
+  }, [currentUnit, user]);
 
   const getAlertIcon = (tipo) => {
     switch (tipo) {
@@ -113,6 +154,10 @@ const Dashboard = () => {
   }
 
   const { estatisticas, atividades_recentes, alertas } = dashboardData || {};
+
+  const role = user?.perfil_nome || '';
+  const isAdminLike = ['Administrador', 'Chefe', 'Comandante'].includes(role);
+  const isOperacional = !isAdminLike;
 
   return (
     <Box>
@@ -342,13 +387,13 @@ const Dashboard = () => {
         </Grid>
       </Grid>
 
-      {/* Acesso rápido aos módulos */}
       <Box sx={{ mt: 4 }}>
         <Typography variant="h6" gutterBottom fontWeight="bold">
           Acesso Rápido
         </Typography>
         
         <Grid container spacing={2}>
+          {isAdminLike && (
           <Grid item xs={12} sm={6} md={3}>
             <Paper 
               sx={{ 
@@ -375,7 +420,9 @@ const Dashboard = () => {
               </Box>
             </Paper>
           </Grid>
+          )}
 
+          {isAdminLike && (
           <Grid item xs={12} sm={6} md={3}>
             <Paper 
               sx={{ 
@@ -402,7 +449,9 @@ const Dashboard = () => {
               </Box>
             </Paper>
           </Grid>
+          )}
 
+          {isAdminLike && (
           <Grid item xs={12} sm={6} md={3}>
             <Paper 
               sx={{ 
@@ -429,6 +478,7 @@ const Dashboard = () => {
               </Box>
             </Paper>
           </Grid>
+          )}
 
           <Grid item xs={12} sm={6} md={3}>
             <Paper 
@@ -441,16 +491,16 @@ const Dashboard = () => {
                   boxShadow: theme.shadows[8],
                 }
               }}
-              onClick={() => navigate('/operacional')}
+              onClick={() => navigate(isAdminLike ? '/operacional' : '/frota/checklists')}
             >
               <Box display="flex" alignItems="center" gap={2}>
                 <ScheduleIcon color="primary" sx={{ fontSize: 32 }} />
                 <Box>
                   <Typography variant="subtitle1" fontWeight="bold">
-                    Gestão Operacional
+                    {isAdminLike ? 'Gestão Operacional' : 'Checklists'}
                   </Typography>
                   <Typography variant="body2" color="textSecondary">
-                    Escalas e serviços
+                    {isAdminLike ? 'Escalas e serviços' : 'Pendências do dia'}
                   </Typography>
                 </Box>
               </Box>
@@ -458,6 +508,64 @@ const Dashboard = () => {
           </Grid>
         </Grid>
       </Box>
+
+      {isOperacional && (
+        <Box sx={{ mt: 4 }}>
+          <Typography variant="h6" gutterBottom fontWeight="bold">
+            Para sua operação
+          </Typography>
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Typography variant="subtitle1" gutterBottom fontWeight="bold">
+                    Checklists pendentes
+                  </Typography>
+                  {opsLoading ? (
+                    <Box display="flex" justifyContent="center" py={3}><CircularProgress size={24} /></Box>
+                  ) : opsError ? (
+                    <Alert severity="error">{opsError}</Alert>
+                  ) : solicitacoesPendentes.length === 0 ? (
+                    <Box display="flex" justifyContent="center" py={3}><Typography variant="body2" color="textSecondary">Sem pendências</Typography></Box>
+                  ) : (
+                    <List>
+                      {solicitacoesPendentes.slice(0, 6).map((s, i) => (
+                        <ListItem key={i} sx={{ px: 0 }} button onClick={() => navigate('/frota/checklists')}>
+                          <ListItemText primary={s.titulo || s.tipo} secondary={new Date(s.data_prevista || s.created_at).toLocaleString('pt-BR')} />
+                        </ListItem>
+                      ))}
+                    </List>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Typography variant="subtitle1" gutterBottom fontWeight="bold">
+                    Minhas escalas hoje
+                  </Typography>
+                  {opsLoading ? (
+                    <Box display="flex" justifyContent="center" py={3}><CircularProgress size={24} /></Box>
+                  ) : opsError ? (
+                    <Alert severity="error">{opsError}</Alert>
+                  ) : escalasHoje.length === 0 ? (
+                    <Box display="flex" justifyContent="center" py={3}><Typography variant="body2" color="textSecondary">Sem escalas hoje</Typography></Box>
+                  ) : (
+                    <List>
+                      {escalasHoje.slice(0, 6).map((e, i) => (
+                        <ListItem key={i} sx={{ px: 0 }} button onClick={() => navigate('/operacional')}>
+                          <ListItemText primary={e.nome || e.servico || 'Escala'} secondary={`${new Date(e.data_inicio).toLocaleTimeString('pt-BR')} - ${new Date(e.data_fim).toLocaleTimeString('pt-BR')}`} />
+                        </ListItem>
+                      ))}
+                    </List>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        </Box>
+      )}
     </Box>
   );
 };
