@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Grid,
@@ -163,6 +163,34 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
       if (t) setSelectedTemplate(t);
     }
   }, [templates, prefill, selectedTemplate]);
+
+  const filteredTemplates = useMemo(() => {
+    if (!selectedViatura || !templates || templates.length === 0) return templates || [];
+    const vTipo = (selectedViatura.tipo || '').toLowerCase();
+    const vModelo = (selectedViatura.modelo || '').toLowerCase();
+    const vPrefixo = (selectedViatura.prefixo || '').toLowerCase();
+    const match = (t) => {
+      const tv = (t.tipo_viatura || '').toLowerCase();
+      const tn = (t.nome || '').toLowerCase();
+      const td = (t.descricao || '').toLowerCase();
+      return (tv && vTipo && tv.includes(vTipo)) || (tn && vModelo && tn.includes(vModelo)) || (td && vModelo && td.includes(vModelo)) || (tn && vPrefixo && tn.includes(vPrefixo));
+    };
+    const primary = templates.filter(match);
+    return primary.length > 0 ? primary : templates;
+  }, [templates, selectedViatura]);
+
+  useEffect(() => {
+    if (!selectedTemplate) return;
+    if (!selectedViatura) return;
+    const vTipo = (selectedViatura.tipo || '').toLowerCase();
+    const vModelo = (selectedViatura.modelo || '').toLowerCase();
+    const vPrefixo = (selectedViatura.prefixo || '').toLowerCase();
+    const tv = (selectedTemplate.tipo_viatura || '').toLowerCase();
+    const tn = (selectedTemplate.nome || '').toLowerCase();
+    const td = (selectedTemplate.descricao || '').toLowerCase();
+    const matches = (tv && vTipo && tv.includes(vTipo)) || (tn && vModelo && tn.includes(vModelo)) || (td && vModelo && td.includes(vModelo)) || (tn && vPrefixo && tn.includes(vPrefixo));
+    if (!matches) setSelectedTemplate(null);
+  }, [selectedViatura]);
 
   // Resetar formulário quando fechar
   useEffect(() => {
@@ -527,6 +555,16 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
             onChange={(e) => {
               const viatura = viaturas.find(v => v.id === e.target.value);
               setSelectedViatura(viatura);
+              if (selectedTemplate) {
+                const vTipo = (viatura?.tipo || '').toLowerCase();
+                const vModelo = (viatura?.modelo || '').toLowerCase();
+                const vPrefixo = (viatura?.prefixo || '').toLowerCase();
+                const tv = (selectedTemplate.tipo_viatura || '').toLowerCase();
+                const tn = (selectedTemplate.nome || '').toLowerCase();
+                const td = (selectedTemplate.descricao || '').toLowerCase();
+                const matches = (tv && vTipo && tv.includes(vTipo)) || (tn && vModelo && tn.includes(vModelo)) || (td && vModelo && td.includes(vModelo)) || (tn && vPrefixo && tn.includes(vPrefixo));
+                if (!matches) setSelectedTemplate(null);
+              }
             }}
             label="Viatura"
             disabled={!!prefill}
@@ -616,23 +654,23 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
           <Select
             value={selectedTemplate?.id || ''}
             onChange={(e) => {
-              const template = templates.find(t => t.id === e.target.value);
+              const template = (filteredTemplates || templates).find(t => t.id === e.target.value);
               setSelectedTemplate(template);
             }}
             label="Modelo de Checklist"
-            disabled={templatesLoading || !!prefill}
+            disabled={templatesLoading || !!prefill || !selectedViatura}
           >
             {templatesLoading ? (
               <MenuItem key="loading" disabled>
                 <CircularProgress size={20} sx={{ mr: 1 }} />
                 Carregando templates...
               </MenuItem>
-            ) : templates.length === 0 ? (
+            ) : (filteredTemplates || []).length === 0 ? (
               <MenuItem key="no-templates" disabled>
                 Nenhum template disponível
               </MenuItem>
             ) : (
-              templates.map((template) => (
+              filteredTemplates.map((template) => (
                 <MenuItem key={template.id} value={template.id}>
                   {template.nome} - {template.tipo_viatura}
                   {template.descricao && (
