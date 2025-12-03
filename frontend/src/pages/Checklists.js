@@ -59,6 +59,9 @@ import {
   Save as SaveIcon,
   Schedule as ScheduleIcon,
   ExpandMore as ExpandMoreIcon,
+  Close as CloseIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';
 import { checklistService, frotaService, templateService } from '../services/api';
 import ChecklistViatura from '../components/ChecklistViatura';
@@ -185,6 +188,10 @@ const Checklists = () => {
   const [formData, setFormData] = useState({});
   const [formErrors, setFormErrors] = useState({});
   const [actionLoading, setActionLoading] = useState(false);
+  const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
+  const [photoViewerImages, setPhotoViewerImages] = useState([]);
+  const [photoViewerIndex, setPhotoViewerIndex] = useState(0);
+  const [photoViewerTitle, setPhotoViewerTitle] = useState('');
   
   // Estado de debug (remover em produção)
   const [debugInfo, setDebugInfo] = useState({
@@ -676,6 +683,19 @@ const Checklists = () => {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const openPhotoViewer = (images, index, title) => {
+    const origin = process.env.REACT_APP_API_ORIGIN || (window.location.origin.replace(':3003', ':5000'));
+    const toAbs = (u) => (String(u || '').startsWith('http') ? u : `${origin}${u}`);
+    const normalized = (images || []).map((f) => ({
+      url: toAbs(f?.url || f),
+      name: f?.originalName || f?.name || undefined,
+    }));
+    setPhotoViewerImages(normalized);
+    setPhotoViewerIndex(Math.max(0, Math.min(index || 0, normalized.length - 1)));
+    setPhotoViewerTitle(title || '');
+    setPhotoViewerOpen(true);
   };
 
   const handleFabClick = () => {
@@ -1734,7 +1754,7 @@ const Checklists = () => {
                             const url = toAbs(foto?.url || foto);
                             const name = foto?.originalName || foto?.name || undefined;
                             return (
-                              <Box key={fi} sx={{ width: 96, height: 72, borderRadius: 1, overflow: 'hidden', border: '1px solid #e0e0e0', cursor: 'pointer' }} onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}>
+                              <Box key={fi} sx={{ width: 96, height: 72, borderRadius: 1, overflow: 'hidden', border: '1px solid #e0e0e0', cursor: 'pointer' }} onClick={() => openPhotoViewer(fotos, fi, item.nome_item)}>
                                 <img alt={name || 'Foto'} src={url} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                               </Box>
                             );
@@ -1758,6 +1778,40 @@ const Checklists = () => {
           <Button onClick={handleCloseDialog}>
             Fechar
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={photoViewerOpen} onClose={() => setPhotoViewerOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="h6">{photoViewerTitle || 'Foto'}</Typography>
+            <IconButton onClick={() => setPhotoViewerOpen(false)}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ p: isMobile ? 0 : 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+            <IconButton onClick={() => setPhotoViewerIndex(i => Math.max(0, i - 1))} disabled={photoViewerIndex <= 0} sx={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)' }}>
+              <ChevronLeftIcon />
+            </IconButton>
+            {photoViewerImages[photoViewerIndex] && (
+              <img
+                src={photoViewerImages[photoViewerIndex].url}
+                alt={photoViewerImages[photoViewerIndex].name || 'Foto'}
+                style={{ maxWidth: isMobile ? '100vw' : '90vw', maxHeight: isMobile ? '85vh' : '70vh', objectFit: 'contain', display: 'block' }}
+              />
+            )}
+            <IconButton onClick={() => setPhotoViewerIndex(i => Math.min(photoViewerImages.length - 1, i + 1))} disabled={photoViewerIndex >= photoViewerImages.length - 1} sx={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)' }}>
+              <ChevronRightIcon />
+            </IconButton>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Typography variant="caption" sx={{ flexGrow: 1, pl: 2 }}>
+            {photoViewerImages.length > 0 ? `${photoViewerIndex + 1} / ${photoViewerImages.length}` : ''}
+          </Typography>
+          <Button onClick={() => setPhotoViewerOpen(false)}>Fechar</Button>
         </DialogActions>
       </Dialog>
 
