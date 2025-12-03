@@ -1607,6 +1607,24 @@ const Checklists = () => {
         <DialogContent sx={{ p: isMobile ? 1.5 : 3 }}>
           {selectedItem ? (
             <Box sx={{ mt: 2 }}>
+              {(() => {
+                const origin = process.env.REACT_APP_API_ORIGIN || (window.location.origin.replace(':3003', ':5000'));
+                const toAbs = (u) => {
+                  if (!u) return '';
+                  return String(u).startsWith('http') ? u : `${origin}${u}`;
+                };
+                const parseFotos = (f) => {
+                  if (!f) return [];
+                  if (Array.isArray(f)) return f;
+                  try {
+                    const arr = JSON.parse(f);
+                    return Array.isArray(arr) ? arr : [];
+                  } catch (_) {
+                    return [];
+                  }
+                };
+                return null;
+              })()}
               {console.log('🔍 Renderizando diálogo de visualização com dados:', selectedItem) || null}
               {/* Informações do Checklist */}
               <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mt: 2, mb: 1, color: 'grey.700' }}>
@@ -1683,6 +1701,48 @@ const Checklists = () => {
                       </Box>
                     ))
                   }
+                </Box>
+              )}
+
+              {selectedItem.itens?.some(i => {
+                const f = i.fotos;
+                if (!f) return false;
+                if (Array.isArray(f)) return f.length > 0;
+                try { const arr = JSON.parse(f); return Array.isArray(arr) && arr.length > 0; } catch { return false; }
+              }) && (
+                <Box sx={{ mt: 3 }}>
+                  <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                    Fotos por Item:
+                  </Typography>
+                  {selectedItem.itens.map((item, idx) => {
+                    let fotos = [];
+                    const f = item.fotos;
+                    if (Array.isArray(f)) fotos = f;
+                    else {
+                      try { const arr = JSON.parse(f); if (Array.isArray(arr)) fotos = arr; } catch {}
+                    }
+                    if (!fotos || fotos.length === 0) return null;
+                    const origin = process.env.REACT_APP_API_ORIGIN || (window.location.origin.replace(':3003', ':5000'));
+                    const toAbs = (u) => (String(u || '').startsWith('http') ? u : `${origin}${u}`);
+                    return (
+                      <Box key={idx} sx={{ mb: 2, p: 1, bgcolor: '#fff', borderRadius: 1, border: '1px solid #f0f0f0' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 'medium', color: '#495057', mb: 1 }}>
+                          <strong>{item.nome_item}</strong>
+                        </Typography>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                          {fotos.map((foto, fi) => {
+                            const url = toAbs(foto?.url || foto);
+                            const name = foto?.originalName || foto?.name || undefined;
+                            return (
+                              <Box key={fi} sx={{ width: 96, height: 72, borderRadius: 1, overflow: 'hidden', border: '1px solid #e0e0e0', cursor: 'pointer' }} onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}>
+                                <img alt={name || 'Foto'} src={url} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                              </Box>
+                            );
+                          })}
+                        </Box>
+                      </Box>
+                    );
+                  })}
                 </Box>
               )}
             </Box>
