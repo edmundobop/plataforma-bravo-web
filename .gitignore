@@ -4,6 +4,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Documentos ou outros arquivos
+CONSOLE CHROME.txt
+
 # Production builds
 build/
 dist/
