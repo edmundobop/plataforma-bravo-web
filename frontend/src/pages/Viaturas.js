@@ -77,6 +77,8 @@ const Viaturas = () => {
   const [formData, setFormData] = useState({});
   const [formErrors, setFormErrors] = useState({});
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
+  const [photoViewerUrl, setPhotoViewerUrl] = useState('');
 
   // Carregar viaturas
   const loadViaturas = useCallback(async () => {
@@ -192,6 +194,13 @@ const Viaturas = () => {
   // Função para remover foto
   const handleRemovePhoto = () => {
     handleFormChange('foto', '');
+  };
+
+  const openPhotoViewer = (url) => {
+    const origin = process.env.REACT_APP_API_ORIGIN || (window.location.origin.replace(':3003', ':5000'));
+    const absolute = String(url || '').startsWith('http') ? url : `${origin}${url || ''}`;
+    setPhotoViewerUrl(absolute);
+    setPhotoViewerOpen(true);
   };
 
   const handleMenuOpen = (event, item) => {
@@ -482,7 +491,7 @@ const Viaturas = () => {
               ) : (
                 paginatedViaturas.map((viatura) => (
                   <TableRow key={viatura.id}>
-                    <TableCell>
+                    <TableCell onClick={() => handleOpenDialog('view', viatura)} sx={{ cursor: 'pointer' }}>
                       {viatura.foto ? (
                         <Avatar
                           src={viatura.foto}
@@ -499,9 +508,9 @@ const Viaturas = () => {
                         </Avatar>
                       )}
                     </TableCell>
-                    <TableCell>{viatura.prefixo}</TableCell>
-                    <TableCell>{viatura.modelo}</TableCell>
-                    <TableCell>{viatura.placa}</TableCell>
+                    <TableCell onClick={() => handleOpenDialog('view', viatura)} sx={{ cursor: 'pointer' }}>{viatura.prefixo}</TableCell>
+                    <TableCell onClick={() => handleOpenDialog('view', viatura)} sx={{ cursor: 'pointer' }}>{viatura.modelo}</TableCell>
+                    <TableCell onClick={() => handleOpenDialog('view', viatura)} sx={{ cursor: 'pointer' }}>{viatura.placa}</TableCell>
                     <TableCell>
                       <Chip
                         label={viatura.status}
@@ -511,7 +520,7 @@ const Viaturas = () => {
                     </TableCell>
                     <TableCell>{viatura.setor_responsavel || '-'}</TableCell>
                     <TableCell>
-                      <IconButton onClick={(e) => handleMenuOpen(e, viatura)}>
+                      <IconButton onClick={(e) => { e.stopPropagation(); handleMenuOpen(e, viatura); }}>
                         <MoreVertIcon />
                       </IconButton>
                     </TableCell>
@@ -604,8 +613,15 @@ const Viaturas = () => {
         )}
         
         {dialogType === 'view' ? (
-          // Visualização dos dados
           <Grid container spacing={2}>
+            {selectedItem?.foto && (
+              <Grid item xs={12}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Avatar src={selectedItem.foto} alt="Foto da viatura" sx={{ width: 120, height: 120 }} variant="rounded" onClick={() => openPhotoViewer(selectedItem.foto)} />
+                  <Button variant="outlined" size="small" onClick={() => openPhotoViewer(selectedItem.foto)}>Abrir foto</Button>
+                </Box>
+              </Grid>
+            )}
             <Grid item xs={12} sm={6}>
               <Typography variant="subtitle2" color="text.secondary">Tipo</Typography>
               <Typography variant="body1">{selectedItem?.tipo || '-'}</Typography>
@@ -895,6 +911,20 @@ const Viaturas = () => {
 
       {renderViaturasTab()}
       {renderViaturasDialog()}
+
+      <Dialog open={photoViewerOpen} onClose={() => setPhotoViewerOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
+        <DialogTitle>Foto da Viatura</DialogTitle>
+        <DialogContent sx={{ p: isMobile ? 0 : 2 }}>
+          {photoViewerUrl && (
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <img src={photoViewerUrl} alt="Foto da viatura" style={{ maxWidth: isMobile ? '100vw' : '90vw', maxHeight: isMobile ? '85vh' : '70vh', objectFit: 'contain', display: 'block' }} />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPhotoViewerOpen(false)}>Fechar</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Menu de ações */}
       <Menu
