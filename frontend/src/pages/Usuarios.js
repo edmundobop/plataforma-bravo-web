@@ -39,6 +39,10 @@ import {
   ListItem,
   ListItemText,
   ListItemAvatar,
+  useMediaQuery,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -64,6 +68,7 @@ import { useTenant } from '../contexts/TenantContext';
 
 const Usuarios = () => {
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { user, hasRole } = useAuth();
   const { availableUnits } = useTenant();
   const [loading, setLoading] = useState(false);
@@ -466,6 +471,93 @@ const Usuarios = () => {
       )}
 
       {/* Filtros */}
+      {isMobile ? (
+        <Accordion sx={{ mb: 2 }}>
+          <AccordionSummary expandIcon={<FilterIcon />}>Filtros</AccordionSummary>
+          <AccordionDetails>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Buscar"
+                placeholder="Nome, email ou matrícula"
+                value={filters.search}
+                onChange={(e) => handleFilterChange('search', e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon />
+                    </InputAdornment>
+                  ),
+                }}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    handleSearch();
+                  }
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={filters.status}
+                  onChange={(e) => handleFilterChange('status', e.target.value)}
+                  label="Status"
+                >
+                  <MenuItem key="todos-status" value="">Todos</MenuItem>
+                  <MenuItem key="ativo" value="ativo">Ativo</MenuItem>
+                  <MenuItem key="inativo" value="inativo">Inativo</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6} md={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Papel</InputLabel>
+                <Select
+                  value={filters.papel}
+                  onChange={(e) => handleFilterChange('papel', e.target.value)}
+                  label="Papel"
+                >
+                  <MenuItem key="todos-papel" value="">Todos</MenuItem>
+                  <MenuItem key="administrador" value="Administrador">Administrador</MenuItem>
+                  <MenuItem key="chefe" value="Chefe">Chefe</MenuItem>
+                  <MenuItem key="operador" value="Operador">Operador</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6} md={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Setor</InputLabel>
+                <Select
+                  value={filters.setor}
+                  onChange={(e) => handleFilterChange('setor', e.target.value)}
+                  label="Setor"
+                >
+                  <MenuItem key="todos-setor" value="">Todos</MenuItem>
+                  {setores.map((setor) => (
+                    <MenuItem key={setor.value} value={setor.value}>
+                      {setor.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Button
+                fullWidth
+                variant="outlined"
+                onClick={handleSearch}
+                startIcon={<FilterIcon />}
+              >
+                Filtrar
+              </Button>
+            </Grid>
+          </Grid>
+          </AccordionDetails>
+        </Accordion>
+      ) : (
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Grid container spacing={2} alignItems="center">
@@ -547,10 +639,12 @@ const Usuarios = () => {
               </Button>
             </Grid>
           </Grid>
-        </CardContent>
+      </CardContent>
       </Card>
+      )}
 
       {/* Lista de usuários */}
+      {!isMobile ? (
       <Paper>
         <TableContainer>
           <Table>
@@ -668,6 +762,67 @@ const Usuarios = () => {
           </Box>
         )}
       </Paper>
+      ) : (
+        <Grid container spacing={2}>
+          {usuariosLoading ? (
+            <Grid item xs={12}>
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress />
+              </Box>
+            </Grid>
+          ) : usuarios.length === 0 ? (
+            <Grid item xs={12}>
+              <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 2 }}>
+                Nenhum usuário encontrado
+              </Typography>
+            </Grid>
+          ) : (
+            usuarios.map((usuario) => (
+              <Grid item xs={12} key={usuario.id}>
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Avatar sx={{ bgcolor: theme.palette.primary.main }}>
+                        {usuario.nome?.charAt(0)?.toUpperCase()}
+                      </Avatar>
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>{usuario.nome}</Typography>
+                        <Typography variant="caption" color="text.secondary">{usuario.email}</Typography>
+                        {usuario.telefone && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{usuario.telefone}</Typography>
+                        )}
+                      </Box>
+                    </Box>
+                    <Chip label={usuario.ativo ? 'Ativo' : 'Inativo'} color={usuario.ativo ? 'success' : 'default'} size="small" />
+                    <IconButton onClick={(e) => { setAnchorEl(e.currentTarget); setSelectedUser(usuario); }}>
+                      <MoreVertIcon />
+                    </IconButton>
+                  </Box>
+                  <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
+                    <Chip label={getRoleLabel(usuario.papel)} size="small" variant="outlined" />
+                    <Chip label={setores.find(s => s.value === usuario.setor)?.label || usuario.setor || 'Setor'} size="small" variant="outlined" />
+                    <Chip label={usuario.matricula || 'Matrícula'} size="small" variant="outlined" />
+                  </Box>
+                </Paper>
+              </Grid>
+            ))
+          )}
+          {pagination.pages > 1 && (
+            <Grid item xs={12}>
+              <Box display="flex" justifyContent="center" p={2}>
+                <Pagination
+                  count={pagination.pages}
+                  page={pagination.current_page}
+                  onChange={(e, page) => {
+                    setFilters(prev => ({ ...prev, page }));
+                  }}
+                  color="primary"
+                />
+              </Box>
+            </Grid>
+          )}
+        </Grid>
+      )}
 
       {/* FAB para adicionar usuário */}
       {hasRole(['Administrador']) && (
@@ -732,6 +887,7 @@ const Usuarios = () => {
         onClose={handleCloseDialog}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           {dialogType === 'create' && 'Novo Usuário'}
@@ -739,7 +895,7 @@ const Usuarios = () => {
           {dialogType === 'view' && 'Visualizar Usuário'}
           {dialogType === 'password' && 'Alterar Senha'}
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ p: isMobile ? 1.5 : 3 }}>
           {error && (
             <Alert severity="error" sx={{ mb: 2 }}>
               {error}
@@ -1102,7 +1258,7 @@ const Usuarios = () => {
             </Grid>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ position: isMobile ? 'sticky' : 'static', bottom: 0, bgcolor: isMobile ? 'background.paper' : undefined, zIndex: 1 }}>
           <Button onClick={handleCloseDialog}>Cancelar</Button>
           {dialogType !== 'view' && (
             <Button

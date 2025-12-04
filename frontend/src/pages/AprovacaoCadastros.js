@@ -31,6 +31,7 @@ import {
   Select,
   MenuItem,
   useTheme,
+  useMediaQuery,
   Divider,
   Avatar,
   List,
@@ -62,6 +63,7 @@ import { formatDate, formatCPF, formatPhone, validateUsuarioForm, sanitizeUsuari
 
 const AprovacaoCadastros = () => {
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { user, hasRole } = useAuth();
   
   const [solicitacoes, setSolicitacoes] = useState([]);
@@ -599,73 +601,106 @@ const AprovacaoCadastros = () => {
             </Box>
           ) : (
             <>
-              <TableContainer>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Militar</TableCell>
-                      <TableCell>Posto/Graduação</TableCell>
-                      <TableCell>Unidade</TableCell>
-                      <TableCell>Email</TableCell>
-                      <TableCell>Data Solicitação</TableCell>
-                      <TableCell align="center">Ações</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
+              {isMobile ? (
+                <>
+                  <Grid container spacing={2}>
                     {solicitacoes.map((solicitacao) => (
-                      <TableRow key={solicitacao.id} hover>
-                        <TableCell>
-                          <Box
-                            sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer' }}
-                            onClick={() => handleViewDetails(solicitacao)}
-                            role="button"
-                            tabIndex={0}
-                            onKeyDown={(e) => { if (e.key === 'Enter') handleViewDetails(solicitacao); }}
-                          >
-                            <Avatar sx={{ bgcolor: theme.palette.primary.main }}>
-                              <PersonIcon />
-                            </Avatar>
-                            <Box>
-                              <Typography variant="subtitle2">
-                                {solicitacao.nome_completo}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {solicitacao.nome_guerra}
-                              </Typography>
+                      <Grid item xs={12} key={solicitacao.id}>
+                        <Paper variant="outlined" sx={{ p: 2 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                              <Avatar sx={{ bgcolor: theme.palette.primary.main }}>
+                                <PersonIcon />
+                              </Avatar>
+                              <Box>
+                                <Typography variant="body2" sx={{ fontWeight: 'bold' }}>{solicitacao.nome_completo}</Typography>
+                                <Typography variant="caption" color="text.secondary">{solicitacao.nome_guerra}</Typography>
+                              </Box>
                             </Box>
+                            <Chip label={solicitacao.posto_graduacao} variant="outlined" size="small" />
+                            <IconButton size="small" onClick={() => handleViewDetails(solicitacao)}>
+                              <ViewIcon />
+                            </IconButton>
                           </Box>
-                        </TableCell>
-                        <TableCell>
-                          <Chip 
-                            label={solicitacao.posto_graduacao} 
-                            size="small" 
-                            variant="outlined"
-                          />
-                        </TableCell>
-                        <TableCell>{solicitacao.unidade}</TableCell>
-                        <TableCell>{solicitacao.email}</TableCell>
-                        <TableCell>
-                          {formatDataSolicitacao(solicitacao.data_solicitacao)}
-                        </TableCell>
-                        <TableCell align="center">
-                          <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              startIcon={<ViewIcon />}
-                              onClick={() => handleViewDetails(solicitacao)}
-                            >
-                              Ver Detalhes
-                            </Button>
+                          <Box sx={{ mt: 1.5, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                            <Typography variant="caption" color="text.secondary">{solicitacao.unidade}</Typography>
+                            <Typography variant="caption" color="text.secondary">{solicitacao.email}</Typography>
+                            <Typography variant="caption" color="text.secondary">{formatDataSolicitacao(solicitacao.data_solicitacao)}</Typography>
                           </Box>
-                        </TableCell>
-                      </TableRow>
+                        </Paper>
+                      </Grid>
                     ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-              
-              {/* Paginação */}
+                  </Grid>
+                </>
+              ) : (
+                <>
+                  <TableContainer>
+                    <Table>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Militar</TableCell>
+                          <TableCell>Posto/Graduação</TableCell>
+                          <TableCell>Unidade</TableCell>
+                          <TableCell>Email</TableCell>
+                          <TableCell>Data Solicitação</TableCell>
+                          <TableCell align="center">Ações</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {solicitacoes.map((solicitacao) => (
+                          <TableRow key={solicitacao.id} hover>
+                            <TableCell>
+                              <Box
+                                sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer' }}
+                                onClick={() => handleViewDetails(solicitacao)}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(e) => { if (e.key === 'Enter') handleViewDetails(solicitacao); }}
+                              >
+                                <Avatar sx={{ bgcolor: theme.palette.primary.main }}>
+                                  <PersonIcon />
+                                </Avatar>
+                                <Box>
+                                  <Typography variant="subtitle2">
+                                    {solicitacao.nome_completo}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {solicitacao.nome_guerra}
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            </TableCell>
+                            <TableCell>
+                              <Chip 
+                                label={solicitacao.posto_graduacao} 
+                                size="small" 
+                                variant="outlined"
+                              />
+                            </TableCell>
+                            <TableCell>{solicitacao.unidade}</TableCell>
+                            <TableCell>{solicitacao.email}</TableCell>
+                            <TableCell>
+                              {formatDataSolicitacao(solicitacao.data_solicitacao)}
+                            </TableCell>
+                            <TableCell align="center">
+                              <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  startIcon={<ViewIcon />}
+                                  onClick={() => handleViewDetails(solicitacao)}
+                                >
+                                  Ver Detalhes
+                                </Button>
+                              </Box>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </>
+              )}
               {pagination.totalPages > 1 && (
                 <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
                   <Pagination
@@ -687,6 +722,7 @@ const AprovacaoCadastros = () => {
         onClose={() => setViewDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -694,7 +730,7 @@ const AprovacaoCadastros = () => {
             Editar Usuário
           </Box>
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ p: isMobile ? 1.5 : 3 }}>
           {selectedSolicitacao && (
             <Grid container spacing={3}>
               <Grid item xs={12}>
@@ -719,6 +755,7 @@ const AprovacaoCadastros = () => {
                 <TextField
                   label="Nome Completo"
                   fullWidth
+                  size={isMobile ? 'small' : 'medium'}
                   value={formData.nome_completo}
                   onChange={(e) => handleFormFieldChange('nome_completo', e.target.value)}
                   error={!!formErrors.nome_completo}
@@ -729,6 +766,7 @@ const AprovacaoCadastros = () => {
                 <TextField
                   label="Email"
                   fullWidth
+                  size={isMobile ? 'small' : 'medium'}
                   value={formData.email}
                   onChange={(e) => handleFormFieldChange('email', e.target.value)}
                   error={!!formErrors.email}
@@ -739,6 +777,7 @@ const AprovacaoCadastros = () => {
                 <TextField
                   label="CPF"
                   fullWidth
+                  size={isMobile ? 'small' : 'medium'}
                   value={formData.cpf}
                   onChange={(e) => handleFormFieldChange('cpf', e.target.value)}
                   error={!!formErrors.cpf}
@@ -749,6 +788,7 @@ const AprovacaoCadastros = () => {
                 <TextField
                   label="Telefone"
                   fullWidth
+                  size={isMobile ? 'small' : 'medium'}
                   value={formData.telefone}
                   onChange={(e) => handleFormFieldChange('telefone', e.target.value)}
                   error={!!formErrors.telefone}
@@ -761,6 +801,7 @@ const AprovacaoCadastros = () => {
                   type="date"
                   fullWidth
                   InputLabelProps={{ shrink: true }}
+                  size={isMobile ? 'small' : 'medium'}
                   value={formData.data_nascimento}
                   onChange={(e) => handleFormFieldChange('data_nascimento', e.target.value)}
                   error={!!formErrors.data_nascimento}
@@ -775,7 +816,7 @@ const AprovacaoCadastros = () => {
                     <Divider sx={{ mb: 2 }} />
                   </Grid>
                   <Grid item xs={12} md={6}>
-                    <FormControl fullWidth error={!!formErrors.posto_graduacao}>
+                    <FormControl fullWidth error={!!formErrors.posto_graduacao} size={isMobile ? 'small' : 'medium'}>
                       <InputLabel>Posto/Graduação</InputLabel>
                       <Select
                         label="Posto/Graduação"
@@ -797,6 +838,7 @@ const AprovacaoCadastros = () => {
                     <TextField
                       label="Nome de Guerra"
                       fullWidth
+                      size={isMobile ? 'small' : 'medium'}
                       value={formData.nome_guerra}
                       onChange={(e) => handleFormFieldChange('nome_guerra', e.target.value)}
                       error={!!formErrors.nome_guerra}
@@ -807,6 +849,7 @@ const AprovacaoCadastros = () => {
                     <TextField
                       label="Matrícula"
                       fullWidth
+                      size={isMobile ? 'small' : 'medium'}
                       value={formData.matricula}
                       onChange={(e) => handleFormFieldChange('matricula', e.target.value)}
                       error={!!formErrors.matricula}
@@ -819,6 +862,7 @@ const AprovacaoCadastros = () => {
                       type="date"
                       fullWidth
                       InputLabelProps={{ shrink: true }}
+                      size={isMobile ? 'small' : 'medium'}
                       value={formData.data_incorporacao}
                       onChange={(e) => handleFormFieldChange('data_incorporacao', e.target.value)}
                       error={!!formErrors.data_incorporacao}
@@ -829,6 +873,7 @@ const AprovacaoCadastros = () => {
                     <TextField
                       label="Antiguidade"
                       fullWidth
+                      size={isMobile ? 'small' : 'medium'}
                       value={formData.antiguidade}
                       onChange={(e) => handleFormFieldChange('antiguidade', e.target.value)}
                       error={!!formErrors.antiguidade}
@@ -843,7 +888,7 @@ const AprovacaoCadastros = () => {
                 <Divider sx={{ mb: 2 }} />
               </Grid>
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth>
+                <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
                   <InputLabel>Unidades CMBGO</InputLabel>
                   <Select
                     multiple
@@ -862,7 +907,7 @@ const AprovacaoCadastros = () => {
                 </FormControl>
               </Grid>
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth error={!!formErrors.unidade_lotacao_id}>
+                <FormControl fullWidth error={!!formErrors.unidade_lotacao_id} size={isMobile ? 'small' : 'medium'}>
                   <InputLabel>Unidade de Lotação</InputLabel>
                   <Select
                     label="Unidade de Lotação"
@@ -879,7 +924,7 @@ const AprovacaoCadastros = () => {
                 </FormControl>
               </Grid>
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth error={!!formErrors.setor_id}>
+                <FormControl fullWidth error={!!formErrors.setor_id} size={isMobile ? 'small' : 'medium'}>
                   <InputLabel>Setor</InputLabel>
                   <Select
                     label="Setor"
@@ -896,7 +941,7 @@ const AprovacaoCadastros = () => {
                 </FormControl>
               </Grid>
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth>
+                <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
                   <InputLabel>Funções</InputLabel>
                   <Select
                     multiple
@@ -912,7 +957,7 @@ const AprovacaoCadastros = () => {
                 </FormControl>
               </Grid>
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth error={!!formErrors.perfil_id}>
+                <FormControl fullWidth error={!!formErrors.perfil_id} size={isMobile ? 'small' : 'medium'}>
                   <InputLabel>Perfil</InputLabel>
                   <Select
                     label="Perfil"
@@ -934,6 +979,7 @@ const AprovacaoCadastros = () => {
                   label="Observações (opcional)"
                   multiline
                   rows={2}
+                  size={isMobile ? 'small' : 'medium'}
                   value={observacoesAprovacao}
                   onChange={(e) => setObservacoesAprovacao(e.target.value)}
                 />
@@ -941,7 +987,7 @@ const AprovacaoCadastros = () => {
             </Grid>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ position: isMobile ? 'sticky' : 'static', bottom: 0, bgcolor: isMobile ? 'background.paper' : undefined, zIndex: 1 }}>
           <Button onClick={() => setViewDialogOpen(false)}>Cancelar</Button>
           <Button
             variant="contained"
@@ -968,6 +1014,7 @@ const AprovacaoCadastros = () => {
         onClose={() => !processingApproval && setApprovalDialogOpen(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -975,7 +1022,7 @@ const AprovacaoCadastros = () => {
             Rejeitar Cadastro
           </Box>
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ p: isMobile ? 1.5 : 3 }}>
           {selectedSolicitacao && (
             <>
               <Typography variant="body1" gutterBottom>
@@ -987,6 +1034,7 @@ const AprovacaoCadastros = () => {
                 label="Observações (opcional)"
                 multiline
                 rows={3}
+                size={isMobile ? 'small' : 'medium'}
                 value={observacoesAprovacao}
                 onChange={(e) => setObservacoesAprovacao(e.target.value)}
                 placeholder={`Adicione observações sobre a rejeição...`}
@@ -995,7 +1043,7 @@ const AprovacaoCadastros = () => {
             </>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ position: isMobile ? 'sticky' : 'static', bottom: 0, bgcolor: isMobile ? 'background.paper' : undefined, zIndex: 1 }}>
           <Button 
             onClick={() => setApprovalDialogOpen(false)}
             disabled={processingApproval}

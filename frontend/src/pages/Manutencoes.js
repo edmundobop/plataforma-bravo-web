@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box,
   Grid,
@@ -28,6 +29,13 @@ import {
   InputLabel,
   Select,
   Fab,
+  Avatar,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  useTheme,
+  useMediaQuery,
+  Pagination,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -45,6 +53,10 @@ const Manutencoes = () => {
   const { currentUnit } = useTenant();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const navigate = useNavigate();
+  const location = useLocation();
   
   // Estados para manutenções
   const [manutencoes, setManutencoes] = useState([]);
@@ -55,7 +67,34 @@ const Manutencoes = () => {
     data_inicio: '',
     data_fim: '',
     tipo: '',
+    search: '',
   });
+  const [manutencoesPage, setManutencoesPage] = useState(1);
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(location.search);
+      const qp = Number(params.get('page') || '1');
+      if (!Number.isNaN(qp) && qp > 0 && qp !== manutencoesPage) {
+        setManutencoesPage(qp);
+      }
+    } catch (e) {}
+  }, [location.search]);
+
+  const setQueryParam = (key, value) => {
+    const params = new URLSearchParams(location.search);
+    if (value === null || value === undefined) {
+      params.delete(key);
+    } else {
+      params.set(key, String(value));
+    }
+    navigate({ pathname: location.pathname, search: `?${params.toString()}` }, { replace: true });
+  };
+
+  const handleManutencoesPageChange = (page) => {
+    setManutencoesPage(page);
+    setQueryParam('page', page);
+  };
+  const [viaturasDisponiveis, setViaturasDisponiveis] = useState([]);
   
   // Estados para diálogos
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -93,6 +132,23 @@ const Manutencoes = () => {
       loadManutencoes();
     }
   }, [currentUnit, loadManutencoes]);
+
+  useEffect(() => {
+    frotaService.getViaturas({ limit: 500 })
+      .then((res) => {
+        const lista = res.data?.viaturas || res.viaturas || [];
+        setViaturasDisponiveis(lista);
+      })
+      .catch((err) => {
+        console.error('Erro ao carregar viaturas para filtros:', err);
+        setViaturasDisponiveis([]);
+      });
+  }, [currentUnit]);
+
+  useEffect(() => {
+    setManutencoesPage(1);
+    setQueryParam('page', 1);
+  }, [manutencoesFilters, isMobile]);
   const handleOpenDialog = (type, item = null) => {
     setDialogType(type);
     setSelectedItem(item);
@@ -197,6 +253,18 @@ const Manutencoes = () => {
     return new Date(dateString).toLocaleDateString('pt-BR');
   };
 
+  const manutencoesPerPage = isMobile ? 5 : 10;
+  const filteredManutencoes = manutencoes.filter((m) => {
+    const s = (manutencoesFilters.search || '').toLowerCase();
+    const matchSearch = !s ||
+      (m.viatura_prefixo || '').toLowerCase().includes(s) ||
+      (m.descricao || '').toLowerCase().includes(s) ||
+      (m.tipo || '').toLowerCase().includes(s);
+    return matchSearch;
+  });
+  const manutencoesPages = Math.max(1, Math.ceil(filteredManutencoes.length / manutencoesPerPage));
+  const paginatedManutencoes = filteredManutencoes.slice((manutencoesPage - 1) * manutencoesPerPage, manutencoesPage * manutencoesPerPage);
+
   return (
     <Box sx={{ p: 3 }}>
       {/* Header */}
@@ -217,118 +285,275 @@ const Manutencoes = () => {
       )}
 
       {/* Filtros */}
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Filtros
-          </Typography>
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Viatura</InputLabel>
-                <Select
-                  value={manutencoesFilters.viatura_id}
-                  onChange={(e) => setManutencoesFilters(prev => ({ ...prev, viatura_id: e.target.value }))}
-                  label="Viatura"
-                >
-                  <MenuItem key="todas-viaturas" value="">Todas</MenuItem>
-                  {/* Viaturas serão carregadas dinamicamente */}
-                </Select>
-              </FormControl>
+      {isMobile ? (
+        <Accordion sx={{ mb: 2 }}>
+          <AccordionSummary expandIcon={<FilterIcon />}>Filtros</AccordionSummary>
+          <AccordionDetails>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Viatura</InputLabel>
+                  <Select
+                    value={manutencoesFilters.viatura_id}
+                    onChange={(e) => setManutencoesFilters(prev => ({ ...prev, viatura_id: e.target.value }))}
+                    label="Viatura"
+                  >
+                    <MenuItem key="todas-viaturas" value="">Todas</MenuItem>
+                    {viaturasDisponiveis.map((v) => (
+                      <MenuItem key={v.id} value={v.id}>
+                        {(v.prefixo || v.placa || v.viatura_prefixo || v.viatura_placa || `#${v.id}`)}{v.modelo || v.viatura_modelo ? ` - ${v.modelo || v.viatura_modelo}` : ''}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Buscar (prefixo, tipo, descrição)"
+                  value={manutencoesFilters.search}
+                  onChange={(e) => setManutencoesFilters(prev => ({ ...prev, search: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Status</InputLabel>
+                  <Select
+                    value={manutencoesFilters.status}
+                    onChange={(e) => setManutencoesFilters(prev => ({ ...prev, status: e.target.value }))}
+                    label="Status"
+                  >
+                    <MenuItem key="todos-status" value="">Todos</MenuItem>
+                    <MenuItem key="pendente" value="pendente">Pendente</MenuItem>
+                    <MenuItem key="em_andamento" value="em_andamento">Em Andamento</MenuItem>
+                    <MenuItem key="concluida" value="concluida">Concluída</MenuItem>
+                    <MenuItem key="cancelada" value="cancelada">Cancelada</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Data Início"
+                  type="date"
+                  value={manutencoesFilters.data_inicio}
+                  onChange={(e) => setManutencoesFilters(prev => ({ ...prev, data_inicio: e.target.value }))}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Data Fim"
+                  type="date"
+                  value={manutencoesFilters.data_fim}
+                  onChange={(e) => setManutencoesFilters(prev => ({ ...prev, data_fim: e.target.value }))}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Status</InputLabel>
-                <Select
-                  value={manutencoesFilters.status}
-                  onChange={(e) => setManutencoesFilters(prev => ({ ...prev, status: e.target.value }))}
-                  label="Status"
-                >
-                  <MenuItem key="todos-status" value="">Todos</MenuItem>
-                  <MenuItem key="pendente" value="pendente">Pendente</MenuItem>
-                  <MenuItem key="em_andamento" value="em_andamento">Em Andamento</MenuItem>
-                  <MenuItem key="concluida" value="concluida">Concluída</MenuItem>
-                  <MenuItem key="cancelada" value="cancelada">Cancelada</MenuItem>
-                </Select>
-              </FormControl>
+          </AccordionDetails>
+        </Accordion>
+      ) : (
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Filtros
+            </Typography>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Viatura</InputLabel>
+                  <Select
+                    value={manutencoesFilters.viatura_id}
+                    onChange={(e) => setManutencoesFilters(prev => ({ ...prev, viatura_id: e.target.value }))}
+                    label="Viatura"
+                  >
+                    <MenuItem key="todas-viaturas" value="">Todas</MenuItem>
+                    {viaturasDisponiveis.map((v) => (
+                      <MenuItem key={v.id} value={v.id}>
+                        {(v.prefixo || v.placa || v.viatura_prefixo || v.viatura_placa || `#${v.id}`)}{v.modelo || v.viatura_modelo ? ` - ${v.modelo || v.viatura_modelo}` : ''}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Buscar (prefixo, tipo, descrição)"
+                  value={manutencoesFilters.search}
+                  onChange={(e) => setManutencoesFilters(prev => ({ ...prev, search: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Status</InputLabel>
+                  <Select
+                    value={manutencoesFilters.status}
+                    onChange={(e) => setManutencoesFilters(prev => ({ ...prev, status: e.target.value }))}
+                    label="Status"
+                  >
+                    <MenuItem key="todos-status" value="">Todos</MenuItem>
+                    <MenuItem key="pendente" value="pendente">Pendente</MenuItem>
+                    <MenuItem key="em_andamento" value="em_andamento">Em Andamento</MenuItem>
+                    <MenuItem key="concluida" value="concluida">Concluída</MenuItem>
+                    <MenuItem key="cancelada" value="cancelada">Cancelada</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Data Início"
+                  type="date"
+                  value={manutencoesFilters.data_inicio}
+                  onChange={(e) => setManutencoesFilters(prev => ({ ...prev, data_inicio: e.target.value }))}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Data Fim"
+                  type="date"
+                  value={manutencoesFilters.data_fim}
+                  onChange={(e) => setManutencoesFilters(prev => ({ ...prev, data_fim: e.target.value }))}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Data Início"
-                type="date"
-                value={manutencoesFilters.data_inicio}
-                onChange={(e) => setManutencoesFilters(prev => ({ ...prev, data_inicio: e.target.value }))}
-                InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Data Fim"
-                type="date"
-                value={manutencoesFilters.data_fim}
-                onChange={(e) => setManutencoesFilters(prev => ({ ...prev, data_fim: e.target.value }))}
-                InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-          </Grid>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Lista de manutenções */}
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Viatura</TableCell>
-              <TableCell>Tipo</TableCell>
-              <TableCell>Descrição</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Data Início</TableCell>
-              <TableCell>Data Fim</TableCell>
-              <TableCell>Ações</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {manutencoesLoading ? (
+      {!isMobile ? (
+        <>
+        <TableContainer component={Paper}>
+          <Table>
+            <TableHead>
               <TableRow>
-                <TableCell colSpan={7} align="center">
-                  <CircularProgress />
-                </TableCell>
+                <TableCell>Viatura</TableCell>
+                <TableCell>Tipo</TableCell>
+                <TableCell>Descrição</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Data Início</TableCell>
+                <TableCell>Data Fim</TableCell>
+                <TableCell>Ações</TableCell>
               </TableRow>
-            ) : manutencoes.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} align="center">
-                  Nenhuma manutenção encontrada
-                </TableCell>
-              </TableRow>
-            ) : (
-              manutencoes.map((manutencao) => (
-                <TableRow key={manutencao.id}>
-                  <TableCell>{manutencao.viatura_prefixo}</TableCell>
-                  <TableCell>{manutencao.tipo}</TableCell>
-                  <TableCell>{manutencao.descricao}</TableCell>
-                  <TableCell>
-                    <Chip
-                      label={manutencao.status}
-                      color={getStatusColor(manutencao.status)}
-                      size="small"
-                    />
+            </TableHead>
+            <TableBody>
+              {manutencoesLoading ? (
+                <TableRow>
+                  <TableCell colSpan={7} align="center">
+                    <CircularProgress />
                   </TableCell>
-                  <TableCell>{formatDate(manutencao.data_inicio)}</TableCell>
-                  <TableCell>{formatDate(manutencao.data_fim)}</TableCell>
-                  <TableCell>
+                </TableRow>
+              ) : paginatedManutencoes.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} align="center">
+                    Nenhuma manutenção encontrada
+                  </TableCell>
+                </TableRow>
+              ) : (
+                paginatedManutencoes.map((manutencao) => (
+                  <TableRow key={manutencao.id}>
+                    <TableCell>{manutencao.viatura_prefixo}</TableCell>
+                    <TableCell>{manutencao.tipo}</TableCell>
+                    <TableCell>{manutencao.descricao}</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={manutencao.status}
+                        color={getStatusColor(manutencao.status)}
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell>{formatDate(manutencao.data_inicio)}</TableCell>
+                    <TableCell>{formatDate(manutencao.data_fim)}</TableCell>
+                    <TableCell>
+                      <IconButton onClick={(e) => handleMenuOpen(e, manutencao)}>
+                        <MoreVertIcon />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+        {manutencoesPages > 1 && (
+          <Box display="flex" justifyContent="center" mt={3}>
+            <Pagination
+              count={manutencoesPages}
+              page={manutencoesPage}
+              onChange={(e, page) => handleManutencoesPageChange(page)}
+              color="primary"
+            />
+          </Box>
+        )}
+        </>
+      ) : (
+        <Grid container spacing={2}>
+          {manutencoesLoading ? (
+            <Grid item xs={12}>
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress />
+              </Box>
+            </Grid>
+          ) : paginatedManutencoes.length === 0 ? (
+            <Grid item xs={12}>
+              <Typography variant="body2" color="text.secondary">Nenhuma manutenção encontrada</Typography>
+            </Grid>
+          ) : (
+            paginatedManutencoes.map((manutencao) => (
+              <Grid item xs={12} key={manutencao.id}>
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Avatar sx={{ bgcolor: 'primary.main' }}>
+                        <BuildIcon />
+                      </Avatar>
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>{manutencao.viatura_prefixo}</Typography>
+                        <Typography variant="caption" color="text.secondary">{manutencao.tipo}</Typography>
+                      </Box>
+                    </Box>
+                    <Chip label={manutencao.status} color={getStatusColor(manutencao.status)} size="small" />
                     <IconButton onClick={(e) => handleMenuOpen(e, manutencao)}>
                       <MoreVertIcon />
                     </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+                  </Box>
+                  {manutencao.descricao && (
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                      {manutencao.descricao}
+                    </Typography>
+                  )}
+                  <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+                    <Typography variant="caption" color="text.secondary">Início: {formatDate(manutencao.data_inicio)}</Typography>
+                    <Typography variant="caption" color="text.secondary">Fim: {formatDate(manutencao.data_fim)}</Typography>
+                  </Box>
+                </Paper>
+              </Grid>
+            ))
+          )}
+          {manutencoesPages > 1 && (
+            <Grid item xs={12}>
+              <Box display="flex" justifyContent="center" mt={1}>
+                <Pagination
+                  count={manutencoesPages}
+                  page={manutencoesPage}
+                  onChange={(e, page) => handleManutencoesPageChange(page)}
+                  color="primary"
+                />
+              </Box>
+            </Grid>
+          )}
+        </Grid>
+      )}
 
       {/* Menu de ações */}
       <Menu
@@ -357,11 +582,11 @@ const Manutencoes = () => {
       </Menu>
 
       {/* Diálogo de formulário */}
-      <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="md" fullWidth>
+      <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           {selectedItem ? 'Editar Manutenção' : 'Nova Manutenção'}
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ p: isMobile ? 1.5 : 3 }}>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
@@ -371,7 +596,11 @@ const Manutencoes = () => {
                   onChange={(e) => handleFormChange('viatura_id', e.target.value)}
                   label="Viatura"
                 >
-                  {/* Viaturas serão carregadas dinamicamente */}
+                  {viaturasDisponiveis.map((v) => (
+                    <MenuItem key={v.id} value={v.id}>
+                      {(v.prefixo || v.placa || v.viatura_prefixo || v.viatura_placa || `#${v.id}`)}{v.modelo || v.viatura_modelo ? ` - ${v.modelo || v.viatura_modelo}` : ''}
+                    </MenuItem>
+                  ))}
                 </Select>
               </FormControl>
             </Grid>
@@ -448,7 +677,7 @@ const Manutencoes = () => {
             </Grid>
           </Grid>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ position: isMobile ? 'sticky' : 'static', bottom: 0, bgcolor: isMobile ? 'background.paper' : undefined, zIndex: 1 }}>
           <Button onClick={handleCloseDialog}>Cancelar</Button>
           <Button onClick={handleSubmit} variant="contained" disabled={loading}>
             {loading ? 'Salvando...' : 'Salvar'}

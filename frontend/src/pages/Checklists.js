@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box,
   Grid,
@@ -58,6 +59,9 @@ import {
   Save as SaveIcon,
   Schedule as ScheduleIcon,
   ExpandMore as ExpandMoreIcon,
+  Close as CloseIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';
 import { checklistService, frotaService, templateService } from '../services/api';
 import ChecklistViatura from '../components/ChecklistViatura';
@@ -70,6 +74,8 @@ const Checklists = () => {
   const { user } = useAuth();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const navigate = useNavigate();
+  const location = useLocation();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
@@ -91,6 +97,31 @@ const Checklists = () => {
     tipo_checklist: '',
     ala_servico: '',
   });
+  const [checklistsPage, setChecklistsPage] = useState(1);
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(location.search);
+      const qp = Number(params.get('page') || '1');
+      if (!Number.isNaN(qp) && qp > 0 && qp !== checklistsPage) {
+        setChecklistsPage(qp);
+      }
+    } catch (e) {}
+  }, [location.search]);
+
+  const setQueryParam = (key, value) => {
+    const params = new URLSearchParams(location.search);
+    if (value === null || value === undefined) {
+      params.delete(key);
+    } else {
+      params.set(key, String(value));
+    }
+    navigate({ pathname: location.pathname, search: `?${params.toString()}` }, { replace: true });
+  };
+
+  const handleChecklistsPageChange = (page) => {
+    setChecklistsPage(page);
+    setQueryParam('page', page);
+  };
   const [checklistDialogOpen, setChecklistDialogOpen] = useState(false);
   // Prefill para iniciar a partir de uma solicitação
   const [prefillData, setPrefillData] = useState(null);
@@ -157,6 +188,10 @@ const Checklists = () => {
   const [formData, setFormData] = useState({});
   const [formErrors, setFormErrors] = useState({});
   const [actionLoading, setActionLoading] = useState(false);
+  const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
+  const [photoViewerImages, setPhotoViewerImages] = useState([]);
+  const [photoViewerIndex, setPhotoViewerIndex] = useState(0);
+  const [photoViewerTitle, setPhotoViewerTitle] = useState('');
   
   // Estado de debug (remover em produção)
   const [debugInfo, setDebugInfo] = useState({
@@ -242,6 +277,11 @@ const Checklists = () => {
       loadSolicitacoes();
     }
   }, [currentUnit, loadChecklists, loadSolicitacoes]);
+
+  useEffect(() => {
+    setChecklistsPage(1);
+    setQueryParam('page', 1);
+  }, [checklistsFilters, isMobile]);
 
   // Polling para manter Solicitações atualizadas enquanto estiver na aba de Checklists
   useEffect(() => {
@@ -645,6 +685,19 @@ const Checklists = () => {
     }
   };
 
+  const openPhotoViewer = (images, index, title) => {
+    const origin = process.env.REACT_APP_API_ORIGIN || (window.location.origin.replace(':3003', ':5000'));
+    const toAbs = (u) => (String(u || '').startsWith('http') ? u : `${origin}${u}`);
+    const normalized = (images || []).map((f) => ({
+      url: toAbs(f?.url || f),
+      name: f?.originalName || f?.name || undefined,
+    }));
+    setPhotoViewerImages(normalized);
+    setPhotoViewerIndex(Math.max(0, Math.min(index || 0, normalized.length - 1)));
+    setPhotoViewerTitle(title || '');
+    setPhotoViewerOpen(true);
+  };
+
   const handleFabClick = () => {
     if (activeTab === 0) {
       // Aba de Checklists - abrir diálogo de checklist
@@ -703,6 +756,10 @@ const Checklists = () => {
   const renderModelosTab = () => (
     <TemplateBuilder />
   );
+
+  const checklistsPerPage = isMobile ? 5 : 10;
+  const checklistsPages = Math.max(1, Math.ceil(checklists.length / checklistsPerPage));
+  const paginatedChecklists = checklists.slice((checklistsPage - 1) * checklistsPerPage, checklistsPage * checklistsPerPage);
 
   return (
     <Box sx={{ p: 3 }}>
@@ -833,7 +890,7 @@ const Checklists = () => {
               <AccordionDetails>
         <Grid container spacing={2}>
           <Grid item xs={12} sm={6} md={3}>
-            <FormControl fullWidth>
+            <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
               <InputLabel>Viatura</InputLabel>
               <Select
                 value={checklistsFilters.viatura_id || ''}
@@ -850,7 +907,7 @@ const Checklists = () => {
             </FormControl>
           </Grid>
           <Grid item xs={12} sm={6} md={2}>
-            <FormControl fullWidth>
+            <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
               <InputLabel>Status</InputLabel>
               <Select
                 value={checklistsFilters.status || ''}
@@ -872,6 +929,7 @@ const Checklists = () => {
               value={checklistsFilters.data_inicio}
               onChange={(e) => setChecklistsFilters(prev => ({ ...prev, data_inicio: e.target.value }))}
               InputLabelProps={{ shrink: true }}
+              size={isMobile ? 'small' : 'medium'}
             />
           </Grid>
           <Grid item xs={12} sm={6} md={2}>
@@ -882,10 +940,11 @@ const Checklists = () => {
               value={checklistsFilters.data_fim}
               onChange={(e) => setChecklistsFilters(prev => ({ ...prev, data_fim: e.target.value }))}
               InputLabelProps={{ shrink: true }}
+              size={isMobile ? 'small' : 'medium'}
             />
           </Grid>
           <Grid item xs={12} sm={6} md={2}>
-            <FormControl fullWidth>
+            <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
               <InputLabel>Tipo de Checklist</InputLabel>
               <Select
                 value={checklistsFilters.tipo_checklist || ''}
@@ -905,7 +964,7 @@ const Checklists = () => {
             </FormControl>
           </Grid>
           <Grid item xs={12} sm={6} md={1}>
-            <FormControl fullWidth>
+            <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
               <InputLabel>Ala</InputLabel>
               <Select
                 value={checklistsFilters.ala_servico || ''}
@@ -947,7 +1006,7 @@ const Checklists = () => {
             </Typography>
         <Grid container spacing={2}>
           <Grid item xs={12} sm={6} md={3}>
-            <FormControl fullWidth>
+            <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
               <InputLabel>Viatura</InputLabel>
               <Select
                 value={checklistsFilters.viatura_id || ''}
@@ -964,7 +1023,7 @@ const Checklists = () => {
             </FormControl>
           </Grid>
           <Grid item xs={12} sm={6} md={2}>
-            <FormControl fullWidth>
+            <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
               <InputLabel>Status</InputLabel>
               <Select
                 value={checklistsFilters.status || ''}
@@ -986,6 +1045,7 @@ const Checklists = () => {
               value={checklistsFilters.data_inicio}
               onChange={(e) => setChecklistsFilters(prev => ({ ...prev, data_inicio: e.target.value }))}
               InputLabelProps={{ shrink: true }}
+              size={isMobile ? 'small' : 'medium'}
             />
           </Grid>
           <Grid item xs={12} sm={6} md={2}>
@@ -996,10 +1056,11 @@ const Checklists = () => {
               value={checklistsFilters.data_fim}
               onChange={(e) => setChecklistsFilters(prev => ({ ...prev, data_fim: e.target.value }))}
               InputLabelProps={{ shrink: true }}
+              size={isMobile ? 'small' : 'medium'}
             />
           </Grid>
           <Grid item xs={12} sm={6} md={2}>
-            <FormControl fullWidth>
+            <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
               <InputLabel>Tipo de Checklist</InputLabel>
               <Select
                 value={checklistsFilters.tipo_checklist || ''}
@@ -1019,7 +1080,7 @@ const Checklists = () => {
             </FormControl>
           </Grid>
           <Grid item xs={12} sm={6} md={1}>
-            <FormControl fullWidth>
+            <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
               <InputLabel>Ala</InputLabel>
               <Select
                 value={checklistsFilters.ala_servico || ''}
@@ -1057,6 +1118,7 @@ const Checklists = () => {
 
       {/* Lista de resultados */}
       {!isMobile && (
+        <>
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
@@ -1087,7 +1149,7 @@ const Checklists = () => {
                 </TableCell>
               </TableRow>
             ) : (
-              checklists.map((checklist) => (
+              paginatedChecklists.map((checklist) => (
                 <TableRow 
                   key={checklist.id}
                   hover
@@ -1188,6 +1250,17 @@ const Checklists = () => {
           </TableBody>
         </Table>
             </TableContainer>
+            {checklistsPages > 1 && (
+              <Box display="flex" justifyContent="center" mt={3}>
+                <Pagination
+                  count={checklistsPages}
+                  page={checklistsPage}
+                  onChange={(e, page) => handleChecklistsPageChange(page)}
+                  color="primary"
+                />
+              </Box>
+            )}
+        </>
       )}
       {isMobile && (
         <Box>
@@ -1201,7 +1274,7 @@ const Checklists = () => {
             </Typography>
           ) : (
             <Grid container spacing={2}>
-              {checklists.map((checklist) => (
+              {paginatedChecklists.map((checklist) => (
                 <Grid item xs={12} key={checklist.id}>
                   <Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => handleViewChecklist(checklist)}>
                     <CardContent>
@@ -1228,6 +1301,16 @@ const Checklists = () => {
                 </Grid>
               ))}
             </Grid>
+          )}
+          {checklistsPages > 1 && (
+            <Box display="flex" justifyContent="center" mt={1}>
+              <Pagination
+                count={checklistsPages}
+                page={checklistsPage}
+                onChange={(e, page) => handleChecklistsPageChange(page)}
+                color="primary"
+              />
+            </Box>
           )}
         </Box>
       )}
@@ -1257,10 +1340,10 @@ const Checklists = () => {
                 <AccordionDetails>
                   <Grid container spacing={2} alignItems="center">
                     <Grid item xs={12} sm={6} md={4}>
-                      <TextField fullWidth label="Buscar por nome" value={autoFilters.nome} onChange={(e) => setAutoFilters(prev => ({ ...prev, nome: e.target.value }))} />
+                      <TextField fullWidth label="Buscar por nome" value={autoFilters.nome} onChange={(e) => setAutoFilters(prev => ({ ...prev, nome: e.target.value }))} size={isMobile ? 'small' : 'medium'} />
                     </Grid>
                     <Grid item xs={12} sm={6} md={3}>
-                      <FormControl fullWidth>
+                      <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
                         <InputLabel>Status</InputLabel>
                         <Select value={autoFilters.ativo} onChange={(e) => setAutoFilters(prev => ({ ...prev, ativo: e.target.value }))} label="Status">
                           <MenuItem value="">Todos</MenuItem>
@@ -1270,7 +1353,7 @@ const Checklists = () => {
                       </FormControl>
                     </Grid>
                     <Grid item xs={12} sm={6} md={3}>
-                      <FormControl fullWidth>
+                      <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
                         <InputLabel>Ala</InputLabel>
                         <Select value={autoFilters.ala_servico} onChange={(e) => setAutoFilters(prev => ({ ...prev, ala_servico: e.target.value }))} label="Ala">
                           <MenuItem value="">Todas</MenuItem>
@@ -1283,7 +1366,7 @@ const Checklists = () => {
                       </FormControl>
                     </Grid>
                     <Grid item xs={12} sm={6} md={2}>
-                      <FormControl fullWidth>
+                      <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
                         <InputLabel>Tipo</InputLabel>
                         <Select value={autoFilters.tipo_checklist} onChange={(e) => setAutoFilters(prev => ({ ...prev, tipo_checklist: e.target.value }))} label="Tipo">
                           <MenuItem value="">Todos</MenuItem>
@@ -1544,6 +1627,24 @@ const Checklists = () => {
         <DialogContent sx={{ p: isMobile ? 1.5 : 3 }}>
           {selectedItem ? (
             <Box sx={{ mt: 2 }}>
+              {(() => {
+                const origin = process.env.REACT_APP_API_ORIGIN || (window.location.origin.replace(':3003', ':5000'));
+                const toAbs = (u) => {
+                  if (!u) return '';
+                  return String(u).startsWith('http') ? u : `${origin}${u}`;
+                };
+                const parseFotos = (f) => {
+                  if (!f) return [];
+                  if (Array.isArray(f)) return f;
+                  try {
+                    const arr = JSON.parse(f);
+                    return Array.isArray(arr) ? arr : [];
+                  } catch (_) {
+                    return [];
+                  }
+                };
+                return null;
+              })()}
               {console.log('🔍 Renderizando diálogo de visualização com dados:', selectedItem) || null}
               {/* Informações do Checklist */}
               <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mt: 2, mb: 1, color: 'grey.700' }}>
@@ -1622,6 +1723,48 @@ const Checklists = () => {
                   }
                 </Box>
               )}
+
+              {selectedItem.itens?.some(i => {
+                const f = i.fotos;
+                if (!f) return false;
+                if (Array.isArray(f)) return f.length > 0;
+                try { const arr = JSON.parse(f); return Array.isArray(arr) && arr.length > 0; } catch { return false; }
+              }) && (
+                <Box sx={{ mt: 3 }}>
+                  <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                    Fotos por Item:
+                  </Typography>
+                  {selectedItem.itens.map((item, idx) => {
+                    let fotos = [];
+                    const f = item.fotos;
+                    if (Array.isArray(f)) fotos = f;
+                    else {
+                      try { const arr = JSON.parse(f); if (Array.isArray(arr)) fotos = arr; } catch {}
+                    }
+                    if (!fotos || fotos.length === 0) return null;
+                    const origin = process.env.REACT_APP_API_ORIGIN || (window.location.origin.replace(':3003', ':5000'));
+                    const toAbs = (u) => (String(u || '').startsWith('http') ? u : `${origin}${u}`);
+                    return (
+                      <Box key={idx} sx={{ mb: 2, p: 1, bgcolor: '#fff', borderRadius: 1, border: '1px solid #f0f0f0' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 'medium', color: '#495057', mb: 1 }}>
+                          <strong>{item.nome_item}</strong>
+                        </Typography>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                          {fotos.map((foto, fi) => {
+                            const url = toAbs(foto?.url || foto);
+                            const name = foto?.originalName || foto?.name || undefined;
+                            return (
+                              <Box key={fi} sx={{ width: 96, height: 72, borderRadius: 1, overflow: 'hidden', border: '1px solid #e0e0e0', cursor: 'pointer' }} onClick={() => openPhotoViewer(fotos, fi, item.nome_item)}>
+                                <img alt={name || 'Foto'} src={url} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                              </Box>
+                            );
+                          })}
+                        </Box>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              )}
             </Box>
             ) : (
             <Box sx={{ p: 3, textAlign: 'center' }}>
@@ -1635,6 +1778,40 @@ const Checklists = () => {
           <Button onClick={handleCloseDialog}>
             Fechar
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={photoViewerOpen} onClose={() => setPhotoViewerOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="h6">{photoViewerTitle || 'Foto'}</Typography>
+            <IconButton onClick={() => setPhotoViewerOpen(false)}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ p: isMobile ? 0 : 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+            <IconButton onClick={() => setPhotoViewerIndex(i => Math.max(0, i - 1))} disabled={photoViewerIndex <= 0} sx={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)' }}>
+              <ChevronLeftIcon />
+            </IconButton>
+            {photoViewerImages[photoViewerIndex] && (
+              <img
+                src={photoViewerImages[photoViewerIndex].url}
+                alt={photoViewerImages[photoViewerIndex].name || 'Foto'}
+                style={{ maxWidth: isMobile ? '100vw' : '90vw', maxHeight: isMobile ? '85vh' : '70vh', objectFit: 'contain', display: 'block' }}
+              />
+            )}
+            <IconButton onClick={() => setPhotoViewerIndex(i => Math.min(photoViewerImages.length - 1, i + 1))} disabled={photoViewerIndex >= photoViewerImages.length - 1} sx={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)' }}>
+              <ChevronRightIcon />
+            </IconButton>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Typography variant="caption" sx={{ flexGrow: 1, pl: 2 }}>
+            {photoViewerImages.length > 0 ? `${photoViewerIndex + 1} / ${photoViewerImages.length}` : ''}
+          </Typography>
+          <Button onClick={() => setPhotoViewerOpen(false)}>Fechar</Button>
         </DialogActions>
       </Dialog>
 

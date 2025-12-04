@@ -32,6 +32,7 @@ import {
   AccordionDetails,
   useTheme,
   useMediaQuery,
+  Pagination,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -64,6 +65,7 @@ const Viaturas = () => {
     search: '',
   });
   const [filteredViaturas, setFilteredViaturas] = useState([]);
+  const [viaturasPage, setViaturasPage] = useState(1);
   
   // Estados para diálogos
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -75,6 +77,27 @@ const Viaturas = () => {
   const [formData, setFormData] = useState({});
   const [formErrors, setFormErrors] = useState({});
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
+  const [photoViewerUrl, setPhotoViewerUrl] = useState('');
+
+  const getApiOrigin = () => {
+    const envOrigin = process.env.REACT_APP_API_ORIGIN;
+    if (envOrigin) return envOrigin;
+    const origin = window.location.origin;
+    if (origin.includes(':3003')) return origin.replace(':3003', ':5000');
+    return 'http://localhost:5000';
+  };
+
+  const resolveSrc = (v) => {
+    const s = String(v || '');
+    if (!s) return '';
+    if (/^(data:|blob:)/i.test(s)) return s;
+    if (s.startsWith('http')) {
+      return s.includes(':3003') ? s.replace(':3003', ':5000') : s;
+    }
+    const base = getApiOrigin();
+    return `${base}${s.startsWith('/') ? s : `/${s}`}`;
+  };
 
   // Carregar viaturas
   const loadViaturas = useCallback(async () => {
@@ -116,6 +139,10 @@ const Viaturas = () => {
 
     setFilteredViaturas(filtered);
   }, [viaturas, viaturasFilters]);
+
+  useEffect(() => {
+    setViaturasPage(1);
+  }, [viaturasFilters, isMobile]);
 
   // useEffect para carregar dados iniciais
   useEffect(() => {
@@ -172,8 +199,9 @@ const Viaturas = () => {
       const response = await uploadService.uploadFoto(file, (progress) => {
         console.log(`Upload progress: ${progress}%`);
       });
-      
-      const fotoUrl = `http://localhost:5000${response.data.url}`;
+
+      const rawUrl = String(response.data.url || '');
+      const fotoUrl = rawUrl.startsWith('http') ? rawUrl : resolveSrc(rawUrl);
       handleFormChange('foto', fotoUrl);
     } catch (error) {
       console.error('Erro ao fazer upload da foto:', error);
@@ -186,6 +214,11 @@ const Viaturas = () => {
   // Função para remover foto
   const handleRemovePhoto = () => {
     handleFormChange('foto', '');
+  };
+
+  const openPhotoViewer = (url) => {
+    setPhotoViewerUrl(resolveSrc(url));
+    setPhotoViewerOpen(true);
   };
 
   const handleMenuOpen = (event, item) => {
@@ -319,9 +352,11 @@ const Viaturas = () => {
   };
 
   const getStatusColor = (status) => {
-    switch (status) {
+    const s = (status || '').toLowerCase();
+    switch (s) {
       case 'ativo': return 'success';
       case 'inativo': return 'default';
+      case 'manutenção': return 'warning';
       case 'manutencao': return 'warning';
       default: return 'default';
     }
@@ -329,7 +364,12 @@ const Viaturas = () => {
 
   // (removido) formatDate não utilizado
 
-  const renderViaturasTab = () => (
+  const renderViaturasTab = () => {
+    const viaturasPerPage = isMobile ? 5 : 10;
+    const viaturasPages = Math.max(1, Math.ceil(filteredViaturas.length / viaturasPerPage));
+    const paginatedViaturas = filteredViaturas.slice((viaturasPage - 1) * viaturasPerPage, viaturasPage * viaturasPerPage);
+
+    return (
     <Box>
       {isMobile ? (
         <Accordion sx={{ mb: 2 }}>
@@ -363,6 +403,30 @@ const Viaturas = () => {
                   </Select>
                 </FormControl>
               </Grid>
+              <Grid item xs={12} sm={6} md={4}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Unidade BM</InputLabel>
+                  <Select
+                    value={viaturasFilters.unidade_id || ''}
+                    onChange={(e) => setViaturasFilters(prev => ({ ...prev, unidade_id: e.target.value }))}
+                    label="Unidade BM"
+                  >
+                    <MenuItem key="todas-unidades" value="">Todas</MenuItem>
+                    {availableUnits.map((unit) => (
+                      <MenuItem key={unit.id} value={unit.id}>{unit.codigo} - {unit.nome}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6} md={4}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  label="Setor Responsável"
+                  value={viaturasFilters.setor}
+                  onChange={(e) => setViaturasFilters(prev => ({ ...prev, setor: e.target.value }))}
+                />
+              </Grid>
             </Grid>
           </AccordionDetails>
         </Accordion>
@@ -391,10 +455,31 @@ const Viaturas = () => {
               <MenuItem key="manutencao" value="Manutenção">Manutenção</MenuItem>
             </Select>
           </FormControl>
+          <FormControl size="small" sx={{ minWidth: 240 }}>
+            <InputLabel>Unidade BM</InputLabel>
+            <Select
+              value={viaturasFilters.unidade_id || ''}
+              onChange={(e) => setViaturasFilters(prev => ({ ...prev, unidade_id: e.target.value }))}
+              label="Unidade BM"
+            >
+              <MenuItem key="todas-unidades" value="">Todas</MenuItem>
+              {availableUnits.map((unit) => (
+                <MenuItem key={unit.id} value={unit.id}>{unit.codigo} - {unit.nome}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <TextField
+            size="small"
+            label="Setor Responsável"
+            value={viaturasFilters.setor}
+            onChange={(e) => setViaturasFilters(prev => ({ ...prev, setor: e.target.value }))}
+            sx={{ minWidth: 200 }}
+          />
         </Box>
       )}
 
       {!isMobile ? (
+        <>
         <TableContainer component={Paper}>
           <Table size={isMobile ? 'small' : 'medium'}>
             <TableHead>
@@ -422,15 +507,21 @@ const Viaturas = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredViaturas.map((viatura) => (
-                  <TableRow key={viatura.id}>
-                    <TableCell>
+                paginatedViaturas.map((viatura) => (
+                  <TableRow key={viatura.id} onClick={() => handleOpenDialog('view', viatura)} sx={{ cursor: 'pointer' }}>
+                    <TableCell onClick={() => handleOpenDialog('view', viatura)} sx={{ cursor: 'pointer' }}>
                       {viatura.foto ? (
                         <Avatar
-                          src={viatura.foto}
+                          src={resolveSrc(viatura.foto)}
                           alt={`Viatura ${viatura.prefixo}`}
                           sx={{ width: 60, height: 60 }}
                           variant="rounded"
+                          onError={(e) => {
+                            const current = e.currentTarget.src || '';
+                            if (current.includes('localhost:3003')) {
+                              e.currentTarget.src = current.replace('localhost:3003', 'localhost:5000');
+                            }
+                          }}
                         />
                       ) : (
                         <Avatar
@@ -441,9 +532,9 @@ const Viaturas = () => {
                         </Avatar>
                       )}
                     </TableCell>
-                    <TableCell>{viatura.prefixo}</TableCell>
-                    <TableCell>{viatura.modelo}</TableCell>
-                    <TableCell>{viatura.placa}</TableCell>
+                    <TableCell onClick={() => handleOpenDialog('view', viatura)} sx={{ cursor: 'pointer' }}>{viatura.prefixo}</TableCell>
+                    <TableCell onClick={() => handleOpenDialog('view', viatura)} sx={{ cursor: 'pointer' }}>{viatura.modelo}</TableCell>
+                    <TableCell onClick={() => handleOpenDialog('view', viatura)} sx={{ cursor: 'pointer' }}>{viatura.placa}</TableCell>
                     <TableCell>
                       <Chip
                         label={viatura.status}
@@ -453,7 +544,7 @@ const Viaturas = () => {
                     </TableCell>
                     <TableCell>{viatura.setor_responsavel || '-'}</TableCell>
                     <TableCell>
-                      <IconButton onClick={(e) => handleMenuOpen(e, viatura)}>
+                      <IconButton onClick={(e) => { e.stopPropagation(); handleMenuOpen(e, viatura); }}>
                         <MoreVertIcon />
                       </IconButton>
                     </TableCell>
@@ -463,6 +554,17 @@ const Viaturas = () => {
             </TableBody>
           </Table>
         </TableContainer>
+        {viaturasPages > 1 && (
+          <Box display="flex" justifyContent="center" mt={3}>
+            <Pagination
+              count={viaturasPages}
+              page={viaturasPage}
+              onChange={(e, page) => setViaturasPage(page)}
+              color="primary"
+            />
+          </Box>
+        )}
+        </>
       ) : (
         <Grid container spacing={2}>
           {viaturasLoading ? (
@@ -476,13 +578,17 @@ const Viaturas = () => {
               <Typography variant="body2" color="text.secondary">Nenhuma viatura encontrada</Typography>
             </Grid>
           ) : (
-            filteredViaturas.map((viatura) => (
+            paginatedViaturas.map((viatura) => (
               <Grid item xs={12} key={viatura.id}>
-                <Paper variant="outlined" sx={{ p: 2 }}>
+                <Paper 
+                  variant="outlined" 
+                  sx={{ p: 2, cursor: 'pointer', transition: 'all 0.2s', '&:hover': { boxShadow: theme.shadows[2] } }}
+                  onClick={() => handleOpenDialog('view', viatura)}
+                >
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       {viatura.foto ? (
-                        <Avatar src={viatura.foto} alt={`Viatura ${viatura.prefixo}`} sx={{ width: 40, height: 40 }} variant="rounded" />
+                        <Avatar src={resolveSrc(viatura.foto)} alt={`Viatura ${viatura.prefixo}`} sx={{ width: 40, height: 40 }} variant="rounded" />
                       ) : (
                         <Avatar sx={{ width: 40, height: 40, bgcolor: 'grey.300' }} variant="rounded"><CarIcon /></Avatar>
                       )}
@@ -492,7 +598,7 @@ const Viaturas = () => {
                       </Box>
                     </Box>
                     <Chip label={viatura.status} color={getStatusColor(viatura.status)} size="small" />
-                    <IconButton onClick={(e) => handleMenuOpen(e, viatura)}>
+                    <IconButton onClick={(e) => { e.stopPropagation(); handleMenuOpen(e, viatura); }}>
                       <MoreVertIcon />
                     </IconButton>
                   </Box>
@@ -500,10 +606,23 @@ const Viaturas = () => {
               </Grid>
             ))
           )}
+          {viaturasPages > 1 && (
+            <Grid item xs={12}>
+              <Box display="flex" justifyContent="center" mt={1}>
+                <Pagination
+                  count={viaturasPages}
+                  page={viaturasPage}
+                  onChange={(e, page) => setViaturasPage(page)}
+                  color="primary"
+                />
+              </Box>
+            </Grid>
+          )}
         </Grid>
       )}
     </Box>
   );
+  };
 
   const renderViaturasDialog = () => (
     <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="md" fullWidth fullScreen={isMobile}>
@@ -518,8 +637,26 @@ const Viaturas = () => {
         )}
         
         {dialogType === 'view' ? (
-          // Visualização dos dados
           <Grid container spacing={2}>
+            {selectedItem?.foto && (
+              <Grid item xs={12}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Avatar 
+                    src={resolveSrc(selectedItem?.foto)}
+                    alt="Foto da viatura"
+                    sx={{ width: 120, height: 120, cursor: 'pointer' }}
+                    variant="rounded"
+                    onClick={() => openPhotoViewer(selectedItem.foto)}
+                    onError={(e) => {
+                      const current = e.currentTarget.src || '';
+                      if (current.includes('localhost:3003')) {
+                        e.currentTarget.src = current.replace('localhost:3003', 'localhost:5000');
+                      }
+                    }}
+                  />
+                </Box>
+              </Grid>
+            )}
             <Grid item xs={12} sm={6}>
               <Typography variant="subtitle2" color="text.secondary">Tipo</Typography>
               <Typography variant="body1">{selectedItem?.tipo || '-'}</Typography>
@@ -809,6 +946,34 @@ const Viaturas = () => {
 
       {renderViaturasTab()}
       {renderViaturasDialog()}
+
+      <Dialog open={photoViewerOpen} onClose={() => setPhotoViewerOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
+        <DialogTitle>Foto da Viatura</DialogTitle>
+        <DialogContent sx={{ p: isMobile ? 0 : 2 }}>
+          {photoViewerUrl && (
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <img
+                src={photoViewerUrl}
+                alt="Foto da viatura"
+                style={{ maxWidth: isMobile ? '100vw' : '90vw', maxHeight: isMobile ? '85vh' : '70vh', objectFit: 'contain', display: 'block' }}
+                onError={(e) => {
+                  const origin = process.env.REACT_APP_API_ORIGIN || (window.location.origin.replace(':3003', ':5000'));
+                  const current = e.currentTarget.src || '';
+                  const raw = photoViewerUrl || '';
+                  if (raw && !String(raw).startsWith('http')) {
+                    e.currentTarget.src = `${origin}${raw}`;
+                  } else if (current.includes('localhost:3003')) {
+                    e.currentTarget.src = current.replace('localhost:3003', 'localhost:5000');
+                  }
+                }}
+              />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPhotoViewerOpen(false)}>Fechar</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Menu de ações */}
       <Menu

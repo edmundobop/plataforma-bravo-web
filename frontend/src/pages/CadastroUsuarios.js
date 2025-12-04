@@ -48,6 +48,7 @@ import {
   Tooltip,
   Avatar,
   useTheme,
+  useMediaQuery,
   Pagination,
   InputAdornment,
   Switch,
@@ -64,6 +65,9 @@ import {
   Tabs,
   Tab,
   Badge,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -111,6 +115,7 @@ import {
 // trocar de unidade, garantindo coerência entre UI e backend.
 const CadastroUsuarios = () => {
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { user, hasRole } = useAuth();
   const { availableUnits, currentUnit } = useTenant();
   const [loading, setLoading] = useState(false);
@@ -859,11 +864,12 @@ const CadastroUsuarios = () => {
         onClose={handleCloseDialog}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           {dialogType === 'create' ? 'Criar Novo Usuário' : (isEdit ? 'Editar Usuário' : 'Visualizar Usuário')}
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ p: isMobile ? 1.5 : 3 }}>
           <Box sx={{ pt: 2 }}>
             {/* Campo disabled em modo Visualizar */}
             <fieldset disabled={isView} style={{ border: 0, padding: 0, margin: 0 }}>
@@ -894,6 +900,7 @@ const CadastroUsuarios = () => {
                   onChange={(e) => handleInputChange('nome_completo', e.target.value)}
                   error={!!formErrors.nome_completo}
                   helperText={formErrors.nome_completo}
+                  size={isMobile ? 'small' : 'medium'}
                   required
                 />
               </Grid>
@@ -907,6 +914,7 @@ const CadastroUsuarios = () => {
                   onChange={(e) => handleInputChange('email', e.target.value)}
                   error={!!formErrors.email}
                   helperText={formErrors.email}
+                  size={isMobile ? 'small' : 'medium'}
                   required
                 />
               </Grid>
@@ -920,6 +928,7 @@ const CadastroUsuarios = () => {
                   error={!!formErrors.cpf}
                   helperText={formErrors.cpf}
                   inputProps={{ maxLength: 14 }}
+                  size={isMobile ? 'small' : 'medium'}
                 />
               </Grid>
               
@@ -931,6 +940,7 @@ const CadastroUsuarios = () => {
                   onChange={(e) => handleInputChange('telefone', e.target.value)}
                   error={!!formErrors.telefone}
                   helperText={formErrors.telefone}
+                  size={isMobile ? 'small' : 'medium'}
                 />
               </Grid>
               
@@ -942,6 +952,7 @@ const CadastroUsuarios = () => {
                   value={formData.data_nascimento}
                   onChange={(e) => handleInputChange('data_nascimento', e.target.value)}
                   InputLabelProps={{ shrink: true }}
+                  size={isMobile ? 'small' : 'medium'}
                 />
               </Grid>
               
@@ -954,7 +965,7 @@ const CadastroUsuarios = () => {
                   </Grid>
                   
                   <Grid item xs={12} md={6}>
-                    <FormControl fullWidth error={!!formErrors.posto_graduacao}>
+                    <FormControl fullWidth error={!!formErrors.posto_graduacao} size={isMobile ? 'small' : 'medium'}>
                       <InputLabel>Posto/Graduação *</InputLabel>
                       <Select
                         value={formData.posto_graduacao}
@@ -981,6 +992,7 @@ const CadastroUsuarios = () => {
                       onChange={(e) => handleInputChange('nome_guerra', e.target.value)}
                       error={!!formErrors.nome_guerra}
                       helperText={formErrors.nome_guerra}
+                      size={isMobile ? 'small' : 'medium'}
                     />
                   </Grid>
                   
@@ -992,6 +1004,7 @@ const CadastroUsuarios = () => {
                       onChange={(e) => handleInputChange('matricula', e.target.value)}
                       error={!!formErrors.matricula}
                       helperText={formErrors.matricula}
+                      size={isMobile ? 'small' : 'medium'}
                       required
                     />
                   </Grid>
@@ -1004,6 +1017,7 @@ const CadastroUsuarios = () => {
                       value={formData.data_incorporacao}
                       onChange={(e) => handleInputChange('data_incorporacao', e.target.value)}
                       InputLabelProps={{ shrink: true }}
+                      size={isMobile ? 'small' : 'medium'}
                     />
                   </Grid>
 
@@ -1017,6 +1031,7 @@ const CadastroUsuarios = () => {
                       error={!!formErrors.antiguidade}
                       helperText={formErrors.antiguidade}
                       inputProps={{ min: 1, step: 1 }}
+                      size={isMobile ? 'small' : 'medium'}
                     />
                   </Grid>
                 </>
@@ -1030,7 +1045,7 @@ const CadastroUsuarios = () => {
               
               {/* Unidades (multi) */}
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth>
+                <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
                   <InputLabel>Unidades CBMGO</InputLabel>
                   <Select
                     multiple
@@ -1056,7 +1071,7 @@ const CadastroUsuarios = () => {
 
               {/* Unidade de Lotação (single) */}
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth>
+                <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
                   <InputLabel>Unidade de Lotação</InputLabel>
                   <Select
                     value={formData.unidade_lotacao_id}
@@ -1074,7 +1089,7 @@ const CadastroUsuarios = () => {
               
               {/* Setor */}
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth>
+                <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
                   <InputLabel>Setor</InputLabel>
                   <Select
                     value={formData.setor}
@@ -1091,7 +1106,7 @@ const CadastroUsuarios = () => {
               </Grid>
 
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth>
+                <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
                   <InputLabel>Categoria CNH</InputLabel>
                   <Select
                     value={formData.categoria_cnh}
@@ -1109,7 +1124,7 @@ const CadastroUsuarios = () => {
               
               {/* Funções */}
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth>
+                <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
                   <InputLabel>Funções</InputLabel>
                   <Select
                     multiple
@@ -1134,7 +1149,7 @@ const CadastroUsuarios = () => {
               </Grid>
               
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth error={!!formErrors.perfil_id}>
+                <FormControl fullWidth error={!!formErrors.perfil_id} size={isMobile ? 'small' : 'medium'}>
                   <InputLabel>Perfil de Acesso *</InputLabel>
                   <Select
                     value={formData.perfil_id}
@@ -1180,6 +1195,7 @@ const CadastroUsuarios = () => {
                       error={!!formErrors.senha}
                       helperText={formErrors.senha}
                       required={dialogType === 'create'}
+                      size={isMobile ? 'small' : 'medium'}
                       InputProps={{
                         endAdornment: (
                           <InputAdornment position="end">
@@ -1205,6 +1221,7 @@ const CadastroUsuarios = () => {
                       error={!!formErrors.confirmar_senha}
                       helperText={formErrors.confirmar_senha}
                       required={dialogType === 'create'}
+                      size={isMobile ? 'small' : 'medium'}
                     />
                   </Grid>
                 </>
@@ -1213,7 +1230,7 @@ const CadastroUsuarios = () => {
             </fieldset>
           </Box>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ position: isMobile ? 'sticky' : 'static', bottom: 0, bgcolor: isMobile ? 'background.paper' : undefined, zIndex: 1 }}>
           <Button onClick={handleCloseDialog}>{isView ? 'Fechar' : 'Cancelar'}</Button>
           {!isView && (
             <Button 
@@ -1287,86 +1304,168 @@ const CadastroUsuarios = () => {
 
       {/* Filtros */}
       {tabValue === 0 && (
-        <Card sx={{ mb: 3 }}>
-          <CardContent>
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} md={3}>
-                <TextField
-                  fullWidth
-                  label="Buscar usuários"
-                  value={filters.search}
-                  onChange={(e) => handleFilterChange('search', e.target.value)}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <SearchIcon />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Grid>
-              
-              <Grid item xs={12} md={2}>
-                <FormControl fullWidth>
-                  <InputLabel>Tipo</InputLabel>
-                  <Select
-                    value={filters.tipo}
-                    onChange={(e) => handleFilterChange('tipo', e.target.value)}
-                    label="Tipo"
+        isMobile ? (
+          <Accordion sx={{ mb: 3 }}>
+            <AccordionSummary expandIcon={<FilterIcon />}>Filtros</AccordionSummary>
+            <AccordionDetails>
+              <Grid container spacing={2} alignItems="center">
+                <Grid item xs={12} sm={6} md={3}>
+                  <TextField
+                    fullWidth
+                    label="Buscar usuários"
+                    value={filters.search}
+                    onChange={(e) => handleFilterChange('search', e.target.value)}
+                    size={isMobile ? 'small' : 'medium'}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6} md={2}>
+                  <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
+                    <InputLabel>Tipo</InputLabel>
+                    <Select
+                      value={filters.tipo}
+                      onChange={(e) => handleFilterChange('tipo', e.target.value)}
+                      label="Tipo"
+                    >
+                      <MenuItem key="todos-tipo" value="">Todos</MenuItem>
+                      <MenuItem key="militar" value="militar">Militar</MenuItem>
+                      <MenuItem key="civil" value="civil">Civil</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6} md={2}>
+                  <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
+                    <InputLabel>Perfil</InputLabel>
+                    <Select
+                      value={filters.perfil}
+                      onChange={(e) => handleFilterChange('perfil', e.target.value)}
+                      label="Perfil"
+                    >
+                      <MenuItem key="todos-perfil" value="">Todos</MenuItem>
+                      {perfis.map((perfil) => (
+                        <MenuItem key={perfil.id} value={perfil.nome}>
+                          {perfil.nome}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6} md={2}>
+                  <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
+                    <InputLabel>Status</InputLabel>
+                    <Select
+                      value={filters.ativo}
+                      onChange={(e) => handleFilterChange('ativo', e.target.value)}
+                      label="Status"
+                    >
+                      <MenuItem key="todos-status" value="">Todos</MenuItem>
+                      <MenuItem key="ativo" value="true">Ativo</MenuItem>
+                      <MenuItem key="inativo" value="false">Inativo</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Button
+                    variant="outlined"
+                    startIcon={<FilterIcon />}
+                    onClick={loadUsuarios}
+                    disabled={usuariosLoading}
                   >
-                    <MenuItem key="todos-tipo" value="">Todos</MenuItem>
-                    <MenuItem key="militar" value="militar">Militar</MenuItem>
-                    <MenuItem key="civil" value="civil">Civil</MenuItem>
-                  </Select>
-                </FormControl>
+                    Filtrar
+                  </Button>
+                </Grid>
               </Grid>
-              
-              <Grid item xs={12} md={2}>
-                <FormControl fullWidth>
-                  <InputLabel>Perfil</InputLabel>
-                  <Select
-                    value={filters.perfil}
-                    onChange={(e) => handleFilterChange('perfil', e.target.value)}
-                    label="Perfil"
+            </AccordionDetails>
+          </Accordion>
+        ) : (
+          <Card sx={{ mb: 3 }}>
+            <CardContent>
+              <Grid container spacing={2} alignItems="center">
+                <Grid item xs={12} md={3}>
+                  <TextField
+                    fullWidth
+                    label="Buscar usuários"
+                    value={filters.search}
+                    onChange={(e) => handleFilterChange('search', e.target.value)}
+                    size={isMobile ? 'small' : 'medium'}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Grid>
+                
+                <Grid item xs={12} md={2}>
+                  <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
+                    <InputLabel>Tipo</InputLabel>
+                    <Select
+                      value={filters.tipo}
+                      onChange={(e) => handleFilterChange('tipo', e.target.value)}
+                      label="Tipo"
+                    >
+                      <MenuItem key="todos-tipo" value="">Todos</MenuItem>
+                      <MenuItem key="militar" value="militar">Militar</MenuItem>
+                      <MenuItem key="civil" value="civil">Civil</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                
+                <Grid item xs={12} md={2}>
+                  <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
+                    <InputLabel>Perfil</InputLabel>
+                    <Select
+                      value={filters.perfil}
+                      onChange={(e) => handleFilterChange('perfil', e.target.value)}
+                      label="Perfil"
+                    >
+                      <MenuItem key="todos-perfil" value="">Todos</MenuItem>
+                      {perfis.map((perfil) => (
+                        <MenuItem key={perfil.id} value={perfil.nome}>
+                          {perfil.nome}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                
+                <Grid item xs={12} md={2}>
+                  <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
+                    <InputLabel>Status</InputLabel>
+                    <Select
+                      value={filters.ativo}
+                      onChange={(e) => handleFilterChange('ativo', e.target.value)}
+                      label="Status"
+                    >
+                      <MenuItem key="todos-status" value="">Todos</MenuItem>
+                      <MenuItem key="ativo" value="true">Ativo</MenuItem>
+                      <MenuItem key="inativo" value="false">Inativo</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                
+                <Grid item xs={12} md={3}>
+                  <Button
+                    variant="outlined"
+                    startIcon={<FilterIcon />}
+                    onClick={loadUsuarios}
+                    disabled={usuariosLoading}
                   >
-                    <MenuItem key="todos-perfil" value="">Todos</MenuItem>
-                    {perfis.map((perfil) => (
-                      <MenuItem key={perfil.id} value={perfil.nome}>
-                        {perfil.nome}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                    Filtrar
+                  </Button>
+                </Grid>
               </Grid>
-              
-              <Grid item xs={12} md={2}>
-                <FormControl fullWidth>
-                  <InputLabel>Status</InputLabel>
-                  <Select
-                    value={filters.ativo}
-                    onChange={(e) => handleFilterChange('ativo', e.target.value)}
-                    label="Status"
-                  >
-                    <MenuItem key="todos-status" value="">Todos</MenuItem>
-                    <MenuItem key="ativo" value="true">Ativo</MenuItem>
-                    <MenuItem key="inativo" value="false">Inativo</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-              
-              <Grid item xs={12} md={3}>
-                <Button
-                  variant="outlined"
-                  startIcon={<FilterIcon />}
-                  onClick={loadUsuarios}
-                  disabled={usuariosLoading}
-                >
-                  Filtrar
-                </Button>
-              </Grid>
-            </Grid>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )
       )}
 
       {/* Conteúdo Principal */}

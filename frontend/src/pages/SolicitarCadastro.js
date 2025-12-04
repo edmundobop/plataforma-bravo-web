@@ -285,48 +285,7 @@ const SolicitarCadastro = () => {
                 />
               </Grid>
 
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="Nome de Guerra"
-                  name="nome_guerra"
-                  value={formData.nome_guerra}
-                  onChange={handleChange}
-                  error={!!errors.nome_guerra}
-                  helperText={errors.nome_guerra}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <BadgeIcon color="action" />
-                      </InputAdornment>
-                    ),
-                  }}
-                  required
-                />
-              </Grid>
 
-              <Grid item xs={12} md={6}>
-                <FormControl fullWidth error={!!errors.posto_graduacao} required>
-                  <InputLabel>Posto/Graduação</InputLabel>
-                  <Select
-                    name="posto_graduacao"
-                    value={formData.posto_graduacao}
-                    onChange={handleChange}
-                    label="Posto/Graduação"
-                  >
-                    {postosGraduacoes.map((posto) => (
-                      <MenuItem key={posto} value={posto}>
-                        {posto}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                  {errors.posto_graduacao && (
-                    <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.5 }}>
-                      {errors.posto_graduacao}
-                    </Typography>
-                  )}
-                </FormControl>
-              </Grid>
 
               <Grid item xs={12} md={6}>
                 <TextField
@@ -342,20 +301,6 @@ const SolicitarCadastro = () => {
                 />
               </Grid>
 
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="Identidade Militar"
-                  name="identidade_militar"
-                  value={formData.identidade_militar}
-                  onChange={handleChange}
-                  inputProps={{ maxLength: 5 }}
-                  error={!!errors.identidade_militar}
-                  helperText={errors.identidade_militar}
-                  placeholder="Ex: 12345"
-                  required
-                />
-              </Grid>
 
               <Grid item xs={12} md={6}>
                 <TextField
@@ -380,25 +325,21 @@ const SolicitarCadastro = () => {
               </Grid>
 
               <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="Data de Incorporação"
-                  name="data_incorporacao"
-                  type="date"
-                  value={formData.data_incorporacao}
-                  onChange={handleChange}
-                  error={!!errors.data_incorporacao}
-                  helperText={errors.data_incorporacao}
-                  InputLabelProps={{ shrink: true }}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <CalendarIcon color="action" />
-                      </InputAdornment>
-                    ),
-                  }}
-                  required
-                />
+                <FormControl fullWidth>
+                  <InputLabel>Categoria CNH</InputLabel>
+                  <Select
+                    name="categoria_cnh"
+                    value={formData.categoria_cnh}
+                    onChange={handleChange}
+                    label="Categoria CNH"
+                  >
+                    {['A','B','AB','C','D','E'].map((cat) => (
+                      <MenuItem key={cat} value={cat}>
+                        {cat}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </Grid>
 
               {/* Contato */}
@@ -460,6 +401,48 @@ const SolicitarCadastro = () => {
                 </Typography>
                 <Divider sx={{ mb: 2 }} />
               </Grid>
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth error={!!errors.posto_graduacao} required>
+                  <InputLabel>Posto/Graduação</InputLabel>
+                  <Select
+                    name="posto_graduacao"
+                    value={formData.posto_graduacao}
+                    onChange={handleChange}
+                    label="Posto/Graduação"
+                  >
+                    {postosGraduacoes.map((posto) => (
+                      <MenuItem key={posto} value={posto}>
+                        {posto}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  {errors.posto_graduacao && (
+                    <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.5 }}>
+                      {errors.posto_graduacao}
+                    </Typography>
+                  )}
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Nome de Guerra"
+                  name="nome_guerra"
+                  value={formData.nome_guerra}
+                  onChange={handleChange}
+                  error={!!errors.nome_guerra}
+                  helperText={errors.nome_guerra}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <BadgeIcon color="action" />
+                      </InputAdornment>
+                    ),
+                  }}
+                  required
+                />
+              </Grid>
 
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth error={!!errors.unidade_id} required>
@@ -485,21 +468,40 @@ const SolicitarCadastro = () => {
               </Grid>
 
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth>
-                  <InputLabel>Categoria CNH</InputLabel>
-                  <Select
-                    name="categoria_cnh"
-                    value={formData.categoria_cnh}
-                    onChange={handleChange}
-                    label="Categoria CNH"
-                  >
-                    {['A','B','AB','C','D','E'].map((cat) => (
-                      <MenuItem key={cat} value={cat}>
-                        {cat}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                <TextField
+                  fullWidth
+                  label="Identidade Militar"
+                  name="identidade_militar"
+                  value={formData.identidade_militar}
+                  onChange={handleChange}
+                  inputProps={{ maxLength: 5 }}
+                  error={!!errors.identidade_militar}
+                  helperText={errors.identidade_militar}
+                  placeholder="Ex: 12345"
+                  required
+                />
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Data de Incorporação"
+                  name="data_incorporacao"
+                  type="date"
+                  value={formData.data_incorporacao}
+                  onChange={handleChange}
+                  error={!!errors.data_incorporacao}
+                  helperText={errors.data_incorporacao}
+                  InputLabelProps={{ shrink: true }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <CalendarIcon color="action" />
+                      </InputAdornment>
+                    ),
+                  }}
+                  required
+                />
               </Grid>
 
 
