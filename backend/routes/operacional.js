@@ -175,6 +175,12 @@ const loadCurrentAlaAssignments = async (unidadeId = null) => {
 
 const determineUnidadeId = (req) => req.unidade?.id || req.user?.unidade_lotacao_id || req.user?.unidade_id || null;
 
+const applyTenantFilter = (queryText, params, unidadeId, column = 'unidade_id') => {
+  if (!unidadeId) return queryText;
+  params.push(unidadeId);
+  return `${queryText} AND ${column} = $${params.length}`;
+};
+
 const criarNotificacao = async (client, usuarioId, titulo, mensagem, tipo, modulo, referenciaId = null) => {
   await client.query(
     `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id)
@@ -352,6 +358,9 @@ router.post('/alas/escalas', authorizeRoles('Administrador'), [
 
     const { data_inicio, ala_inicial, quantidade_servicos, observacoes, nome_base, alas } = req.body;
     const unidadeId = determineUnidadeId(req);
+    if (!unidadeId) {
+      return res.status(400).json({ error: 'Selecione uma unidade para gerar as escalas' });
+    }
     const usuarios = await fetchEligibleOperationalUsers(unidadeId);
     if (usuarios.length === 0) {
       return res.status(400).json({ error: 'Não há usuários operacionais cadastrados' });
@@ -468,6 +477,7 @@ router.get('/escalas', async (req, res) => {
   try {
     const { tipo, ativa, setor, data_inicio, data_fim, page = 1, limit = 10 } = req.query;
     const offset = (page - 1) * limit;
+    const unidadeId = determineUnidadeId(req);
 
     let queryText = `
       SELECT e.*, u.nome as criado_por_nome,
@@ -510,6 +520,8 @@ router.get('/escalas', async (req, res) => {
       params.push(data_fim);
     }
 
+    queryText = applyTenantFilter(queryText, params, unidadeId, 'e.unidade_id');
+
     queryText += `
       GROUP BY e.id, u.nome
       ORDER BY e.data_inicio DESC
@@ -529,14 +541,20 @@ router.get('/escalas', async (req, res) => {
 router.get('/escalas/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const unidadeId = determineUnidadeId(req);
 
-    const escalaResult = await query(
-      `SELECT e.*, u.nome as criado_por_nome
-       FROM escalas e
-       LEFT JOIN usuarios u ON e.created_by = u.id
-       WHERE e.id = $1`,
-      [id]
-    );
+    let escalaQuery = `
+      SELECT e.*, u.nome as criado_por_nome
+      FROM escalas e
+      LEFT JOIN usuarios u ON e.created_by = u.id
+      WHERE e.id = $1
+    `;
+    const escalaParams = [id];
+    if (unidadeId) {
+      escalaQuery = applyTenantFilter(escalaQuery, escalaParams, unidadeId, 'e.unidade_id');
+    }
+
+    const escalaResult = await query(escalaQuery, escalaParams);
 
     if (escalaResult.rows.length === 0) {
       return res.status(404).json({ error: 'Escala não encontrada' });
@@ -581,12 +599,16 @@ router.post('/escalas', authorizeRoles('Administrador', 'Chefe'), [
     const {
       nome, tipo, data_inicio, data_fim, turno, setor, observacoes
     } = req.body;
+    const unidadeId = determineUnidadeId(req);
+    if (!unidadeId) {
+      return res.status(400).json({ error: 'Selecione uma unidade para registrar a escala' });
+    }
 
     const result = await query(
-      `INSERT INTO escalas (nome, tipo, data_inicio, data_fim, turno, setor, observacoes, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO escalas (nome, tipo, data_inicio, data_fim, turno, setor, observacoes, created_by, unidade_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
-      [nome, tipo, data_inicio, data_fim, turno, setor, observacoes, req.user.id]
+      [nome, tipo, data_inicio, data_fim, turno, setor, observacoes, req.user.id, unidadeId]
     );
 
     res.status(201).json({
@@ -612,16 +634,21 @@ router.post('/escalas/:id/usuarios', authorizeRoles('Administrador', 'Chefe'), [
     }
 
     const { id } = req.params;
+    const unidadeId = determineUnidadeId(req);
     const { usuario_id, data_servico, turno, funcao, observacoes } = req.body;
 
     // Verificar se a escala existe
     const escalaResult = await query(
-      'SELECT id FROM escalas WHERE id = $1',
+      'SELECT id, unidade_id FROM escalas WHERE id = $1',
       [id]
     );
 
     if (escalaResult.rows.length === 0) {
       return res.status(404).json({ error: 'Escala não encontrada' });
+    }
+
+    if (unidadeId && escalaResult.rows[0].unidade_id !== unidadeId) {
+      return res.status(403).json({ error: 'Escala não pertence à unidade selecionada' });
     }
 
     // Verificar se o usuário já está escalado para esta data/turno
@@ -672,6 +699,7 @@ router.get('/trocas', async (req, res) => {
   try {
     const { status, usuario_id, page = 1, limit = 10 } = req.query;
     const offset = (page - 1) * limit;
+    const unidadeId = determineUnidadeId(req);
 
     let queryText = `
       SELECT t.*,
@@ -698,6 +726,8 @@ router.get('/trocas', async (req, res) => {
       queryText += ` AND (t.usuario_solicitante_id = $${paramCount} OR t.usuario_substituto_id = $${paramCount})`;
       params.push(usuario_id);
     }
+
+    queryText = applyTenantFilter(queryText, params, unidadeId, 't.unidade_id');
 
     queryText += `
       ORDER BY t.data_solicitacao DESC
@@ -728,30 +758,35 @@ router.post('/trocas', [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const {
-      escala_original_id, usuario_substituto_id, data_servico_original,
-      data_servico_troca, data_servico_compensacao, motivo
-    } = req.body;
+  const {
+    escala_original_id, usuario_substituto_id, data_servico_original,
+    data_servico_troca, data_servico_compensacao, motivo
+  } = req.body;
+  const unidadeId = determineUnidadeId(req);
+  if (!unidadeId) {
+    return res.status(400).json({ error: 'Selecione uma unidade para registrar a troca' });
+  }
 
-    // Verificar se a escala original existe e pertence ao usuário
-    const escalaResult = await query(
-      `SELECT eu.id
-       FROM escala_usuarios eu
-       LEFT JOIN trocas_servico t ON eu.troca_id = t.id AND t.status = 'pendente'
-       WHERE eu.id = $1 AND eu.usuario_id = $2 AND t.id IS NULL`,
-      [escala_original_id, req.user.id]
-    );
+  // Verificar se a escala original existe e pertence ao usuário
+  const escalaResult = await query(
+    `SELECT eu.id, e.unidade_id
+     FROM escala_usuarios eu
+     JOIN escalas e ON eu.escala_id = e.id
+     LEFT JOIN trocas_servico t ON eu.troca_id = t.id AND t.status = 'pendente'
+     WHERE eu.id = $1 AND eu.usuario_id = $2 AND t.id IS NULL${unidadeId ? ' AND e.unidade_id = $3' : ''}`,
+    unidadeId ? [escala_original_id, req.user.id, unidadeId] : [escala_original_id, req.user.id]
+  );
 
-    if (escalaResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Escala não encontrada ou não pertence ao usuário' });
-    }
-
+  if (escalaResult.rows.length === 0) {
+    return res.status(404).json({ error: 'Escala não encontrada ou não pertence ao usuário' });
+  }
+ 
     const result = await query(
       `INSERT INTO trocas_servico 
-       (usuario_solicitante_id, usuario_substituto_id, escala_original_id, data_servico_original, data_servico_troca, motivo)
-       VALUES ($1, $2, $3, $4, $5, $6)
+       (usuario_solicitante_id, usuario_substituto_id, escala_original_id, data_servico_original, data_servico_troca, motivo, unidade_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
-      [req.user.id, usuario_substituto_id, escala_original_id, data_servico_original, data_servico_troca, motivo]
+      [req.user.id, usuario_substituto_id, escala_original_id, data_servico_original, data_servico_troca, motivo, unidadeId]
     );
 
     if (data_servico_compensacao) {
@@ -802,12 +837,16 @@ router.post('/trocas/:id/confirmar', [
     const { id } = req.params;
     const { data_servico_compensacao } = req.body;
 
+    const unidadeId = determineUnidadeId(req);
     const trocaResult = await query('SELECT * FROM trocas_servico WHERE id = $1', [id]);
     if (trocaResult.rows.length === 0) {
       return res.status(404).json({ error: 'Troca não encontrada' });
     }
 
     const troca = trocaResult.rows[0];
+    if (unidadeId && troca.unidade_id !== unidadeId) {
+      return res.status(403).json({ error: 'Troca não pertence à unidade selecionada' });
+    }
     if (troca.status !== 'pendente') {
       return res.status(400).json({ error: 'Troca já foi processada' });
     }
@@ -850,12 +889,16 @@ router.put('/trocas/:id/responder', [
     const { id } = req.params;
     const { resposta, data_servico_compensacao } = req.body;
 
+    const unidadeId = determineUnidadeId(req);
     const trocaResult = await query('SELECT * FROM trocas_servico WHERE id = $1', [id]);
     if (trocaResult.rows.length === 0) {
       return res.status(404).json({ error: 'Troca não encontrada' });
     }
 
     const troca = trocaResult.rows[0];
+    if (unidadeId && troca.unidade_id !== unidadeId) {
+      return res.status(403).json({ error: 'Troca não pertence à unidade selecionada' });
+    }
     if (troca.status !== 'pendente') {
       return res.status(400).json({ error: 'Troca já foi processada' });
     }
@@ -901,13 +944,16 @@ router.put('/trocas/:id/status', authorizeRoles('Administrador', 'Chefe'), [
 
     const { id } = req.params;
     const { status } = req.body;
-
+    const unidadeId = determineUnidadeId(req);
     await transaction(async (client) => {
       // Buscar dados da troca
-      const trocaResult = await client.query(
-        'SELECT * FROM trocas_servico WHERE id = $1 AND status = $2',
-        [id, 'pendente']
-      );
+      let selectQuery = 'SELECT * FROM trocas_servico WHERE id = $1 AND status = $2';
+      const selectParams = [id, 'pendente'];
+      if (unidadeId) {
+        selectQuery += ' AND unidade_id = $3';
+        selectParams.push(unidadeId);
+      }
+      const trocaResult = await client.query(selectQuery, selectParams);
 
       if (trocaResult.rows.length === 0) {
         throw new Error('Troca não encontrada ou já processada');
@@ -974,6 +1020,7 @@ router.get('/extras', async (req, res) => {
   try {
     const { status, usuario_id, data_inicio, data_fim, page = 1, limit = 10 } = req.query;
     const offset = (page - 1) * limit;
+    const unidadeId = determineUnidadeId(req);
 
     let queryText = `
       SELECT se.*, u.nome as usuario_nome, u.matricula,
@@ -1010,6 +1057,8 @@ router.get('/extras', async (req, res) => {
       params.push(data_fim);
     }
 
+    queryText = applyTenantFilter(queryText, params, unidadeId, 'se.unidade_id');
+
     queryText += `
       ORDER BY se.data_servico DESC
       LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
@@ -1040,14 +1089,18 @@ router.post('/extras', [
     const {
       usuario_id, data_servico, turno, horas, tipo, descricao, valor
     } = req.body;
+    const unidadeId = determineUnidadeId(req);
+    if (!unidadeId) {
+      return res.status(400).json({ error: 'Selecione uma unidade para registrar o serviço extra' });
+    }
 
     const usuarioServicoId = usuario_id || req.user.id;
 
     const result = await query(
-      `INSERT INTO servicos_extra (usuario_id, data_servico, turno, horas, tipo, descricao, valor)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO servicos_extra (usuario_id, data_servico, turno, horas, tipo, descricao, valor, unidade_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
-      [usuarioServicoId, data_servico, turno, horas, tipo, descricao, valor]
+      [usuarioServicoId, data_servico, turno, horas, tipo, descricao, valor, unidadeId]
     );
 
     res.status(201).json({
@@ -1072,11 +1125,16 @@ router.put('/extras/:id/status', authorizeRoles('Administrador', 'Chefe'), [
 
     const { id } = req.params;
     const { status } = req.body;
+    const unidadeId = determineUnidadeId(req);
 
-    const result = await query(
-      'UPDATE servicos_extra SET status = $1, aprovado_por = $2 WHERE id = $3 RETURNING *',
-      [status, req.user.id, id]
-    );
+    const queryText = unidadeId
+      ? 'UPDATE servicos_extra SET status = $1, aprovado_por = $2 WHERE id = $3 AND unidade_id = $4 RETURNING *'
+      : 'UPDATE servicos_extra SET status = $1, aprovado_por = $2 WHERE id = $3 RETURNING *';
+    const queryParams = unidadeId
+      ? [status, req.user.id, id, unidadeId]
+      : [status, req.user.id, id];
+
+    const result = await query(queryText, queryParams);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Serviço extra não encontrado' });
