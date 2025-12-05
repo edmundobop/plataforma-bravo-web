@@ -521,11 +521,11 @@ router.get('/escalas', async (req, res) => {
     }
 
     queryText = applyTenantFilter(queryText, params, unidadeId, 'e.unidade_id');
-
+    const baseParamCount = params.length;
     queryText += `
       GROUP BY e.id, u.nome
       ORDER BY e.data_inicio DESC
-      LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
+      LIMIT $${baseParamCount + 1} OFFSET $${baseParamCount + 2}
     `;
     params.push(limit, offset);
 
@@ -728,10 +728,10 @@ router.get('/trocas', async (req, res) => {
     }
 
     queryText = applyTenantFilter(queryText, params, unidadeId, 't.unidade_id');
-
+    const baseParamCount = params.length;
     queryText += `
       ORDER BY t.data_solicitacao DESC
-      LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
+      LIMIT $${baseParamCount + 1} OFFSET $${baseParamCount + 2}
     `;
     params.push(limit, offset);
 
@@ -1058,10 +1058,10 @@ router.get('/extras', async (req, res) => {
     }
 
     queryText = applyTenantFilter(queryText, params, unidadeId, 'se.unidade_id');
-
+    const baseParamCount = params.length;
     queryText += `
       ORDER BY se.data_servico DESC
-      LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
+      LIMIT $${baseParamCount + 1} OFFSET $${baseParamCount + 2}
     `;
     params.push(limit, offset);
 
