@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Grid,
@@ -62,7 +62,7 @@ import {
   Cancel as CancelIcon,
   Visibility as ViewIcon,
 } from '@mui/icons-material';
-import { templateService } from '../services/api';
+import { templateService, uploadService } from '../services/api';
 import { useTenant } from '../contexts/TenantContext';
 
 const TemplateBuilder = () => {
@@ -106,10 +106,51 @@ const TemplateBuilder = () => {
   const [itemForm, setItemForm] = useState({
     nome: '',
     tipo: 'checkbox',
-    obrigatorio: false,
+    obrigatorio: true,
     imagem_url: ''
   });
   const [editingItemIndex, setEditingItemIndex] = useState(-1);
+
+  const categoryImageInputRef = useRef(null);
+  const itemImageInputRef = useRef(null);
+
+  const buildAbsoluteUrl = (relativeUrl) => {
+    if (!relativeUrl) return '';
+    if (/^https?:\/\//i.test(relativeUrl)) return relativeUrl;
+    const base = process.env.REACT_APP_API_BASE_URL || '';
+    const origin = base ? base.replace(/\/api$/,'') : 'http://localhost:5000';
+    return `${origin}${relativeUrl}`;
+  };
+
+  const handleUploadCategoriaFoto = async (file) => {
+    try {
+      setLoading(true);
+      const res = await uploadService.uploadFoto(file);
+      const url = res?.data?.url || '';
+      const absolute = buildAbsoluteUrl(url);
+      setCategoryForm({ ...categoryForm, imagem_url: absolute });
+      setSuccess('Foto enviada com sucesso');
+    } catch (err) {
+      setError('Erro ao enviar foto');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUploadItemFoto = async (file) => {
+    try {
+      setLoading(true);
+      const res = await uploadService.uploadFoto(file);
+      const url = res?.data?.url || '';
+      const absolute = buildAbsoluteUrl(url);
+      setItemForm({ ...itemForm, imagem_url: absolute });
+      setSuccess('Foto enviada com sucesso');
+    } catch (err) {
+      setError('Erro ao enviar foto');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Tipos de viatura disponíveis
   const tiposViatura = [
@@ -354,7 +395,7 @@ const TemplateBuilder = () => {
     if (itemIndex >= 0) {
       setItemForm(categoryForm.itens[itemIndex]);
     } else {
-      setItemForm({ nome: '', tipo: 'checkbox', obrigatorio: false, imagem_url: '' });
+      setItemForm({ nome: '', tipo: 'checkbox', obrigatorio: true, imagem_url: '' });
     }
     
     setItemDialog(true);
@@ -371,7 +412,7 @@ const TemplateBuilder = () => {
     
     setCategoryForm({ ...categoryForm, itens: newItens });
     setItemDialog(false);
-    setItemForm({ nome: '', tipo: 'checkbox', obrigatorio: false, imagem_url: '' });
+    setItemForm({ nome: '', tipo: 'checkbox', obrigatorio: true, imagem_url: '' });
   };
 
   const handleDeleteItem = (itemIndex) => {
@@ -908,13 +949,35 @@ const TemplateBuilder = () => {
               />
             </Grid>
             <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="URL da Imagem (opcional)"
-                value={categoryForm.imagem_url}
-                onChange={(e) => setCategoryForm({ ...categoryForm, imagem_url: e.target.value })}
-                placeholder="https://exemplo.com/imagem.jpg"
-              />
+              <Box sx={{ display: 'flex', alignItems: 'stretch', gap: 1 }}>
+                <TextField
+                  fullWidth
+                  label="URL da Imagem (opcional)"
+                  value={categoryForm.imagem_url}
+                  onChange={(e) => setCategoryForm({ ...categoryForm, imagem_url: e.target.value })}
+                  placeholder="https://exemplo.com/imagem.jpg"
+                  sx={{ flex: 1 }}
+                  size={isMobile ? 'small' : 'medium'}
+                />
+                <Button
+                  variant="outlined"
+                  onClick={() => categoryImageInputRef.current && categoryImageInputRef.current.click()}
+                  sx={{ height: isMobile ? 40 : 56, minWidth: isMobile ? 40 : 56 }}
+                >
+                  <PhotoIcon />
+                </Button>
+                <input
+                  ref={categoryImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files && e.target.files[0];
+                    if (file) handleUploadCategoriaFoto(file);
+                    e.target.value = null;
+                  }}
+                />
+              </Box>
             </Grid>
 
           </Grid>
@@ -997,13 +1060,35 @@ const TemplateBuilder = () => {
               />
             </Grid>
             <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="URL da Imagem do Item (opcional)"
-                value={itemForm.imagem_url}
-                onChange={(e) => setItemForm({ ...itemForm, imagem_url: e.target.value })}
-                placeholder="https://exemplo.com/imagem-item.jpg"
-              />
+              <Box sx={{ display: 'flex', alignItems: 'stretch', gap: 1 }}>
+                <TextField
+                  fullWidth
+                  label="URL da Imagem do Item (opcional)"
+                  value={itemForm.imagem_url}
+                  onChange={(e) => setItemForm({ ...itemForm, imagem_url: e.target.value })}
+                  placeholder="https://exemplo.com/imagem-item.jpg"
+                  sx={{ flex: 1 }}
+                  size={isMobile ? 'small' : 'medium'}
+                />
+                <Button
+                  variant="outlined"
+                  onClick={() => itemImageInputRef.current && itemImageInputRef.current.click()}
+                  sx={{ height: isMobile ? 40 : 56, minWidth: isMobile ? 40 : 56 }}
+                >
+                  <PhotoIcon />
+                </Button>
+                <input
+                  ref={itemImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files && e.target.files[0];
+                    if (file) handleUploadItemFoto(file);
+                    e.target.value = null;
+                  }}
+                />
+              </Box>
             </Grid>
             <Grid item xs={12} md={6}>
               <FormControl fullWidth>
