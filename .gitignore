@@ -108,6 +108,7 @@ uploads/
 # Database
 *.sqlite
 *.db
+*.sql
 
 # Temporary files
 tmp/

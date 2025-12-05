@@ -1131,7 +1131,7 @@ const Checklists = () => {
               <TableCell>Combustível</TableCell>
               <TableCell>Situação</TableCell>
               <TableCell>Status</TableCell>
-              <TableCell>Usuário</TableCell>
+              <TableCell>Responsável</TableCell>
               <TableCell>Ações</TableCell>
             </TableRow>
           </TableHead>
@@ -1235,7 +1235,7 @@ const Checklists = () => {
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <PersonIcon sx={{ color: 'text.secondary', fontSize: 16 }} />
                       <Typography variant="body2">
-                        {checklist.usuario_nome}
+                        {checklist.usuario_autenticado || checklist.usuario_nome}
                       </Typography>
                     </Box>
                   </TableCell>
@@ -1295,6 +1295,12 @@ const Checklists = () => {
                       <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                         <Chip label={checklist.tipo_checklist || 'N/A'} size="small" variant="outlined" />
                         <Chip label={checklist.ala_servico || 'N/A'} size="small" variant="outlined" />
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                          <PersonIcon sx={{ color: 'text.secondary', fontSize: 16 }} />
+                          <Typography variant="caption" color="text.secondary">
+                            {checklist.usuario_autenticado || checklist.usuario_nome}
+                          </Typography>
+                        </Box>
                       </Box>
                     </CardContent>
                   </Card>

@@ -11,6 +11,7 @@ const { body, validationResult, query: expressQuery, param } = require('express-
 const { query } = require('../config/database');
 const { authenticateToken, authorizeRoles } = require('../middleware/auth');
 const { optionalTenant } = require('../middleware/tenant');
+const { columnExists } = require('../utils/schema');
 const bcrypt = require('bcryptjs');
 
 const router = express.Router();
@@ -525,6 +526,12 @@ router.get('/viaturas', async (req, res) => {
     const { page = 1, limit = 10, viatura_id, status, data_inicio, data_fim, tipo_checklist, ala_servico } = req.query;
     const offset = (page - 1) * limit;
 
+    const hasUsuarioAutenticado = await columnExists('checklist_viaturas', 'usuario_autenticado');
+    const hasUsuarioAutenticacao = await columnExists('checklist_viaturas', 'usuario_autenticacao');
+    const responsavelSelect = hasUsuarioAutenticado
+      ? 'c.usuario_autenticado'
+      : (hasUsuarioAutenticacao ? 'c.usuario_autenticacao' : 'NULL');
+
     let queryText = `
       SELECT 
              c.id,
@@ -543,6 +550,7 @@ router.get('/viaturas', async (req, res) => {
              v.tipo as viatura_tipo,
              u.nome as usuario_nome,
              u.matricula as usuario_matricula,
+             ${responsavelSelect} as usuario_autenticado,
              c.situacao,
              t.nome as template_nome,
              t.tipo_viatura as template_tipo
