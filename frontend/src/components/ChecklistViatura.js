@@ -253,9 +253,6 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   const handleItemStatusChange = (index, status) => {
     const newItens = [...itensChecklist];
     newItens[index].status = status;
-    if (status === 'ok') {
-      newItens[index].observacoes = '';
-    }
     setItensChecklist(newItens);
   };
 
@@ -373,18 +370,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         const currentCategory = categories[currentCategoryIndex];
         const items = grouped[currentCategory] || [];
 
-        // Validação simples: itens obrigatórios com alteração exigem observação
-        const missingObs = items.filter(
-          (it) => it.obrigatorio && it.status === 'com_alteracao' && (!it.observacoes || !it.observacoes.trim())
-        );
-        if (missingObs.length > 0) {
-          setError(
-            `Preencha observações para itens obrigatórios com alteração: ${missingObs
-              .map((i) => i.nome_item)
-              .join(', ')}`
-          );
-          return;
-        }
+        // Observações deixam de ser obrigatórias; nenhuma validação aqui
 
         // Avançar para próxima categoria ou seguir para autenticação
         if (currentCategoryIndex < categories.length - 1) {
@@ -803,19 +789,17 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
                     </Button>
                   </Box>
 
-                  {item.status === 'com_alteracao' && (
-                    <TextField
-                      fullWidth
-                      label="Observações"
-                      multiline
-                      rows={3}
-                      value={item.observacoes}
-                      onChange={(e) => handleItemObservacaoChange(item.originalIndex, e.target.value)}
-                      sx={{ mt: 2 }}
-                      placeholder="Descreva o problema encontrado..."
-                      size="medium"
-                    />
-                  )}
+                  <TextField
+                    fullWidth
+                    label="Observações"
+                    multiline
+                    rows={3}
+                    value={item.observacoes}
+                    onChange={(e) => handleItemObservacaoChange(item.originalIndex, e.target.value)}
+                    sx={{ mt: 2 }}
+                    placeholder="Descreva o problema encontrado..."
+                    size="medium"
+                  />
 
                   <Box mt={2}>
                     <Box display="flex" alignItems="center" mb={1} gap={1.25}>
