@@ -30,7 +30,8 @@ import {
   PhotoCamera as PhotoIcon,
   Delete as DeleteIcon,
   Save as SaveIcon,
-  Send as SendIcon
+  Send as SendIcon,
+  HelpOutline as HelpIcon
 } from '@mui/icons-material';
 import { frotaService, checklistService, uploadService, templateService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -58,6 +59,10 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   const [templates, setTemplates] = useState([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [dataHora] = useState(new Date());
+
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [helpTitle, setHelpTitle] = useState('');
+  const [helpImageUrl, setHelpImageUrl] = useState('');
   
   // Itens do checklist
   const [itensChecklist, setItensChecklist] = useState([
@@ -330,7 +335,8 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
                   fotos: [],
                   ordem: ordem++,
                   obrigatorio: item.obrigatorio || false,
-                  tipo: item.tipo || 'checkbox'
+                  tipo: item.tipo || 'checkbox',
+                  imagem_url: item.imagem_url || ''
                 });
               });
             }
@@ -340,15 +346,14 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         // Atualizar itens do checklist com os itens do template
         if (itensDoTemplate.length > 0) {
           setItensChecklist(itensDoTemplate);
-          // Definir páginas por categoria na ordem do template
           let cats = [];
           if (templateCompleto.categorias && templateCompleto.categorias.length > 0) {
             cats = templateCompleto.categorias
               .filter(c => Array.isArray(c.itens) && c.itens.length > 0)
-              .map(c => c.nome || 'Sem Categoria');
+              .map(c => ({ nome: c.nome || 'Sem Categoria', imagem_url: c.imagem_url || '' }));
           } else {
             const grouped = groupItemsByCategory(itensDoTemplate);
-            cats = Object.keys(grouped);
+            cats = Object.keys(grouped).map(nome => ({ nome, imagem_url: '' }));
           }
           setCategories(cats);
           setCurrentCategoryIndex(0);
@@ -716,8 +721,9 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
     const groupedItems = groupItemsByCategory(itensChecklist);
     const totalCategories = categories.length || Object.keys(groupedItems).length;
     const currentCategoryName = categories.length > 0
-      ? categories[currentCategoryIndex]
+      ? (categories[currentCategoryIndex]?.nome || '')
       : Object.keys(groupedItems)[0];
+    const currentCategoryObj = categories.length > 0 ? categories[currentCategoryIndex] : null;
 
     const items = groupedItems[currentCategoryName] || [];
 
@@ -734,9 +740,20 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
           {/* Header da Categoria */}
           <Grid item xs={12}>
             <Box sx={{ my: 2, p: 2, backgroundColor: '#f5f5f5', borderRadius: 1, border: '1px solid #e0e0e0' }}>
-              <Typography variant="h6" sx={{ color: 'primary.main', fontWeight: 'bold', textAlign: 'center', letterSpacing: '1px', textTransform: 'uppercase' }}>
-                {currentCategoryName}
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                {currentCategoryObj?.imagem_url && (
+                  <IconButton
+                    size={isMobile ? 'small' : 'medium'}
+                    onClick={() => { setHelpTitle(currentCategoryName); setHelpImageUrl(currentCategoryObj.imagem_url); setHelpOpen(true); }}
+                    aria-label="Ajuda da categoria"
+                  >
+                    <HelpIcon color="primary" />
+                  </IconButton>
+                )}
+                <Typography variant="h6" sx={{ color: 'primary.main', fontWeight: 'bold', letterSpacing: '1px', textTransform: 'uppercase' }}>
+                  {currentCategoryName}
+                </Typography>
+              </Box>
               <Divider sx={{ mt: 1 }} />
             </Box>
           </Grid>
@@ -745,8 +762,8 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
           {items.map((item) => (
             <Grid item xs={12} key={item.originalIndex}>
               <Card variant="outlined">
-                <CardContent sx={{ p: isMobile ? 2.5 : 3.5 }}>
-                  <Box mb={2} sx={{ bgcolor: 'error.main', color: 'error.contrastText', px: isMobile ? 2 : 2.5, py: isMobile ? 1 : 1.25, borderRadius: 1 }}>
+                <CardContent>
+                  <Box mb={2}>
                     <Typography variant="subtitle1" fontWeight="bold">
                       {item.nome_item}
                     </Typography>
@@ -901,7 +918,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   );
 
   return (
-    <Dialog open={open} onClose={handleClose} fullScreen={isMobile} maxWidth="lg" fullWidth>
+    <Dialog open={open} onClose={handleClose} fullScreen={isMobile} maxWidth="md" fullWidth>
       <DialogTitle>
         {step === 2 && (Array.isArray(categories) && categories.length > 0)
           ? `Checklist de Viatura - Categoria ${currentCategoryIndex + 1} de ${categories.length}`
@@ -978,6 +995,20 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         )}
       </DialogActions>
     </Dialog>
+    <Dialog open={helpOpen} onClose={() => setHelpOpen(false)} fullScreen={isMobile} maxWidth={isMobile ? false : 'sm'} fullWidth={!isMobile}>
+      <DialogTitle>{helpTitle}</DialogTitle>
+      <DialogContent dividers>
+        {helpImageUrl && (
+          <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+            <img src={helpImageUrl} alt={helpTitle} style={{ maxWidth: '100%', height: 'auto' }} />
+          </Box>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setHelpOpen(false)}>Fechar</Button>
+      </DialogActions>
+    </Dialog>
+    </>
   );
 };
 
