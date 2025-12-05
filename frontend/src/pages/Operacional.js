@@ -68,7 +68,9 @@ import {
   FileDownload as FileDownloadIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
-import { operacionalService } from '../services/api';
+import { useNotifications } from '../contexts/NotificationContext';
+import { useTenant } from '../contexts/TenantContext';
+import { notificacoesService, usuariosService, operacionalService } from '../services/api';
 import {
   format,
   parseISO,
@@ -101,6 +103,8 @@ const INITIAL_ALA_BOARD = {
 const Operacional = () => {
   const theme = useTheme();
   const { user } = useAuth();
+  const { markAsRead, markAllAsRead } = useNotifications();
+  const { currentUnit } = useTenant();
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -191,9 +195,13 @@ const Operacional = () => {
 
   useEffect(() => {
     loadData();
-  }, [activeTab]);
+  }, [activeTab, currentUnit?.id]);
 
   const loadData = () => {
+    if (!currentUnit?.id) {
+      setError('Selecione uma unidade para carregar o operacional');
+      return;
+    }
     switch (activeTab) {
       case 0:
         loadAlas();
@@ -213,6 +221,10 @@ const Operacional = () => {
   };
 
   const loadEscalas = async () => {
+    if (!currentUnit?.id) {
+      setError('Selecione uma unidade para carregar as escalas');
+      return;
+    }
     try {
       setEscalasLoading(true);
       const response = await operacionalService.getEscalas(escalasFilters);
@@ -250,6 +262,10 @@ const Operacional = () => {
   };
 
   const loadTrocas = async () => {
+    if (!currentUnit?.id) {
+      setError('Selecione uma unidade para carregar as trocas');
+      return;
+    }
     try {
       setTrocasLoading(true);
       const response = await operacionalService.getTrocas(trocasFilters);
@@ -273,6 +289,10 @@ const Operacional = () => {
   };
 
   const loadExtras = async () => {
+    if (!currentUnit?.id) {
+      setError('Selecione uma unidade para carregar os serviços extras');
+      return;
+    }
     try {
       setExtrasLoading(true);
       const response = await operacionalService.getServicosExtra(extrasFilters);
@@ -287,6 +307,10 @@ const Operacional = () => {
   };
 
   const loadAlas = async () => {
+    if (!currentUnit?.id) {
+      setError('Selecione uma unidade para carregar as alas');
+      return;
+    }
     try {
       setAlasLoading(true);
       setError('');
@@ -1793,6 +1817,12 @@ const Operacional = () => {
       {successMessage && (
         <Alert severity="success" sx={{ mb: 3 }} onClose={() => setSuccessMessage('')}>
           {successMessage}
+        </Alert>
+      )}
+
+      {!currentUnit && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          Selecione uma unidade no topo da tela para carregar o conteúdo do operacional.
         </Alert>
       )}
 

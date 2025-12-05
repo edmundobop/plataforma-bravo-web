@@ -15,9 +15,6 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  RadioGroup,
-  FormControlLabel,
-  Radio,
   IconButton,
   Alert,
   CircularProgress,
@@ -30,8 +27,6 @@ import {
   useMediaQuery
 } from '@mui/material';
 import {
-  Warning as WarningIcon,
-  CheckCircle as CheckIcon,
   PhotoCamera as PhotoIcon,
   Delete as DeleteIcon,
   Save as SaveIcon,
@@ -258,9 +253,6 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   const handleItemStatusChange = (index, status) => {
     const newItens = [...itensChecklist];
     newItens[index].status = status;
-    if (status === 'ok') {
-      newItens[index].observacoes = '';
-    }
     setItensChecklist(newItens);
   };
 
@@ -378,18 +370,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         const currentCategory = categories[currentCategoryIndex];
         const items = grouped[currentCategory] || [];
 
-        // Validação simples: itens obrigatórios com alteração exigem observação
-        const missingObs = items.filter(
-          (it) => it.obrigatorio && it.status === 'com_alteracao' && (!it.observacoes || !it.observacoes.trim())
-        );
-        if (missingObs.length > 0) {
-          setError(
-            `Preencha observações para itens obrigatórios com alteração: ${missingObs
-              .map((i) => i.nome_item)
-              .join(', ')}`
-          );
-          return;
-        }
+        // Observações deixam de ser obrigatórias; nenhuma validação aqui
 
         // Avançar para próxima categoria ou seguir para autenticação
         if (currentCategoryIndex < categories.length - 1) {
@@ -540,7 +521,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   };
 
   const renderStep1 = () => (
-    <Grid container spacing={isMobile ? 2 : 3}>
+    <Grid container spacing={isMobile ? 3 : 4}>
       <Grid item xs={12}>
         <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', letterSpacing: '0.5px' }}>
           Dados Iniciais do Checklist
@@ -548,7 +529,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
       </Grid>
       
       <Grid item xs={12}>
-        <FormControl fullWidth required>
+        <FormControl fullWidth required size="medium">
           <InputLabel>Viatura</InputLabel>
           <Select
             value={selectedViatura?.id || ''}
@@ -587,6 +568,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
           onChange={(e) => setKmInicial(e.target.value)}
           required
           inputProps={{ min: 0, inputMode: 'numeric', pattern: '[0-9]*' }}
+          size="medium"
         />
       </Grid>
       
@@ -607,16 +589,18 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
           required
           inputProps={{ min: 0, max: 100, inputMode: 'numeric', pattern: '[0-9]*' }}
           helperText="Digite um valor entre 0 e 100"
+          size="medium"
         />
       </Grid>
       
       <Grid item xs={12} sm={6}>
-        <FormControl fullWidth required>
+        <FormControl fullWidth required size="medium">
           <InputLabel>Ala de Serviço</InputLabel>
           <Select
             value={alaServico}
             onChange={(e) => setAlaServico(e.target.value)}
             label="Ala de Serviço"
+            size="medium"
           >
             <MenuItem key="Alpha" value="Alpha">Alpha</MenuItem>
             <MenuItem key="Bravo" value="Bravo">Bravo</MenuItem>
@@ -628,13 +612,14 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
       </Grid>
       
       <Grid item xs={12} sm={6}>
-        <FormControl fullWidth required>
+        <FormControl fullWidth required size="medium">
           <InputLabel>Tipo de Checklist</InputLabel>
           <Select
             value={tipoChecklist}
             onChange={(e) => setTipoChecklist(e.target.value)}
             label="Tipo de Checklist"
             disabled={!!prefill}
+            size="medium"
           >
             <MenuItem key="Diário" value="Diário">Checklist Diário</MenuItem>
             <MenuItem key="Semanal" value="Semanal">Checklist Semanal</MenuItem>
@@ -649,7 +634,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
       </Grid>
       
       <Grid item xs={12}>
-        <FormControl fullWidth required>
+        <FormControl fullWidth required size="medium">
           <InputLabel>Modelo de Checklist</InputLabel>
           <Select
             value={selectedTemplate?.id || ''}
@@ -659,6 +644,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
             }}
             label="Modelo de Checklist"
             disabled={templatesLoading || !!prefill || !selectedViatura}
+            size="medium"
           >
             {templatesLoading ? (
               <MenuItem key="loading" disabled>
@@ -707,6 +693,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
               cursor: 'default'
             }
           }}
+          size="medium"
         />
       </Grid>
     </Grid>
@@ -743,7 +730,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
           Categoria {Math.min(currentCategoryIndex + 1, totalCategories)} de {totalCategories}: {currentCategoryName}
         </Typography>
 
-        <Grid container spacing={isMobile ? 1.5 : 2} sx={{ mt: 1 }}>
+        <Grid container spacing={isMobile ? 2 : 3} sx={{ mt: 1 }}>
           {/* Header da Categoria */}
           <Grid item xs={12}>
             <Box sx={{ my: 2, p: 2, backgroundColor: '#f5f5f5', borderRadius: 1, border: '1px solid #e0e0e0' }}>
@@ -758,61 +745,91 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
           {items.map((item) => (
             <Grid item xs={12} key={item.originalIndex}>
               <Card variant="outlined">
-                <CardContent>
-                  <Box mb={2}>
+                <CardContent sx={{ p: isMobile ? 2.5 : 3.5 }}>
+                  <Box mb={2} sx={{ bgcolor: 'error.main', color: 'error.contrastText', px: isMobile ? 2 : 2.5, py: isMobile ? 1 : 1.25, borderRadius: 1 }}>
                     <Typography variant="subtitle1" fontWeight="bold">
                       {item.nome_item}
                     </Typography>
                   </Box>
 
-                  <RadioGroup row={!isMobile} value={item.status} onChange={(e) => handleItemStatusChange(item.originalIndex, e.target.value)}>
-                    <FormControlLabel
-                      value="ok"
-                      control={<Radio color="success" />}
-                      label={<Box display="flex" alignItems="center"><CheckIcon color="success" sx={{ mr: 1 }} />OK</Box>}
-                    />
-                    <FormControlLabel
-                      value="com_alteracao"
-                      control={<Radio color="warning" />}
-                      label={<Box display="flex" alignItems="center"><WarningIcon color="warning" sx={{ mr: 1 }} />Com Alteração</Box>}
-                    />
-                  </RadioGroup>
+                  <Box display="flex" gap={isMobile ? 1.5 : 2} mb={2}>
+                    <Button
+                      variant={item.status === 'ok' ? 'contained' : 'outlined'}
+                      color="success"
+                      onClick={() => handleItemStatusChange(item.originalIndex, 'ok')}
+                      disableElevation
+                      size="large"
+                      sx={{
+                        flex: 1,
+                        borderRadius: 2,
+                        py: isMobile ? 1.5 : 1.25,
+                        fontSize: isMobile ? 16 : 16,
+                        fontWeight: 600,
+                        ...(item.status !== 'ok' ? { bgcolor: 'common.white' } : { color: 'common.white' })
+                      }}
+                    >
+                      OK
+                    </Button>
+                    <Button
+                      variant={item.status === 'com_alteracao' ? 'contained' : 'outlined'}
+                      color="warning"
+                      onClick={() => handleItemStatusChange(item.originalIndex, 'com_alteracao')}
+                      disableElevation
+                      size="large"
+                      sx={{
+                        flex: 1,
+                        borderRadius: 2,
+                        py: isMobile ? 1.5 : 1.25,
+                        fontSize: isMobile ? 16 : 16,
+                        fontWeight: 600,
+                        ...(item.status !== 'com_alteracao' ? { bgcolor: 'common.white' } : { color: 'common.white' })
+                      }}
+                    >
+                      Com Alteração
+                    </Button>
+                  </Box>
 
-                  {item.status === 'com_alteracao' && (
-                    <TextField
-                      fullWidth
-                      label="Observações"
-                      multiline
-                      rows={2}
-                      value={item.observacoes}
-                      onChange={(e) => handleItemObservacaoChange(item.originalIndex, e.target.value)}
-                      sx={{ mt: 2 }}
-                      placeholder="Descreva o problema encontrado..."
-                    />
-                  )}
+                  <TextField
+                    fullWidth
+                    label="Observações"
+                    multiline
+                    rows={3}
+                    value={item.observacoes}
+                    onChange={(e) => handleItemObservacaoChange(item.originalIndex, e.target.value)}
+                    sx={{ mt: 2 }}
+                    placeholder="Descreva o problema encontrado..."
+                    size="medium"
+                  />
 
                   <Box mt={2}>
-                    <Box display="flex" alignItems="center" mb={1}>
-                      <Typography variant="body2" sx={{ mr: 2 }}>
+                    <Box display="flex" alignItems="center" mb={1} gap={1.25}>
+                      <Typography variant="body1" sx={{ mr: 1, fontSize: isMobile ? 16 : 18, fontWeight: 500 }}>
                         Fotos:
                       </Typography>
                       <input accept="image/*" capture="environment" style={{ display: 'none' }} id={`photo-upload-${item.originalIndex}`} multiple type="file" onChange={(e) => handlePhotoUpload(item.originalIndex, e)} />
                       <label htmlFor={`photo-upload-${item.originalIndex}`}>
-                        <IconButton color="primary" component="span">
-                          <PhotoIcon />
-                        </IconButton>
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          component="span"
+                          size="large"
+                          startIcon={<PhotoIcon sx={{ fontSize: isMobile ? 24 : 24 }} />}
+                          sx={{ borderRadius: 2, py: isMobile ? 1.5 : 1.25, fontSize: isMobile ? 16 : 16, fontWeight: 600 }}
+                        >
+                          Adicionar Foto
+                        </Button>
                       </label>
                     </Box>
 
                     {item.fotos && item.fotos.length > 0 && (
-                      <ImageList cols={isMobile ? 2 : 3} rowHeight={isMobile ? 90 : 100}>
+                      <ImageList cols={isMobile ? 2 : 3} rowHeight={isMobile ? 160 : 180}>
                         {item.fotos.map((foto, photoIndex) => (
                           <ImageListItem key={photoIndex}>
-                            <img src={foto.url} alt={foto.name} loading="lazy" style={{ height: 100, objectFit: 'cover' }} />
+                            <img src={foto.url} alt={foto.name} loading="lazy" style={{ height: isMobile ? 160 : 180, objectFit: 'cover' }} />
                             <ImageListItemBar
                               actionIcon={
-                                <IconButton sx={{ color: 'rgba(255, 255, 255, 0.54)' }} onClick={() => handleRemovePhoto(item.originalIndex, photoIndex)}>
-                                  <DeleteIcon />
+                                <IconButton sx={{ color: 'rgba(255, 255, 255, 0.74)' }} size="large" onClick={() => handleRemovePhoto(item.originalIndex, photoIndex)}>
+                                  <DeleteIcon sx={{ fontSize: isMobile ? 22 : 24 }} />
                                 </IconButton>
                               }
                             />
@@ -832,7 +849,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
 
 
   const renderStep3 = () => (
-    <Grid container spacing={3}>
+    <Grid container spacing={isMobile ? 3 : 4}>
       <Grid item xs={12}>
         <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', letterSpacing: '0.5px' }}>
           Autenticação para Finalização
@@ -850,6 +867,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
           disabled
           variant="filled"
           helperText="Usuário logado no sistema"
+          size="medium"
         />
       </Grid>
       
@@ -876,20 +894,21 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
           required
           placeholder="Digite sua senha para confirmar"
           autoFocus
+          size="medium"
         />
       </Grid>
     </Grid>
   );
 
   return (
-    <Dialog open={open} onClose={handleClose} fullScreen={isMobile} maxWidth="md" fullWidth>
+    <Dialog open={open} onClose={handleClose} fullScreen={isMobile} maxWidth="lg" fullWidth>
       <DialogTitle>
         {step === 2 && (Array.isArray(categories) && categories.length > 0)
           ? `Checklist de Viatura - Categoria ${currentCategoryIndex + 1} de ${categories.length}`
           : `Checklist de Viatura - Passo ${step} de 3`}
       </DialogTitle>
       
-      <DialogContent sx={{ p: isMobile ? 1.5 : 3 }}>
+      <DialogContent sx={{ p: isMobile ? 2 : 4 }}>
         {/* Barra de Progresso */}
         {(function() {
           const grouped = groupItemsByCategory(itensChecklist);
@@ -931,15 +950,15 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         {step === 3 && renderStep3()}
       </DialogContent>
       
-      <DialogActions sx={{ position: isMobile ? 'sticky' : 'static', bottom: 0, bgcolor: isMobile ? 'background.paper' : undefined, zIndex: 1 }}>
-        <Button onClick={handleClose}>Cancelar</Button>
+      <DialogActions sx={{ position: isMobile ? 'sticky' : 'static', bottom: 0, bgcolor: isMobile ? 'background.paper' : undefined, zIndex: 1, p: isMobile ? 1.5 : 2 }}>
+        <Button onClick={handleClose} size="large" fullWidth={isMobile}>Cancelar</Button>
         
         {step > 1 && (
-          <Button onClick={handleBack}>Voltar</Button>
+          <Button onClick={handleBack} size="large" fullWidth={isMobile}>Voltar</Button>
         )}
 
         {step < 3 ? (
-          <Button onClick={handleNext} variant="contained" startIcon={<SaveIcon />}>
+          <Button onClick={handleNext} variant="contained" size="large" startIcon={<SaveIcon />} fullWidth={isMobile}>
             {step === 2 && (Array.isArray(categories) && categories.length > 0) && currentCategoryIndex < categories.length - 1
               ? 'Próxima Categoria'
               : 'Próximo'}
@@ -951,6 +970,8 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
             disabled={loading}
             startIcon={loading ? <CircularProgress size={20} /> : <SendIcon />}
             type="button"
+            size="large"
+            fullWidth={isMobile}
           >
             {loading ? 'Finalizando...' : 'Finalizar Checklist'}
           </Button>
