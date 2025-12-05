@@ -106,7 +106,8 @@ const TemplateBuilder = () => {
   const [itemForm, setItemForm] = useState({
     nome: '',
     tipo: 'checkbox',
-    obrigatorio: false
+    obrigatorio: false,
+    imagem_url: ''
   });
   const [editingItemIndex, setEditingItemIndex] = useState(-1);
 
@@ -353,7 +354,7 @@ const TemplateBuilder = () => {
     if (itemIndex >= 0) {
       setItemForm(categoryForm.itens[itemIndex]);
     } else {
-      setItemForm({ nome: '', tipo: 'checkbox', obrigatorio: false });
+      setItemForm({ nome: '', tipo: 'checkbox', obrigatorio: false, imagem_url: '' });
     }
     
     setItemDialog(true);
@@ -370,7 +371,7 @@ const TemplateBuilder = () => {
     
     setCategoryForm({ ...categoryForm, itens: newItens });
     setItemDialog(false);
-    setItemForm({ nome: '', tipo: 'checkbox', obrigatorio: false });
+    setItemForm({ nome: '', tipo: 'checkbox', obrigatorio: false, imagem_url: '' });
   };
 
   const handleDeleteItem = (itemIndex) => {
@@ -996,6 +997,15 @@ const TemplateBuilder = () => {
               />
             </Grid>
             <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="URL da Imagem do Item (opcional)"
+                value={itemForm.imagem_url}
+                onChange={(e) => setItemForm({ ...itemForm, imagem_url: e.target.value })}
+                placeholder="https://exemplo.com/imagem-item.jpg"
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
               <FormControl fullWidth>
                 <InputLabel>Tipo do Item</InputLabel>
                 <Select

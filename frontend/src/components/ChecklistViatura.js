@@ -30,7 +30,8 @@ import {
   PhotoCamera as PhotoIcon,
   Delete as DeleteIcon,
   Save as SaveIcon,
-  Send as SendIcon
+  Send as SendIcon,
+  HelpOutline as HelpIcon
 } from '@mui/icons-material';
 import { frotaService, checklistService, uploadService, templateService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -58,6 +59,10 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   const [templates, setTemplates] = useState([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [dataHora] = useState(new Date());
+
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [helpTitle, setHelpTitle] = useState('');
+  const [helpImageUrl, setHelpImageUrl] = useState('');
   
   // Itens do checklist
   const [itensChecklist, setItensChecklist] = useState([
@@ -330,7 +335,8 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
                   fotos: [],
                   ordem: ordem++,
                   obrigatorio: item.obrigatorio || false,
-                  tipo: item.tipo || 'checkbox'
+                  tipo: item.tipo || 'checkbox',
+                  imagem_url: item.imagem_url || ''
                 });
               });
             }
@@ -750,6 +756,16 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
                     <Typography variant="subtitle1" fontWeight="bold">
                       {item.nome_item}
                     </Typography>
+                    {item.imagem_url && (
+                      <IconButton
+                        size={isMobile ? 'small' : 'medium'}
+                        onClick={() => { setHelpTitle(item.nome_item); setHelpImageUrl(item.imagem_url); setHelpOpen(true); }}
+                        sx={{ ml: 1 }}
+                        aria-label="Ajuda do item"
+                      >
+                        <HelpIcon sx={{ color: 'common.white' }} />
+                      </IconButton>
+                    )}
                   </Box>
 
                   <Box display="flex" gap={isMobile ? 1.5 : 2} mb={2}>
@@ -976,6 +992,19 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
             {loading ? 'Finalizando...' : 'Finalizar Checklist'}
           </Button>
         )}
+      </DialogActions>
+    </Dialog>
+    <Dialog open={helpOpen} onClose={() => setHelpOpen(false)} fullScreen={isMobile} maxWidth={isMobile ? false : 'sm'} fullWidth={!isMobile}>
+      <DialogTitle>{helpTitle}</DialogTitle>
+      <DialogContent dividers>
+        {helpImageUrl && (
+          <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+            <img src={helpImageUrl} alt={helpTitle} style={{ maxWidth: '100%', height: 'auto' }} />
+          </Box>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setHelpOpen(false)}>Fechar</Button>
       </DialogActions>
     </Dialog>
   );
