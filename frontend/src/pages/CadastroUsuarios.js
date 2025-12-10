@@ -42,8 +42,10 @@ import {
   Alert,
   CircularProgress,
   FormControl,
+  FormControlLabel,
   InputLabel,
   Select,
+  Switch,
   Fab,
   Tooltip,
   Avatar,
@@ -51,8 +53,6 @@ import {
   useMediaQuery,
   Pagination,
   InputAdornment,
-  Switch,
-  FormControlLabel,
   Divider,
   List,
   ListItem,
@@ -267,6 +267,7 @@ const CadastroUsuarios = () => {
       if (filters.ativo === 'true' || filters.ativo === 'false') params.ativo = filters.ativo;
       params.page = filters.page || 1;
       params.limit = filters.limit || 20;
+      params.sort = 'recent';
 
       const response = await usuariosService.getUsuarios(params);
       setUsuarios(response.data.usuarios || []);
@@ -1380,6 +1381,7 @@ const CadastroUsuarios = () => {
                     Filtrar
                   </Button>
                 </Grid>
+                
               </Grid>
             </AccordionDetails>
           </Accordion>
@@ -1462,6 +1464,7 @@ const CadastroUsuarios = () => {
                     Filtrar
                   </Button>
                 </Grid>
+                
               </Grid>
             </CardContent>
           </Card>
