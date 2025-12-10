@@ -1058,11 +1058,7 @@ router.get('/extras', async (req, res) => {
     }
 
     queryText = applyTenantFilter(queryText, params, unidadeId, 'se.unidade_id');
-<<<<<<< HEAD
-
-=======
     const baseParamCount = params.length;
->>>>>>> develop
     queryText += `
       ORDER BY se.data_servico DESC
       LIMIT $${baseParamCount + 1} OFFSET $${baseParamCount + 2}

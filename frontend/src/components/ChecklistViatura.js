@@ -762,11 +762,22 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
           {items.map((item) => (
             <Grid item xs={12} key={item.originalIndex}>
               <Card variant="outlined">
-                <CardContent>
-                  <Box mb={2}>
-                    <Typography variant="subtitle1" fontWeight="bold">
-                      {item.nome_item}
-                    </Typography>
+                <CardContent sx={{ p: isMobile ? 2.5 : 3.5 }}>
+                  <Box mb={2} sx={{ bgcolor: 'error.main', color: 'error.contrastText', px: isMobile ? 2 : 2.5, py: isMobile ? 1 : 1.25, borderRadius: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {item.imagem_url && (
+                        <IconButton
+                          size={isMobile ? 'small' : 'medium'}
+                          onClick={() => { setHelpTitle(item.nome_item); setHelpImageUrl(item.imagem_url); setHelpOpen(true); }}
+                          aria-label="Ajuda do item"
+                        >
+                          <HelpIcon sx={{ color: 'common.white' }} />
+                        </IconButton>
+                      )}
+                      <Typography variant="subtitle1" fontWeight="bold">
+                        {item.nome_item}
+                      </Typography>
+                    </Box>
                   </Box>
 
                   <Box display="flex" gap={isMobile ? 1.5 : 2} mb={2}>
@@ -918,7 +929,8 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   );
 
   return (
-    <Dialog open={open} onClose={handleClose} fullScreen={isMobile} maxWidth="md" fullWidth>
+    <>
+    <Dialog open={open} onClose={handleClose} fullScreen={isMobile} maxWidth="lg" fullWidth>
       <DialogTitle>
         {step === 2 && (Array.isArray(categories) && categories.length > 0)
           ? `Checklist de Viatura - Categoria ${currentCategoryIndex + 1} de ${categories.length}`
