@@ -66,6 +66,7 @@ import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
   FileDownload as FileDownloadIcon,
+  DriveEta as DriveEtaIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
@@ -91,6 +92,7 @@ const ALA_STYLES = {
   Charlie: { border: '#f9a825', bg: 'rgba(249, 168, 37, 0.15)' },
   Delta: { border: '#d32f2f', bg: 'rgba(211, 47, 47, 0.12)' },
 };
+const DRIVER_CATEGORIES = new Set(['C', 'D', 'E']);
 
 const INITIAL_ALA_BOARD = {
   pool: [],
@@ -98,6 +100,14 @@ const INITIAL_ALA_BOARD = {
   Bravo: [],
   Charlie: [],
   Delta: [],
+};
+
+const hasDriverLicense = (categoria) => {
+  if (!categoria) return false;
+  return categoria
+    .split(',')
+    .map((item) => item.trim().toUpperCase())
+    .some((cat) => DRIVER_CATEGORIES.has(cat));
 };
 
 const Operacional = () => {
@@ -1566,6 +1576,7 @@ const Operacional = () => {
     const renderUserCard = (userId, columnKey) => {
       const usuario = usuariosMap[userId];
       if (!usuario) return null;
+      const showDriverBadge = hasDriverLicense(usuario.categoria_cnh);
       return (
         <Paper
           key={`${columnKey}-${userId}`}
@@ -1591,7 +1602,26 @@ const Operacional = () => {
           }}
         >
           <Box>
-            <Typography variant="subtitle2">{usuario.nome}</Typography>
+            <Box display="flex" alignItems="center" gap={0.5}>
+              <Typography variant="subtitle2">{usuario.nome}</Typography>
+              {showDriverBadge && (
+                <Tooltip title={`Categoria CNH: ${usuario.categoria_cnh}`} placement="top">
+                  <Box
+                    sx={{
+                      bgcolor: theme.palette.info.dark,
+                      borderRadius: '50%',
+                      width: 20,
+                      height: 20,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <DriveEtaIcon fontSize="small" sx={{ color: '#fff' }} />
+                  </Box>
+                </Tooltip>
+              )}
+            </Box>
             <Typography variant="caption" color="textSecondary">
               {usuario.matricula || 'Sem matrícula'}
             </Typography>
