@@ -2,12 +2,15 @@ const { Pool } = require('pg');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
+const sslEnabled = String(process.env.DB_SSL || '').toLowerCase() === 'true' || process.env.NODE_ENV === 'production';
+
 const pool = new Pool({
   user: process.env.DB_USER || 'postgres',
   host: process.env.DB_HOST || 'localhost',
   database: process.env.DB_NAME || 'cbmgo_db',
   password: process.env.DB_PASSWORD || 'password',
   port: process.env.DB_PORT || 5432,
+  ssl: sslEnabled ? { rejectUnauthorized: false } : false,
 });
 
 async function testConnection() {

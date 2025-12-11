@@ -37,16 +37,16 @@ const io = socketIo(server, {
 // Middlewares
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ['\'self\''],
-      imgSrc: ['\'self\'', 'data:', ...allowedOrigins, 'http://localhost:5000', 'https://*.supabase.co'],
-      scriptSrc: ['\'self\'', '\'unsafe-inline\''],
-      styleSrc: ['\'self\'', '\'unsafe-inline\''],
-      connectSrc: ['\'self\'', ...allowedOrigins, 'http://localhost:5000']
-    }
-  }
-}));
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ['\'self\''],
+          imgSrc: ['\'self\'', 'data:', ...allowedOrigins, 'http://localhost:5000', 'https://*.supabase.co', 'https://*.supabaseusercontent.com'],
+          scriptSrc: ['\'self\'', '\'unsafe-inline\''],
+          styleSrc: ['\'self\'', '\'unsafe-inline\''],
+          connectSrc: ['\'self\'', ...allowedOrigins, 'http://localhost:5000', 'https://*.supabaseusercontent.com']
+        }
+      }
+    }));
 app.use(compression());
 app.use(morgan('combined'));
 app.use(cors({

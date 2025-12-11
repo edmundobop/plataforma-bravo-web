@@ -680,6 +680,85 @@ const createTables = async () => {
       END $$;
     `);
 
+    // Fixar search_path da função que atualiza fotos (evita aviso de mutable search_path)
+    await query(`
+      DO $$
+      DECLARE
+        args text;
+      BEGIN
+        SELECT pg_get_function_identity_arguments(p.oid) INTO args
+        FROM pg_proc p
+        JOIN pg_namespace n ON p.pronamespace = n.oid
+        WHERE n.nspname = 'public' AND p.proname = 'update_checklist_campo_fotos_updated_at'
+        LIMIT 1;
+      
+        IF args IS NOT NULL THEN
+          EXECUTE format('ALTER FUNCTION public.update_checklist_campo_fotos_updated_at(%s) SET search_path TO public, pg_temp', args);
+        END IF;
+      END $$;
+    `);
+    const fconf = await query(`
+      SELECT proname, proconfig
+      FROM pg_proc p
+      JOIN pg_namespace n ON p.pronamespace = n.oid
+      WHERE n.nspname = 'public' AND proname = 'update_checklist_campo_fotos_updated_at'
+      LIMIT 1
+    `);
+    if (fconf?.rows?.length) console.log('🔧 Configuração da função de fotos:', fconf.rows[0]);
+    
+    // ==========================
+    // NORMALIZAÇÃO DE URLs (remoção de localhost em produção)
+    // ==========================
+    const RENDER_ORIGIN = 'https://plataforma-bravo-web.onrender.com';
+    console.log('🔄 Normalizando URLs de imagens que apontam para localhost...');
+    await query(`
+      UPDATE template_categorias
+      SET imagem_url = REPLACE(REPLACE(REPLACE(imagem_url,
+        'http://localhost:5000', '${RENDER_ORIGIN}'),
+        'https://localhost:5000', '${RENDER_ORIGIN}'),
+        'http://127.0.0.1:5000', '${RENDER_ORIGIN}')
+      WHERE imagem_url IS NOT NULL
+        AND (
+          imagem_url LIKE 'http://localhost:5000%' OR
+          imagem_url LIKE 'https://localhost:5000%' OR
+          imagem_url LIKE 'http://127.0.0.1:5000%'
+        )
+    `);
+    await query(`
+      UPDATE template_itens
+      SET imagem_url = REPLACE(REPLACE(REPLACE(imagem_url,
+        'http://localhost:5000', '${RENDER_ORIGIN}'),
+        'https://localhost:5000', '${RENDER_ORIGIN}'),
+        'http://127.0.0.1:5000', '${RENDER_ORIGIN}')
+      WHERE imagem_url IS NOT NULL
+        AND (
+          imagem_url LIKE 'http://localhost:5000%' OR
+          imagem_url LIKE 'https://localhost:5000%' OR
+          imagem_url LIKE 'http://127.0.0.1:5000%'
+        )
+    `);
+    await query(`
+      UPDATE checklist_itens
+      SET fotos = (
+        SELECT jsonb_agg(
+          jsonb_set(elem, '{url}',
+            to_jsonb(
+              REPLACE(
+                REPLACE(
+                  REPLACE(elem->>'url',
+                    'http://localhost:5000', '${RENDER_ORIGIN}'),
+                  'https://localhost:5000', '${RENDER_ORIGIN}'),
+                'http://127.0.0.1:5000', '${RENDER_ORIGIN}')
+            )
+          )
+        )
+        FROM jsonb_array_elements(fotos) AS elem
+      )
+      WHERE fotos IS NOT NULL
+        AND fotos::text LIKE '%localhost:5000%' OR fotos::text LIKE '%127.0.0.1:5000%'
+    `);
+    console.log('✅ Normalização de URLs concluída');
+
     console.log('✅ Migração concluída com sucesso!');
   } catch (error) {
     console.error('❌ Erro na migração:', error);

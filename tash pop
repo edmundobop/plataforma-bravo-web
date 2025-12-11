@@ -1,0 +1,5 @@
+stash@{0}: On develop: TraeAI: stash antes de sincronizar main
+stash@{1}: On main: temp: switch to develop
+stash@{2}: On develop: temp: update main from develop
+stash@{3}: On develop: pre-revert 2805c7b
+stash@{4}: On develop: estado local antes de sincronizar develop
