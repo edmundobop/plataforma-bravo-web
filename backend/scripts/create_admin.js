@@ -27,7 +27,7 @@ const bcrypt = require('bcryptjs');
       `INSERT INTO usuarios (nome_completo, nome, email, senha_hash, matricula, posto_graduacao, setor, telefone, perfil_id, ativo, unidade_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10)
        RETURNING id, email`,
-      ['Admin Local', 'Admin Local', email, hash, '000001', 'Coronel', 'Administração', '', perfil_id, unidade_id]
+      ['Admin Local', 'Admin Local', email, hash, 'ADMIN-LOCAL', 'Coronel', 'Administração', '', perfil_id, unidade_id]
     );
 
     console.log('Usuario criado:', res.rows[0]);

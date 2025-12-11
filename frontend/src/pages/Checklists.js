@@ -686,8 +686,21 @@ const Checklists = () => {
   };
 
   const openPhotoViewer = (images, index, title) => {
-    const origin = process.env.REACT_APP_API_ORIGIN || (window.location.origin.replace(':3003', ':5000'));
-    const toAbs = (u) => (String(u || '').startsWith('http') ? u : `${origin}${u}`);
+    const origin = (() => {
+      const env = process.env.REACT_APP_API_ORIGIN || (process.env.REACT_APP_API_BASE_URL ? process.env.REACT_APP_API_BASE_URL.replace(/\/api$/, '') : '');
+      if (env) return env;
+      const h = window.location.hostname;
+      if (h.includes('vercel.app')) return 'https://plataforma-bravo-web.onrender.com';
+      return window.location.origin.replace(':3003', ':5000');
+    })();
+    const toAbs = (u) => {
+      const s = String(u || '');
+      if (!s) return s;
+      if (s.startsWith('http://localhost:5000') || s.startsWith('https://localhost:5000') || s.startsWith('http://127.0.0.1:5000')) {
+        return s.replace(/^https?:\/\/(localhost|127\.0\.0\.1):5000/, origin);
+      }
+      return s.startsWith('http') ? s : `${origin}${s}`;
+    };
     const normalized = (images || []).map((f) => ({
       url: toAbs(f?.url || f),
       name: f?.originalName || f?.name || undefined,
@@ -1640,10 +1653,20 @@ const Checklists = () => {
           {selectedItem ? (
             <Box sx={{ mt: 2 }}>
               {(() => {
-                const origin = process.env.REACT_APP_API_ORIGIN || (window.location.origin.replace(':3003', ':5000'));
+                const origin = (() => {
+                  const env = process.env.REACT_APP_API_ORIGIN || (process.env.REACT_APP_API_BASE_URL ? process.env.REACT_APP_API_BASE_URL.replace(/\/api$/, '') : '');
+                  if (env) return env;
+                  const h = window.location.hostname;
+                  if (h.includes('vercel.app')) return 'https://plataforma-bravo-web.onrender.com';
+                  return window.location.origin.replace(':3003', ':5000');
+                })();
                 const toAbs = (u) => {
                   if (!u) return '';
-                  return String(u).startsWith('http') ? u : `${origin}${u}`;
+                  const s = String(u);
+                  if (s.startsWith('http://localhost:5000') || s.startsWith('https://localhost:5000') || s.startsWith('http://127.0.0.1:5000')) {
+                    return s.replace(/^https?:\/\/(localhost|127\.0\.0\.1):5000/, origin);
+                  }
+                  return s.startsWith('http') ? s : `${origin}${s}`;
                 };
                 const parseFotos = (f) => {
                   if (!f) return [];
@@ -1754,8 +1777,21 @@ const Checklists = () => {
                       try { const arr = JSON.parse(f); if (Array.isArray(arr)) fotos = arr; } catch {}
                     }
                     if (!fotos || fotos.length === 0) return null;
-                    const origin = process.env.REACT_APP_API_ORIGIN || (window.location.origin.replace(':3003', ':5000'));
-                    const toAbs = (u) => (String(u || '').startsWith('http') ? u : `${origin}${u}`);
+                    const origin = (() => {
+                      const env = process.env.REACT_APP_API_ORIGIN || (process.env.REACT_APP_API_BASE_URL ? process.env.REACT_APP_API_BASE_URL.replace(/\/api$/, '') : '');
+                      if (env) return env;
+                      const h = window.location.hostname;
+                      if (h.includes('vercel.app')) return 'https://plataforma-bravo-web.onrender.com';
+                      return window.location.origin.replace(':3003', ':5000');
+                    })();
+                    const toAbs = (u) => {
+                      const s = String(u || '');
+                      if (!s) return s;
+                      if (s.startsWith('http://localhost:5000') || s.startsWith('https://localhost:5000') || s.startsWith('http://127.0.0.1:5000')) {
+                        return s.replace(/^https?:\/\/(localhost|127\.0\.0\.1):5000/, origin);
+                      }
+                      return s.startsWith('http') ? s : `${origin}${s}`;
+                    };
                     return (
                       <Box key={idx} sx={{ mb: 2, p: 1, bgcolor: '#fff', borderRadius: 1, border: '1px solid #f0f0f0' }}>
                         <Typography variant="body2" sx={{ fontWeight: 'medium', color: '#495057', mb: 1 }}>

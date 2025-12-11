@@ -39,7 +39,13 @@ import { useTenant } from '../contexts/TenantContext';
 import usePendingAction from '../hooks/usePendingAction';
 
 const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, selectedViatura: selectedViaturaProps, prefill }) => {
-  const BACKEND_ORIGIN = process.env.REACT_APP_API_ORIGIN || (window.location.origin.replace(':3003', ':5000'));
+  const BACKEND_ORIGIN = (() => {
+    const env = process.env.REACT_APP_API_ORIGIN || (process.env.REACT_APP_API_BASE_URL ? process.env.REACT_APP_API_BASE_URL.replace(/\/api$/, '') : '');
+    if (env) return env;
+    const h = window.location.hostname;
+    if (h.includes('vercel.app')) return 'https://plataforma-bravo-web.onrender.com';
+    return window.location.origin.replace(':3003', ':5000');
+  })();
   const { user } = useAuth(); // Obter usuário logado
   const { currentUnit } = useTenant(); // Obter unidade atual
   const theme = useTheme();
@@ -285,8 +291,11 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
       
       // Adicionar as fotos retornadas pela API
       response.data.fotos.forEach((foto) => {
-        const relativeUrl = foto.url || '';
-        const absoluteUrl = relativeUrl.startsWith('http') ? relativeUrl : `${BACKEND_ORIGIN}${relativeUrl}`;
+        const u = foto.url || '';
+        const s = String(u);
+        const absoluteUrl = s.startsWith('http://localhost:5000') || s.startsWith('https://localhost:5000') || s.startsWith('http://127.0.0.1:5000')
+          ? s.replace(/^https?:\/\/(localhost|127\.0\.0\.1):5000/, BACKEND_ORIGIN)
+          : (s.startsWith('http') ? s : `${BACKEND_ORIGIN}${s}`);
         newItens[index].fotos.push({
           url: absoluteUrl,
           name: foto.originalName,
@@ -758,7 +767,15 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
                 {currentCategoryObj?.imagem_url && (
                   <IconButton
                     size={isMobile ? 'small' : 'medium'}
-                    onClick={() => { setHelpTitle(currentCategoryName); setHelpImageUrl(currentCategoryObj.imagem_url); setHelpOpen(true); }}
+                    onClick={() => {
+                      const s = String(currentCategoryObj.imagem_url || '');
+                      const normalized = s.startsWith('http://localhost:5000') || s.startsWith('https://localhost:5000') || s.startsWith('http://127.0.0.1:5000')
+                        ? s.replace(/^https?:\/\/(localhost|127\.0\.0\.1):5000/, BACKEND_ORIGIN)
+                        : (s.startsWith('http') ? s : `${BACKEND_ORIGIN}${s}`);
+                      setHelpTitle(currentCategoryName);
+                      setHelpImageUrl(normalized);
+                      setHelpOpen(true);
+                    }}
                     aria-label="Ajuda da categoria"
                   >
                     <HelpIcon color="primary" />
@@ -782,7 +799,15 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
                       {item.imagem_url && (
                         <IconButton
                           size={isMobile ? 'small' : 'medium'}
-                          onClick={() => { setHelpTitle(item.nome_item); setHelpImageUrl(item.imagem_url); setHelpOpen(true); }}
+                          onClick={() => {
+                            const s = String(item.imagem_url || '');
+                            const normalized = s.startsWith('http://localhost:5000') || s.startsWith('https://localhost:5000') || s.startsWith('http://127.0.0.1:5000')
+                              ? s.replace(/^https?:\/\/(localhost|127\.0\.0\.1):5000/, BACKEND_ORIGIN)
+                              : (s.startsWith('http') ? s : `${BACKEND_ORIGIN}${s}`);
+                            setHelpTitle(item.nome_item);
+                            setHelpImageUrl(normalized);
+                            setHelpOpen(true);
+                          }}
                           aria-label="Ajuda do item"
                         >
                           <HelpIcon sx={{ color: 'common.white' }} />
