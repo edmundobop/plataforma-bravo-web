@@ -422,6 +422,7 @@ router.get('/', authorizeRoles(['Administrador', 'Comandante', 'Chefe']), checkT
       unidade_id,
       setor_id,
       busca, 
+      sort,
       page = 1, 
       limit = 20 
     } = req.query;
@@ -483,13 +484,18 @@ router.get('/', authorizeRoles(['Administrador', 'Comandante', 'Chefe']), checkT
     // Isso garante que SOMENTE usuários lotados (coluna `u.unidade_id`) na unidade ativa
     // sejam retornados, independentemente de vínculos em membros_unidade.
     const tenantUnitId = req.unidade?.id || req.headers['x-tenant-id'] || null;
-    if (tenantUnitId) {
+    const todos = String(req.query.todos || '').toLowerCase() === 'true';
+    const userPerfilNome = req.user?.perfil_nome || '';
+    const isGestor = ['Administrador', 'Comandante', 'Chefe'].includes(userPerfilNome);
+    const applyTenant = tenantUnitId && !(todos && isGestor);
+    if (applyTenant) {
       whereConditions.push(`u.${lotacaoCol} = $${paramIndex}`);
       queryParams.push(parseInt(tenantUnitId));
       paramIndex++;
     }
 
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+    console.log('[Usuarios][GET] filtro', { userId: req.user?.id, tenantUnitId, todos, isGestor, whereClause });
 
     // Contar total de registros
     const countQuery = `
@@ -526,6 +532,7 @@ router.get('/', authorizeRoles(['Administrador', 'Comandante', 'Chefe']), checkT
 
     const selectFuncoes = hasUsuariosFuncoes ? 'COALESCE(u.funcoes, \'[]\'::jsonb) as funcoes' : 'NULL as funcoes';
 
+    const orderClause = (String(sort || '').toLowerCase() === 'recent') ? 'ORDER BY u.created_at DESC' : 'ORDER BY u.nome_completo';
     const usuariosQuery = `
       SELECT 
         u.id,
@@ -568,11 +575,12 @@ router.get('/', authorizeRoles(['Administrador', 'Comandante', 'Chefe']), checkT
       ${setorJoin}
       ${funcaoJoin}
       ${whereClause}
-      ORDER BY u.nome_completo
+      ${orderClause}
       LIMIT $${limitParamIndex} OFFSET $${offsetParamIndex}
     `;
 
     const usuariosResult = await query(usuariosQuery, queryParams);
+    console.log('[Usuarios][GET] resultado', { count: usuariosResult.rows.length, page, limit });
 
     res.json({
       success: true,

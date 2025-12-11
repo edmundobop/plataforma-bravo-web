@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Box,
   Grid,
@@ -36,6 +36,7 @@ import {
 import { frotaService, checklistService, uploadService, templateService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
+import usePendingAction from '../hooks/usePendingAction';
 
 const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, selectedViatura: selectedViaturaProps, prefill }) => {
   const BACKEND_ORIGIN = process.env.REACT_APP_API_ORIGIN || (window.location.origin.replace(':3003', ':5000'));
@@ -47,6 +48,8 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [step, setStep] = useState(1); // 1: Dados iniciais, 2: Checklist, 3: Autenticação
+  const { pending, run } = usePendingAction();
+  const operationKeyRef = useRef(null);
   
   // Estados para dados iniciais
   const [viaturas, setViaturas] = useState(viaturasProps || []);
@@ -402,6 +405,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
   };
 
   const handleSubmit = async () => {
+    if (pending || loading) return;
     if (!usuarioAutenticacao || !senhaAutenticacao) {
       setError('Preencha os dados de autenticação');
       return;
@@ -413,15 +417,24 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
       return;
     }
 
-    setLoading(true);
-    setError('');
-    
-    try {
-      // PRIMEIRO: Validar credenciais antes de criar o checklist
-      console.log('🔐 Validando credenciais:', {
-        usuario: usuarioAutenticacao.nome,
-        senhaLength: senhaAutenticacao.length
-      });
+    await run(async () => {
+      setLoading(true);
+      setError('');
+      
+      try {
+        if (!operationKeyRef.current) {
+          if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+            operationKeyRef.current = crypto.randomUUID();
+          } else {
+            operationKeyRef.current = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+          }
+        }
+        const idempHeaders = { headers: { 'X-Idempotency-Key': operationKeyRef.current } };
+        // PRIMEIRO: Validar credenciais antes de criar o checklist
+        console.log('🔐 Validando credenciais:', {
+          usuario: usuarioAutenticacao.nome,
+          senhaLength: senhaAutenticacao.length
+        });
       
       await checklistService.validarCredenciais({
         usuario_autenticacao: usuarioAutenticacao.nome,
@@ -478,7 +491,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         await checklistService.updateChecklist(prefill.checklist_id, checklistData);
         checklistId = prefill.checklist_id;
       } else {
-        const response = await checklistService.createChecklist(checklistData);
+        const response = await checklistService.createChecklist(checklistData, idempHeaders);
         checklistId = response.checklist.id;
       }
       
@@ -486,14 +499,14 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
       await checklistService.finalizarChecklist(checklistId, {
         usuario_autenticacao: usuarioAutenticacao.nome,
         senha_autenticacao: senhaAutenticacao
-      });
+      }, idempHeaders);
 
-      setSuccess('Checklist criado e finalizado com sucesso!');
-      setTimeout(() => {
-        onSuccess && onSuccess();
-        handleClose();
-      }, 2000);
-    } catch (error) {
+        setSuccess('Checklist criado e finalizado com sucesso!');
+        setTimeout(() => {
+          onSuccess && onSuccess();
+          handleClose();
+        }, 2000);
+      } catch (error) {
       console.error('Erro ao processar checklist:', {
         message: error.message,
         status: error.response?.status,
@@ -505,7 +518,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
         setError(error.response?.data?.error || 'Credenciais inválidas. Verifique o usuário e senha.');
         // Limpar senha para permitir nova tentativa
         setSenhaAutenticacao('');
-      } else {
+        } else {
         const generic = error.response?.data?.error || 'Erro ao processar checklist';
         const details = error.response?.data?.details;
         const constraint = error.response?.data?.constraint;
@@ -514,10 +527,11 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
           console.warn('ℹ️ Detalhes do erro (DB CHECK):', { constraint, detail });
         }
         setError(details ? `${generic} - ${details}` : generic);
+        }
+      } finally {
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
   const handleClose = () => {
@@ -996,7 +1010,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
           <Button 
             onClick={handleSubmit} 
             variant="contained" 
-            disabled={loading}
+            disabled={loading || pending}
             startIcon={loading ? <CircularProgress size={20} /> : <SendIcon />}
             type="button"
             size="large"

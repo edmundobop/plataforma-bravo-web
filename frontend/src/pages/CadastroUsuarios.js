@@ -15,7 +15,7 @@
 //
 // =====================================================
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Grid,
@@ -99,6 +99,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 import { usuariosService, userService } from '../services/api';
+import usePendingAction from '../hooks/usePendingAction';
 import { militaresService } from '../services/militaresService';
 import { 
   validateUsuarioForm, 
@@ -597,10 +598,15 @@ const CadastroUsuarios = () => {
     }));
   };
 
+  const { pending, run } = usePendingAction();
+  const operationKeyRef = useRef(null);
+
   const handleSubmit = async () => {
+    if (pending || loading) return;
     try {
-      setLoading(true);
-      setError('');
+      await run(async () => {
+        setLoading(true);
+        setError('');
       
       // Preparar dados para validação (senha apenas na criação)
       const dataForValidation = dialogType === 'create' 
@@ -623,8 +629,17 @@ const CadastroUsuarios = () => {
       const sanitizedData = sanitizeUsuarioData(formData);
       console.log('Enviando dados do usuário:', sanitizedData);
       
+      if (!operationKeyRef.current) {
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+          operationKeyRef.current = crypto.randomUUID();
+        } else {
+          operationKeyRef.current = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+        }
+      }
+      const idempHeaders = { headers: { 'X-Idempotency-Key': operationKeyRef.current } };
+
       if (dialogType === 'create') {
-        await usuariosService.createUsuario(sanitizedData);
+        await usuariosService.createUsuario(sanitizedData, idempHeaders);
         setSuccess('Usuário criado com sucesso!');
       } else if (dialogType === 'edit') {
         // Se forneceu nova senha no formulário de edição, usar rota dedicada
@@ -642,7 +657,7 @@ const CadastroUsuarios = () => {
 
         // Remover campos de senha do payload principal para evitar ignorância pelo backend
         const { senha, confirmar_senha, ...restUpdate } = sanitizedData;
-        await usuariosService.updateUsuario(selectedUsuario.id, restUpdate);
+        await usuariosService.updateUsuario(selectedUsuario.id, restUpdate, idempHeaders);
         setSuccess('Usuário atualizado com sucesso!');
       }
       
@@ -650,6 +665,7 @@ const CadastroUsuarios = () => {
       if (hasRole(['Administrador', 'Comandante', 'Chefe'])) {
         loadUsuarios();
       }
+      });
     } catch (err) {
       console.error('Erro ao salvar usuário:', err);
       // Mostrar mensagem específica do backend quando disponível
@@ -1237,7 +1253,7 @@ const CadastroUsuarios = () => {
             <Button 
               onClick={handleSubmit}
               variant="contained"
-              disabled={loading}
+              disabled={loading || pending}
               startIcon={loading ? <CircularProgress size={20} /> : null}
             >
               {dialogType === 'create' ? 'Criar' : 'Salvar'}

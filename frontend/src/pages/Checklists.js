@@ -762,10 +762,10 @@ const Checklists = () => {
   const paginatedChecklists = checklists.slice((checklistsPage - 1) * checklistsPerPage, checklistsPage * checklistsPerPage);
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: { xs: 2, md: 3 }, overflowX: 'hidden' }}>
       {/* Header com Abas */}
       <Box sx={{ mb: 3 }}>
-        <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Typography variant={isMobile ? 'h5' : 'h4'} gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
           <ChecklistIcon sx={{ color: 'primary.main' }} />
           Checklists
         </Typography>
@@ -777,18 +777,23 @@ const Checklists = () => {
         <Tabs 
           value={activeTab} 
           onChange={(event, newValue) => setActiveTab(newValue)}
+          variant="scrollable"
+          scrollButtons={isMobile ? 'auto' : false}
+          allowScrollButtonsMobile
           sx={{ borderBottom: 1, borderColor: 'divider' }}
         >
           <Tab 
             label="Checklists de Viaturas" 
             icon={<ChecklistIcon />} 
             iconPosition="start"
+            wrapped
           />
           {(['Administrador','Chefe','Auxiliar'].includes(user?.perfil_nome)) && (
             <Tab 
               label="Modelos de Checklists" 
               icon={<TemplateIcon />} 
               iconPosition="start"
+              wrapped
             />
           )}
           {(['Administrador','Chefe','Auxiliar'].includes(user?.perfil_nome)) && (
@@ -796,6 +801,7 @@ const Checklists = () => {
               label="Automação de Checklists" 
               icon={<ScheduleIcon />} 
               iconPosition="start"
+              wrapped
             />
           )}
         </Tabs>
@@ -816,7 +822,7 @@ const Checklists = () => {
           {/* Painel de Solicitações Pendentes */}
           <Card sx={{ mb: 3 }}>
             <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, flexDirection: isMobile ? 'column' : 'row' }}>
                 <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
                   Solicitações pendentes de preenchimento
                 </Typography>
@@ -1278,7 +1284,7 @@ const Checklists = () => {
                 <Grid item xs={12} key={checklist.id}>
                   <Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => handleViewChecklist(checklist)}>
                     <CardContent>
-                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           <CarIcon sx={{ color: 'primary.main' }} />
                           <Box>
@@ -1341,7 +1347,7 @@ const Checklists = () => {
                   </Button>
                 )}
               </Box>
-              <Accordion defaultExpanded={!isMobile} sx={{ mt: 2 }}>
+              <Accordion defaultExpanded={!isMobile} sx={{ mt: 2, '& .MuiAccordionSummary-content': { flexWrap: 'wrap' } }}>
                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>Filtros</AccordionSummary>
                 <AccordionDetails>
                   <Grid container spacing={2} alignItems="center">

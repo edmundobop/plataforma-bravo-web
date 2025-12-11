@@ -36,6 +36,16 @@ api.interceptors.request.use(
       config.headers['X-Tenant-ID'] = currentUnitId;
     }
     
+    // Idempotency-Key para requisições mutáveis
+    const method = (config.method || '').toLowerCase();
+    if (['post', 'put', 'patch', 'delete'].includes(method)) {
+      const gen = () => {
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+        return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      };
+      config.headers['X-Idempotency-Key'] = config.headers['X-Idempotency-Key'] || gen();
+    }
+    
     return config;
   },
   (error) => {
@@ -107,8 +117,8 @@ export const userService = {
 export const usuariosService = {
   getUsuarios: (params) => api.get('/usuarios', { params }),
   getUsuarioById: (id) => api.get(`/usuarios/${id}`),
-  createUsuario: (userData) => api.post('/usuarios', userData),
-  updateUsuario: (id, userData) => api.put(`/usuarios/${id}`, userData),
+  createUsuario: (userData, opts = {}) => api.post('/usuarios', userData, opts),
+  updateUsuario: (id, userData, opts = {}) => api.put(`/usuarios/${id}`, userData, opts),
   deleteUsuario: (id) => api.delete(`/usuarios/${id}`),
   changePassword: (id, passwordData) => 
     api.put(`/usuarios/${id}/senha`, passwordData),
@@ -259,11 +269,11 @@ export const dashboardService = {
 export const checklistService = {
   getChecklists: (params) => api.get('/checklist/viaturas', { params }).then(res => res.data),
   getChecklist: (id) => api.get(`/checklist/viaturas/${id}`).then(res => res.data),
-  createChecklist: (data) => api.post('/checklist/viaturas', data).then(res => res.data),
+  createChecklist: (data, opts = {}) => api.post('/checklist/viaturas', data, opts).then(res => res.data),
   updateChecklist: (id, data) => api.put(`/checklist/viaturas/${id}`, data).then(res => res.data),
   deleteChecklist: (id) => api.delete(`/checklist/viaturas/${id}`).then(res => res.data),
   cancelarChecklist: (id, motivo) => api.put(`/checklist/viaturas/${id}/cancelar`, { motivo }).then(res => res.data),
-  finalizarChecklist: (id, authData) => api.post(`/checklist/viaturas/${id}/finalizar`, authData).then(res => res.data),
+  finalizarChecklist: (id, authData, opts = {}) => api.post(`/checklist/viaturas/${id}/finalizar`, authData, opts).then(res => res.data),
   validarCredenciais: (authData) => api.post('/checklist/validar-credenciais', authData).then(res => res.data),
   searchUsuarios: (query) => api.get('/checklist/usuarios/search', { params: { q: query } }).then(res => res.data),
   

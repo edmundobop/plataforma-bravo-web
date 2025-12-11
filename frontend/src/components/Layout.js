@@ -746,8 +746,11 @@ const Layout = () => {
         component="main"
         sx={{
           flexGrow: 1,
-          p: 3,
+          px: { xs: 1.5, md: 3 },
+          py: 3,
           width: { md: `calc(100% - ${drawerWidth}px)` },
+          maxWidth: '100%',
+          overflowX: 'hidden',
           minHeight: '100vh',
           backgroundColor: theme.palette.background.default,
         }}

@@ -13,6 +13,7 @@ const { authenticateToken, authorizeRoles } = require('../middleware/auth');
 const { optionalTenant } = require('../middleware/tenant');
 const { columnExists } = require('../utils/schema');
 const bcrypt = require('bcryptjs');
+const idempotency = require('../middleware/idempotency');
 
 const router = express.Router();
 
@@ -89,7 +90,7 @@ router.post('/validar-credenciais', [
 });
 
 // Finalizar checklist com autenticação própria (sem JWT)
-router.post('/viaturas/:id/finalizar', [
+router.post('/viaturas/:id/finalizar', idempotency(), [
   body('usuario_autenticacao').notEmpty().withMessage('Nome do usuário é obrigatório'),
   body('senha_autenticacao').notEmpty().withMessage('Senha é obrigatória')
 ], async (req, res) => {
@@ -248,7 +249,7 @@ router.get('/automacoes', async (req, res) => {
 });
 
 // Criar automação
-router.post('/automacoes', [
+router.post('/automacoes', idempotency(), [
   body('horario').notEmpty().withMessage('Horário é obrigatório'),
   body('dias_semana').isArray({ min: 1 }).withMessage('Informe ao menos um dia da semana'),
   body('ala_servico').customSanitizer(normalizeAlaServico).isIn(['Alpha', 'Bravo', 'Charlie', 'Delta', 'ADM']).withMessage('Ala de serviço inválida'),
@@ -373,7 +374,7 @@ router.delete('/automacoes/:id', async (req, res) => {
 });
 
 // Gerar solicitações agora com base na automação
-router.post('/automacoes/:id/gerar-solicitacoes', async (req, res) => {
+router.post('/automacoes/:id/gerar-solicitacoes', idempotency(), async (req, res) => {
   try {
     const { id } = req.params;
     const sel = await query('SELECT * FROM checklist_automacoes WHERE id = $1', [id]);
@@ -410,7 +411,7 @@ router.post('/automacoes/:id/gerar-solicitacoes', async (req, res) => {
 });
 
 // Criar solicitação
-router.post('/solicitacoes', [
+router.post('/solicitacoes', idempotency(), [
   body('viatura_id').isInt().withMessage('ID da viatura é obrigatório'),
   body('template_id').optional().isInt(),
   body('tipo_checklist').notEmpty().withMessage('Tipo de checklist é obrigatório'),
@@ -488,7 +489,7 @@ router.delete('/solicitacoes/:id', authorizeRoles('Administrador', 'Chefe'), asy
 });
 
 // Iniciar solicitação (marca como atendida e retorna dados de prefill)
-router.post('/solicitacoes/:id/iniciar', async (req, res) => {
+router.post('/solicitacoes/:id/iniciar', idempotency(), async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -731,8 +732,9 @@ router.get('/viaturas/:id', async (req, res) => {
   }
 });
 
+
 // Criar novo checklist
-router.post('/viaturas', [
+router.post('/viaturas', idempotency(), [
   body('viatura_id').isInt().withMessage('ID da viatura é obrigatório'),
   body('template_id').optional().isInt().withMessage('ID do template deve ser um número'),
   body('km_inicial').isInt({ min: 0 }).withMessage('KM inicial deve ser um número positivo'),
