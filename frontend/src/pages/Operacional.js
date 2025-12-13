@@ -24,6 +24,7 @@ import {
   MenuItem,
   Alert,
   CircularProgress,
+  LinearProgress,
   Tabs,
   Tab,
   FormControl,
@@ -45,6 +46,7 @@ import {
   FormControlLabel,
   Checkbox,
   Stack,
+  Snackbar,
 } from '@mui/material';
 import {
   Schedule as ScheduleIcon,
@@ -65,7 +67,6 @@ import {
   CalendarMonth as CalendarMonthIcon,
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
-  FileDownload as FileDownloadIcon,
   DriveEta as DriveEtaIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
@@ -166,6 +167,12 @@ const Operacional = () => {
     total: 0,
     pages: 0,
     current_page: 1,
+  });
+  const [pdfLoadingDate, setPdfLoadingDate] = useState('');
+  const [pdfFeedback, setPdfFeedback] = useState({
+    open: false,
+    message: '',
+    severity: 'success',
   });
   
   // Estados para usuários operacionais / alas
@@ -268,6 +275,32 @@ const Operacional = () => {
       setError('Erro ao carregar escalas');
     } finally {
       setEscalasLoading(false);
+    }
+  };
+
+  const handleExportDayPdf = async (dateKey) => {
+    if (!dateKey) return;
+    try {
+      setPdfLoadingDate(dateKey);
+      const response = await operacionalService.exportEscalaPdf({ data_servico: dateKey });
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `escala-${dateKey}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setPdfFeedback({
+        open: true,
+        message: `PDF de ${format(parseISO(dateKey), "dd/MM/yyyy", { locale: ptBR })} gerado`,
+        severity: 'success',
+      });
+    } catch (err) {
+      console.error('Erro ao exportar PDF:', err);
+      const message = err.response?.data?.error || 'Não foi possível gerar o PDF';
+      setPdfFeedback({ open: true, message, severity: 'error' });
+    } finally {
+      setPdfLoadingDate('');
     }
   };
 
@@ -380,6 +413,10 @@ const Operacional = () => {
     setDialogType('');
     setSelectedItem(null);
     setFormData({});
+  };
+
+  const handlePdfFeedbackClose = () => {
+    setPdfFeedback((prev) => ({ ...prev, open: false }));
   };
 
   const handleFormChange = (field, value) => {
@@ -793,37 +830,6 @@ const Operacional = () => {
     setCalendarMonth((prev) => addMonths(prev, direction));
   };
 
-  const handleExportList = () => {
-    if (filteredEscalas.length === 0) return;
-    const lines = [
-      ['Data', 'Ala', 'Nome', 'Matrícula', 'Posto'].join(','),
-    ];
-    filteredEscalas.forEach((escala) => {
-      const dataText = escala.dataKey
-        ? format(parseISO(escala.dataKey), 'dd/MM/yyyy', { locale: ptBR })
-        : '';
-      const participantes = escala.participantes || [];
-      participantes.forEach((participante) => {
-        const row = [
-          dataText,
-          escala.ala,
-          `"${participante.nome}"`,
-          participante.matricula || '',
-          participante.posto || '',
-        ];
-        lines.push(row.join(','));
-      });
-    });
-    const csvContent = lines.join('\r\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const tempLink = document.createElement('a');
-    tempLink.href = url;
-    tempLink.setAttribute('download', 'escalas_operacionais.csv');
-    tempLink.click();
-    URL.revokeObjectURL(url);
-  };
-
   const decorateEscalas = useMemo(() => (
     escalas.map((escala) => {
       const ala = getEscalaAla(escala);
@@ -933,6 +939,7 @@ const Operacional = () => {
                 return (
                   <Grid item xs={1} key={dateKey}>
                     <Paper
+                      onClick={() => handleExportDayPdf(dateKey)}
                       sx={{
                         minHeight: 140,
                         p: 1,
@@ -940,11 +947,29 @@ const Operacional = () => {
                         border: '1px solid',
                         borderColor: hasEscala ? style.border : 'divider',
                         opacity: isSameMonth(day, calendarMonth) ? 1 : 0.4,
+                        cursor: 'pointer',
                         display: 'flex',
                         flexDirection: 'column',
                         gap: 0.5,
+                        position: 'relative',
+                        transition: 'border-color 0.2s',
+                        '&:hover': {
+                          borderColor: theme.palette.primary.main,
+                        },
                       }}
                     >
+                      {pdfLoadingDate === dateKey && (
+                        <LinearProgress
+                          sx={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            height: 3,
+                            borderRadius: 0,
+                          }}
+                        />
+                      )}
                       <Typography variant="subtitle2" fontWeight="bold">
                         {format(day, 'd')}
                       </Typography>
@@ -1045,15 +1070,6 @@ const Operacional = () => {
           <Typography variant="subtitle1" color="textSecondary">
             {filteredEscalas.length} turno(s) visíveis
           </Typography>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<FileDownloadIcon fontSize="small" />}
-            onClick={handleExportList}
-            disabled={filteredEscalas.length === 0}
-          >
-            Exportar CSV
-          </Button>
         </Box>
         {diasOrdenados.map((dia) => (
           <Card key={`lista-${dia}`}>
@@ -1848,6 +1864,24 @@ const Operacional = () => {
         <Alert severity="success" sx={{ mb: 3 }} onClose={() => setSuccessMessage('')}>
           {successMessage}
         </Alert>
+      )}
+
+      <Snackbar
+        open={pdfFeedback.open}
+        autoHideDuration={4000}
+        onClose={handlePdfFeedbackClose}
+      >
+        <Alert
+          onClose={handlePdfFeedbackClose}
+          severity={pdfFeedback.severity}
+          sx={{ width: '100%' }}
+        >
+          {pdfFeedback.message}
+        </Alert>
+      </Snackbar>
+
+      {pdfLoadingDate && (
+        <LinearProgress sx={{ mb: 2 }} />
       )}
 
       {!currentUnit && (
