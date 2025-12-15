@@ -684,7 +684,7 @@ router.post('/escalas/pdf', async (req, res) => {
       }
       const group = sectionsMap.get(key);
       const trocaText = row.troca_id
-        ? `${row.solicitante_nome || '---'} → ${row.substituto_nome || '---'}`
+        ? `${row.solicitante_nome || '---'} para ${row.substituto_nome || '---'}`
         : '';
       group.rows.push({
         ord: group.rows.length + 1,
