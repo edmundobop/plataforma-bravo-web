@@ -3,6 +3,7 @@ const { body, validationResult } = require('express-validator');
 const { query, transaction } = require('../config/database');
 const { authenticateToken, authorizeRoles } = require('../middleware/auth');
 const { optionalTenant } = require('../middleware/tenant');
+const PDFDocument = require('pdfkit');
 
 const VALID_ALAS = ['Alfa', 'Bravo', 'Charlie', 'Delta'];
 const SHIFT_SEQUENCE = [...VALID_ALAS];
@@ -174,6 +175,23 @@ const loadCurrentAlaAssignments = async (unidadeId = null) => {
 };
 
 const determineUnidadeId = (req) => req.unidade?.id || req.user?.unidade_lotacao_id || req.user?.unidade_id || null;
+
+const formatDatePtBR = (value) => {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleDateString('pt-BR');
+};
+
+const parseAlaFromName = (name) => {
+  if (!name) return null;
+  const match = name.match(/Ala\s+([A-Za-z]+)/i) || name.match(/-\s*([A-Za-z]+)\s*-/i);
+  if (!match) return null;
+  const candidate = match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase();
+  return VALID_ALAS.includes(candidate) ? candidate : null;
+};
 
 const applyTenantFilter = (queryText, params, unidadeId, column = 'unidade_id') => {
   if (!unidadeId) return queryText;
@@ -618,6 +636,156 @@ router.post('/escalas', authorizeRoles('Administrador', 'Chefe'), [
   } catch (error) {
     console.error('Erro ao criar escala:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+router.post('/escalas/pdf', async (req, res) => {
+  try {
+    const { data_servico } = req.body;
+    if (!data_servico) {
+      return res.status(400).json({ error: 'Data do serviço é obrigatória' });
+    }
+
+    const unidadeId = determineUnidadeId(req);
+    const params = [data_servico];
+    let queryText = `
+      SELECT e.id as escala_id, e.nome as escala_nome,
+             eu.id as escala_usuario_id, eu.funcao as funcao_escala,
+             u.posto_graduacao, u.matricula, u.nome as nome_completo,
+             t.id as troca_id,
+             us.nome as solicitante_nome,
+             usub.nome as substituto_nome
+      FROM escala_usuarios eu
+      JOIN escalas e ON eu.escala_id = e.id
+      JOIN usuarios u ON eu.usuario_id = u.id
+      LEFT JOIN trocas_servico t ON eu.troca_id = t.id
+      LEFT JOIN usuarios us ON t.usuario_solicitante_id = us.id
+      LEFT JOIN usuarios usub ON t.usuario_substituto_id = usub.id
+      WHERE eu.data_servico = $1
+    `;
+
+    if (unidadeId) {
+      params.push(unidadeId);
+      queryText += ` AND e.unidade_id = $${params.length}`;
+    }
+
+    queryText += ' ORDER BY e.id, eu.id';
+
+    const result = await query(queryText, params);
+    const sectionsMap = new Map();
+    result.rows.forEach((row) => {
+      const key = row.escala_id;
+      if (!sectionsMap.has(key)) {
+        const alaNome = parseAlaFromName(row.escala_nome) || 'Operacional';
+        sectionsMap.set(key, {
+          ala: alaNome,
+          rows: [],
+        });
+      }
+      const group = sectionsMap.get(key);
+      const trocaText = row.troca_id
+        ? `${row.solicitante_nome || '---'} para ${row.substituto_nome || '---'}`
+        : '';
+      group.rows.push({
+        ord: group.rows.length + 1,
+        militar: `${row.posto_graduacao || '---'} ${row.matricula || '---'} ${row.nome_completo || '---'}`,
+        funcao: row.funcao_escala || '---',
+        troca: trocaText,
+      });
+    });
+
+    const sections = Array.from(sectionsMap.values()).map((group) => ({
+      ala: group.ala,
+      rows: group.rows,
+    }));
+
+    const extrasColumnResult = await query(
+      `
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'servicos_extra'
+          AND column_name = 'unidade_id'
+        LIMIT 1
+      `
+    );
+    const hasExtraUnidadeColumn = extrasColumnResult.rows.length > 0;
+
+    const extrasParams = [data_servico];
+    let extrasQuery = `
+      SELECT se.*, u.nome as militar_nome, u.matricula
+      FROM servicos_extra se
+      JOIN usuarios u ON se.usuario_id = u.id
+      WHERE se.data_servico = $1
+    `;
+
+    if (hasExtraUnidadeColumn && unidadeId) {
+      extrasParams.push(unidadeId);
+      extrasQuery += ` AND se.unidade_id = $${extrasParams.length}`;
+    }
+
+    extrasQuery += ' ORDER BY se.turno, u.nome';
+    const extrasResult = await query(extrasQuery, extrasParams);
+    const extras = extrasResult.rows.map((row) => ({
+      militar: `${row.militar_nome || '---'} (${row.matricula || '---'})`,
+      turno: row.turno || '---',
+      tipo: row.tipo || '---',
+      horas: row.horas ?? '---',
+      descricao: row.descricao || row.tipo || '---',
+      status: row.status || '---',
+    }));
+
+    const doc = new PDFDocument({ size: 'A4', margin: 40 });
+    const filename = `escala-${data_servico}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    doc.pipe(res);
+
+    doc.font('Helvetica-Bold').fontSize(16).text(`Escalas · ${formatDatePtBR(data_servico)}`, {
+      align: 'center',
+    });
+    doc.moveDown(1.5);
+
+    if (sections.length === 0) {
+      doc.font('Helvetica').fontSize(12).text('Nenhuma escala encontrada para esta data.', {
+        align: 'center',
+      });
+    } else {
+      sections.forEach((section) => {
+        doc.font('Helvetica-Bold').fontSize(12).text(`Ala ${section.ala}`);
+        doc.moveDown(0.3);
+        section.rows.forEach((row) => {
+          doc.font('Helvetica').fontSize(10).text(`${row.ord}. ${row.militar}`);
+          doc.font('Helvetica-Oblique').fontSize(9).text(`Função: ${row.funcao}`);
+          if (row.troca) {
+            doc.font('Helvetica').fontSize(9).text(`Troca: ${row.troca}`);
+          }
+          doc.moveDown(0.2);
+        });
+        doc.moveDown(0.8);
+      });
+    }
+
+    if (extras.length) {
+      doc.addPage();
+      doc.font('Helvetica-Bold').fontSize(13).text('Serviços Extras', { underline: true });
+      doc.moveDown(0.5);
+      extras.forEach((extra, index) => {
+        doc.font('Helvetica').fontSize(10).text(`${index + 1}. ${extra.militar}`);
+        doc.font('Helvetica-Oblique').fontSize(9).text(
+          `Turno: ${extra.turno} | Tipo: ${extra.tipo} | Horas: ${extra.horas} | Status: ${extra.status}`
+        );
+        if (extra.descricao) {
+          doc.font('Helvetica').fontSize(9).text(`Descrição: ${extra.descricao}`);
+        }
+        doc.moveDown(0.4);
+      });
+    }
+
+    doc.end();
+  } catch (error) {
+    console.error('Erro ao gerar PDF da escala:', error);
+    res.status(500).json({ error: 'Erro interno ao gerar o PDF da escala' });
   }
 });
 

@@ -217,6 +217,7 @@ export const operacionalService = {
   getEscalaById: (id) => api.get(`/operacional/escalas/${id}`),
   createEscala: (escalaData) => api.post('/operacional/escalas', escalaData),
   addUsuarioEscala: (id, usuarioData) => api.post(`/operacional/escalas/${id}/usuarios`, usuarioData),
+  exportEscalaPdf: (payload) => api.post('/operacional/escalas/pdf', payload, { responseType: 'arraybuffer' }),
   
   // Trocas de serviço
   getTrocas: (params) => api.get('/operacional/trocas', { params }),
