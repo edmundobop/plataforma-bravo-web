@@ -50,18 +50,48 @@ import {
   Schedule as ScheduleIcon,
   Person as PersonIcon,
   KeyboardReturn as ReturnIcon,
+  Assessment as AssessmentIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
-import { emprestimosService } from '../services/api';
+import { emprestimosService, formatters } from '../services/api';
+import { uploadService } from '../services/api';
 
 const Emprestimos = () => {
   const theme = useTheme();
-  const { user } = useAuth();
+  const { user, isOperador } = useAuth();
   const { currentUnit } = useTenant();
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const apiBase = process.env.REACT_APP_API_BASE_URL || '/api';
+  const assetsBase = apiBase.startsWith('http') ? apiBase.replace(/\/api\/?$/, '') : 'http://localhost:5000';
+  const buildAssetUrl = (path) => {
+    if (!path) return '';
+    if (/^https?:\/\//.test(path)) return path;
+    const p = path.startsWith('/') ? path : `/${path}`;
+    return `${assetsBase}${p}`;
+  };
+  const getFirstPhotoUrl = (fotos) => {
+    if (!fotos) return '';
+    if (Array.isArray(fotos) && fotos.length > 0) {
+      const f = fotos[0];
+      if (typeof f === 'string') return buildAssetUrl(f);
+      if (f && typeof f === 'object' && f.url) return buildAssetUrl(f.url);
+    }
+    if (typeof fotos === 'string') {
+      try {
+        const arr = JSON.parse(fotos);
+        if (Array.isArray(arr) && arr.length > 0) {
+          const f = arr[0];
+          if (typeof f === 'string') return buildAssetUrl(f);
+          if (f && typeof f === 'object' && f.url) return buildAssetUrl(f.url);
+        }
+      } catch {}
+      return buildAssetUrl(fotos);
+    }
+    return '';
+  };
   
   // Estados para equipamentos
   const [equipamentos, setEquipamentos] = useState([]);
@@ -105,6 +135,45 @@ const Emprestimos = () => {
   
   // Estados para formulários
   const [formData, setFormData] = useState({});
+  const [assinaturaSolic, setAssinaturaSolic] = useState(null);
+  const [assinaturaAuto, setAssinaturaAuto] = useState(null);
+  const canvasRefSolic = React.useRef(null);
+  const canvasRefAuto = React.useRef(null);
+  const clearCanvas = (ref) => {
+    const c = ref.current;
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, c.width, c.height);
+  };
+  const startDraw = (ref, e) => {
+    const c = ref.current;
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    ctx.beginPath();
+    const rect = c.getBoundingClientRect();
+    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+    c.isDrawing = true;
+  };
+  const drawMove = (ref, e) => {
+    const c = ref.current;
+    if (!c || !c.isDrawing) return;
+    const ctx = c.getContext('2d');
+    const rect = c.getBoundingClientRect();
+    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+    ctx.stroke();
+  };
+  const endDraw = (ref, setState) => {
+    const c = ref.current;
+    if (!c) return;
+    c.isDrawing = false;
+    setState(c.toDataURL('image/png'));
+  };
+  const [barcodeEquip, setBarcodeEquip] = useState('');
+  const [carrinho, setCarrinho] = useState([]);
+  const [loteLoading, setLoteLoading] = useState(false);
+  const [relResumo, setRelResumo] = useState(null);
+  const [relTop, setRelTop] = useState([]);
+  const [termosRecentes, setTermosRecentes] = useState([]);
 
   useEffect(() => {
     loadData();
@@ -127,6 +196,21 @@ const Emprestimos = () => {
         break;
       default:
         break;
+    }
+  };
+
+  const loadRelatorios = async () => {
+    try {
+      const [rResumo, rTop, rTermos] = await Promise.all([
+        emprestimosService.getRelatorioEmprestimos(),
+        emprestimosService.getRelatorioTopEquipamentos(),
+        emprestimosService.getTermosCautela({ limit: 20 })
+      ]);
+      setRelResumo(rResumo.data);
+      setRelTop(rTop.data.top || []);
+      setTermosRecentes(rTermos.data.termos || []);
+    } catch (err) {
+      setError('Erro ao carregar relatórios');
     }
   };
 
@@ -163,10 +247,37 @@ const Emprestimos = () => {
     setError('');
   };
 
+  useEffect(() => {
+    if (activeTab === 2) {
+      loadRelatorios();
+    }
+  }, [activeTab]);
+
   const handleOpenDialog = (type, item = null) => {
     setDialogType(type);
     setSelectedItem(item);
-    setFormData(item || {});
+    const data = item || {};
+    if (type === 'equipamento') {
+      const toInputDate = (v) => {
+        if (!v) return '';
+        try {
+          // Accept ISO strings or Date; format yyyy-MM-dd
+          const d = new Date(v);
+          if (!isNaN(d.getTime())) {
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+          }
+        } catch {}
+        // Fallback: if already yyyy-MM-dd or longer ISO, slice
+        return String(v).slice(0, 10);
+      };
+      if (data.data_aquisicao) {
+        data.data_aquisicao = toInputDate(data.data_aquisicao);
+      }
+    }
+    setFormData(data);
     setDialogOpen(true);
   };
 
@@ -190,9 +301,28 @@ const Emprestimos = () => {
       
       if (dialogType === 'equipamento') {
         if (selectedItem) {
-          // Atualizar equipamento (implementar quando necessário)
+          const payload = { ...formData };
+          if (payload.valor !== undefined) {
+            if (payload.valor === '') {
+              delete payload.valor;
+            } else {
+              const num = parseFloat(String(payload.valor).replace(',', '.'));
+              if (Number.isNaN(num)) delete payload.valor; else payload.valor = num;
+            }
+          }
+          await emprestimosService.updateEquipamento(selectedItem.id, payload);
         } else {
-          await emprestimosService.createEquipamento(formData);
+          const payload = { ...formData };
+          // Conversões
+          if (payload.valor !== undefined) {
+            if (payload.valor === '') {
+              delete payload.valor;
+            } else {
+              const num = parseFloat(String(payload.valor).replace(',', '.'));
+              if (Number.isNaN(num)) delete payload.valor; else payload.valor = num;
+            }
+          }
+          await emprestimosService.createEquipamento(payload);
         }
         loadEquipamentos();
       } else if (dialogType === 'emprestimo') {
@@ -208,9 +338,62 @@ const Emprestimos = () => {
       handleCloseDialog();
     } catch (err) {
       console.error('Erro ao salvar:', err);
-      setError('Erro ao salvar dados');
+      const msg = err?.response?.data?.error || (err?.response?.data?.errors?.[0]?.msg) || 'Erro ao salvar dados';
+      setError(msg);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const addEquipamentoPorBarcode = async () => {
+    try {
+      if (!barcodeEquip) return;
+      const res = await emprestimosService.getEquipamentos({ search: barcodeEquip, page: 1, limit: 1 });
+      const list = res.data.equipamentos || [];
+      if (!list.length) {
+        setError('Equipamento não encontrado pelo código de barras');
+        return;
+      }
+      const eq = list[0];
+      if (eq.status !== 'disponivel') {
+        setError('Equipamento não está disponível');
+        return;
+      }
+      if (carrinho.find((i) => i.id === eq.id)) {
+        setError('Equipamento já está no carrinho');
+        return;
+      }
+      setCarrinho((prev) => [...prev, { id: eq.id, codigo: eq.codigo, nome: eq.nome }]);
+      setBarcodeEquip('');
+    } catch (err) {
+      setError('Erro ao adicionar equipamento pelo código de barras');
+    }
+  };
+
+  const removerDoCarrinho = (id) => {
+    setCarrinho((prev) => prev.filter((i) => i.id !== id));
+  };
+
+  const confirmarCautelaEmLote = async () => {
+    try {
+      if (!carrinho.length) return;
+      setLoteLoading(true);
+      const payload = {
+        equipamentos: carrinho.map((i) => ({ id: i.id })),
+        data_prevista_devolucao: formData.data_prevista_devolucao || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        motivo: formData.motivo || 'Cautela em lote',
+      };
+      const res = await emprestimosService.createEmprestimosLote(payload);
+      setCarrinho([]);
+      loadEmprestimos();
+      loadEquipamentos();
+      if (res.data?.failures?.length) {
+        setError(`Falhas: ${res.data.failures.length}`);
+      }
+    } catch (err) {
+      setError('Erro ao registrar cautela em lote');
+    } finally {
+      setLoteLoading(false);
     }
   };
 
@@ -345,8 +528,10 @@ const Emprestimos = () => {
         <Table>
           <TableHead>
             <TableRow>
+              <TableCell>Foto</TableCell>
               <TableCell>Código</TableCell>
               <TableCell>Nome</TableCell>
+              <TableCell>Valor</TableCell>
               <TableCell>Tipo</TableCell>
               <TableCell>Status</TableCell>
               <TableCell>Condição</TableCell>
@@ -371,9 +556,15 @@ const Emprestimos = () => {
             ) : (
               equipamentos.map((equipamento) => (
                 <TableRow key={equipamento.id}>
+                  <TableCell>
+                    {getFirstPhotoUrl(equipamento.fotos) ? (
+                      <img src={getFirstPhotoUrl(equipamento.fotos)} alt="foto" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 4 }} />
+                    ) : '-'}
+                  </TableCell>
                   <TableCell>{equipamento.codigo}</TableCell>
                   <TableCell>{equipamento.nome}</TableCell>
-                  <TableCell>{equipamento.tipo}</TableCell>
+                  <TableCell>{equipamento.valor != null ? formatters.currency(equipamento.valor) : '-'}</TableCell>
+                  <TableCell>{equipamento.tipo || '-'}</TableCell>
                   <TableCell>
                     <Chip
                       label={equipamento.status}
@@ -389,7 +580,7 @@ const Emprestimos = () => {
                       variant="outlined"
                     />
                   </TableCell>
-                  <TableCell>{equipamento.setor}</TableCell>
+                  <TableCell>{equipamento.setor_responsavel}</TableCell>
                   <TableCell>{equipamento.localizacao}</TableCell>
                   <TableCell>
                     <IconButton
@@ -616,6 +807,107 @@ const Emprestimos = () => {
     </Box>
   );
 
+  const renderRelatoriosTab = () => (
+    <Box>
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <Typography variant="h6">Resumo de Cautelas</Typography>
+            <Button variant="outlined" onClick={loadRelatorios}>Atualizar</Button>
+          </Box>
+          {relResumo && (
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={3}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle2">Total</Typography>
+                  <Typography variant="h5">{relResumo.resumo?.total_emprestimos ?? '-'}</Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle2">Ativos</Typography>
+                  <Typography variant="h5">{relResumo.resumo?.emprestimos_ativos ?? '-'}</Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle2">Devolvidos</Typography>
+                  <Typography variant="h5">{relResumo.resumo?.emprestimos_devolvidos ?? '-'}</Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle2">Vencidos</Typography>
+                  <Typography variant="h5">{relResumo.resumo?.emprestimos_vencidos ?? '-'}</Typography>
+                </Paper>
+              </Grid>
+            </Grid>
+          )}
+        </CardContent>
+      </Card>
+      <Grid container spacing={2}>
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>Top Equipamentos Emprestados</Typography>
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Código</TableCell>
+                      <TableCell>Nome</TableCell>
+                      <TableCell>Total</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {relTop.map((t) => (
+                      <TableRow key={t.id}>
+                        <TableCell>{t.codigo}</TableCell>
+                        <TableCell>{t.nome}</TableCell>
+                        <TableCell>{t.total}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>Termos Recentes</Typography>
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Data</TableCell>
+                      <TableCell>Equipamento</TableCell>
+                      <TableCell>Ações</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {termosRecentes.map((t) => (
+                      <TableRow key={t.id}>
+                        <TableCell>{t.created_at ? new Date(t.created_at).toLocaleString('pt-BR') : '-'}</TableCell>
+                        <TableCell>{t.equipamento_codigo} - {t.equipamento_nome}</TableCell>
+                        <TableCell>
+                          {t.url_pdf ? (
+                            <Button size="small" href={t.url_pdf} target="_blank">Abrir PDF</Button>
+                          ) : '-'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+
   return (
     <Box>
       {/* Header */}
@@ -659,24 +951,28 @@ const Emprestimos = () => {
             } 
             label="Cautelas" 
           />
+          <Tab icon={<AssessmentIcon />} label="Relatórios" />
         </Tabs>
       </Box>
 
       {/* Conteúdo das tabs */}
       {activeTab === 0 && renderEquipamentosTab()}
       {activeTab === 1 && renderEmprestimosTab()}
+      {activeTab === 2 && renderRelatoriosTab()}
 
       {/* FAB para adicionar */}
-      <Fab
-        color="primary"
-        sx={{ position: 'fixed', bottom: 16, right: 16 }}
-        onClick={() => {
-          if (activeTab === 0) handleOpenDialog('equipamento');
-          else if (activeTab === 1) handleOpenDialog('emprestimo');
-        }}
-      >
-        <AddIcon />
-      </Fab>
+      {((activeTab === 1) || !isOperador()) && (
+        <Fab
+          color="primary"
+          sx={{ position: 'fixed', bottom: 16, right: 16 }}
+          onClick={() => {
+            if (activeTab === 0 && !isOperador()) handleOpenDialog('equipamento');
+            else if (activeTab === 1) handleOpenDialog('emprestimo');
+          }}
+        >
+          <AddIcon />
+        </Fab>
+      )}
 
       {/* Menu de ações */}
       <Menu
@@ -691,13 +987,15 @@ const Emprestimos = () => {
           <ViewIcon sx={{ mr: 1 }} />
           Visualizar
         </MenuItem>
-        <MenuItem key="edit-equipamento" onClick={() => {
-          handleOpenDialog('equipamento', selectedItem);
-          setAnchorEl(null);
-        }}>
-          <EditIcon sx={{ mr: 1 }} />
-          Editar
-        </MenuItem>
+        {!isOperador() && (
+          <MenuItem key="edit-equipamento" onClick={() => {
+            handleOpenDialog('equipamento', selectedItem);
+            setAnchorEl(null);
+          }}>
+            <EditIcon sx={{ mr: 1 }} />
+            Editar
+          </MenuItem>
+        )}
         {selectedItem?.status === 'disponivel' && (
           <MenuItem key="emprestar-equipamento" onClick={() => {
             handleOpenDialog('emprestimo', { equipamento_id: selectedItem?.id });
@@ -708,6 +1006,76 @@ const Emprestimos = () => {
           </MenuItem>
         )}
       </Menu>
+
+      <Card sx={{ mt: 3 }}>
+        <CardContent>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} sm={6} md={4}>
+              <TextField
+                fullWidth
+                label="Leitor de Código de Barras"
+                placeholder="Aponte o leitor aqui"
+                value={barcodeEquip}
+                onChange={(e) => setBarcodeEquip(e.target.value)}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Button
+                fullWidth
+                variant="contained"
+                onClick={addEquipamentoPorBarcode}
+              >
+                Adicionar ao Carrinho
+              </Button>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                fullWidth
+                label="Data Prevista de Devolução"
+                type="date"
+                value={formData.data_prevista_devolucao || ''}
+                onChange={(e) => handleFormChange('data_prevista_devolucao', e.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={2}>
+              <Button
+                fullWidth
+                variant="outlined"
+                color="primary"
+                onClick={confirmarCautelaEmLote}
+                disabled={loteLoading}
+              >
+                {loteLoading ? <CircularProgress size={20} /> : 'Cautelar em Lote'}
+              </Button>
+            </Grid>
+          </Grid>
+          {carrinho.length > 0 && (
+            <TableContainer component={Paper} sx={{ mt: 2 }}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Código</TableCell>
+                    <TableCell>Nome</TableCell>
+                    <TableCell>Ações</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {carrinho.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{item.codigo}</TableCell>
+                      <TableCell>{item.nome}</TableCell>
+                      <TableCell>
+                        <Button color="error" onClick={() => removerDoCarrinho(item.id)}>Remover</Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Dialog para formulários */}
       <Dialog
@@ -722,10 +1090,342 @@ const Emprestimos = () => {
           {dialogType === 'devolucao' && 'Devolver Equipamento'}
         </DialogTitle>
         <DialogContent>
-          {/* Formulários específicos serão implementados conforme necessário */}
-          <Typography variant="body2" color="textSecondary">
-            Formulário em desenvolvimento...
-          </Typography>
+          {dialogType === 'equipamento' && (
+            <Box mt={1}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Código do Equipamento"
+                    value={formData.codigo || ''}
+                    onChange={(e) => handleFormChange('codigo', e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Nome"
+                    value={formData.nome || ''}
+                    onChange={(e) => handleFormChange('nome', e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Código de Barras"
+                    placeholder="Aponte o leitor aqui"
+                    value={formData.barcode || ''}
+                    onChange={(e) => handleFormChange('barcode', e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Marca"
+                    value={formData.marca || ''}
+                    onChange={(e) => handleFormChange('marca', e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Modelo"
+                    value={formData.modelo || ''}
+                    onChange={(e) => handleFormChange('modelo', e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Número de Série"
+                    value={formData.numero_serie || ''}
+                    onChange={(e) => handleFormChange('numero_serie', e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    multiline
+                    minRows={2}
+                    label="Descrição"
+                    value={formData.descricao || ''}
+                    onChange={(e) => handleFormChange('descricao', e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Status</InputLabel>
+                    <Select
+                      value={formData.status || ''}
+                      label="Status"
+                      onChange={(e) => handleFormChange('status', e.target.value)}
+                    >
+                      <MenuItem value="">Selecione</MenuItem>
+                      <MenuItem value="disponivel">Disponível</MenuItem>
+                      <MenuItem value="emprestado">Emprestado</MenuItem>
+                      <MenuItem value="manutencao">Manutenção</MenuItem>
+                      <MenuItem value="inativo">Inativo</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Condição</InputLabel>
+                    <Select
+                      value={formData.condicao || ''}
+                      label="Condição"
+                      onChange={(e) => handleFormChange('condicao', e.target.value)}
+                    >
+                      <MenuItem value="">Selecione</MenuItem>
+                      <MenuItem value="excelente">Excelente</MenuItem>
+                      <MenuItem value="bom">Bom</MenuItem>
+                      <MenuItem value="regular">Regular</MenuItem>
+                      <MenuItem value="ruim">Ruim</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Valor (R$)"
+                    inputMode="numeric"
+                    value={formData.valor || ''}
+                    onChange={(e) => handleFormChange('valor', e.target.value.replace(/\D/g,'').replace(/(\d{1,})(\d{2})$/,'$1.$2'))}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Data de Aquisição"
+                    type="date"
+                    value={formData.data_aquisicao || ''}
+                    onChange={(e) => handleFormChange('data_aquisicao', e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Setor Responsável</InputLabel>
+                    <Select
+                      value={formData.setor_responsavel || ''}
+                      label="Setor Responsável"
+                      onChange={(e) => handleFormChange('setor_responsavel', e.target.value)}
+                    >
+                      <MenuItem value="">Selecione</MenuItem>
+                      <MenuItem value="operacional">Operacional</MenuItem>
+                      <MenuItem value="administrativo">Administrativo</MenuItem>
+                      <MenuItem value="manutencao">Manutenção</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Localização</InputLabel>
+                    <Select
+                      value={formData.localizacao || ''}
+                      label="Localização"
+                      onChange={(e) => handleFormChange('localizacao', e.target.value)}
+                    >
+                      <MenuItem value="">Selecione</MenuItem>
+                      <MenuItem value="almoxarifado_adm">Almoxarifado Administrativo</MenuItem>
+                      <MenuItem value="almoxarifado_op">Almoxarifado Operacional</MenuItem>
+                      <MenuItem value="viatura">Viatura</MenuItem>
+                      <MenuItem value="sop">SOP</MenuItem>
+                      <MenuItem value="sat">SAT</MenuItem>
+                      <MenuItem value="saad">SAAD</MenuItem>
+                      <MenuItem value="comando">COMANDO</MenuItem>
+                      <MenuItem value="subcomando">SUBCOMANDO</MenuItem>
+                      <MenuItem value="cob">COB</MenuItem>
+                      <MenuItem value="sec">SEC</MenuItem>
+                      <MenuItem value="garagem">Garagem</MenuItem>
+                      <MenuItem value="lava_jato">Lava Jato</MenuItem>
+                      <MenuItem value="outro">Outro (especificar)</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Tipo</InputLabel>
+                    <Select
+                      value={formData.tipo || ''}
+                      label="Tipo"
+                      onChange={(e) => handleFormChange('tipo', e.target.value)}
+                    >
+                      <MenuItem value="">Selecione</MenuItem>
+                      <MenuItem value="ferramenta">Ferramenta</MenuItem>
+                      <MenuItem value="equipamento">Equipamento</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Observações"
+                    value={formData.observacoes || ''}
+                    onChange={(e) => handleFormChange('observacoes', e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2">Fotos do Equipamento</Typography>
+                  <Box display="flex" gap={1} mb={1}>
+                    <Button
+                      variant="outlined"
+                      component="label"
+                    >
+                      Selecionar Fotos
+                      <input
+                        hidden
+                        multiple
+                        type="file"
+                        accept="image/*"
+                        onChange={async (e) => {
+                          try {
+                            const files = Array.from(e.target.files || []);
+                            if (!files.length) return;
+                            const resp = await uploadService.uploadFotos(files);
+                            const urls = (resp.data?.fotos || []).map(f => ({ url: buildAssetUrl(f.url) }));
+                            handleFormChange('fotos', [ ...(formData.fotos || []), ...urls ]);
+                          } catch {
+                            setError('Erro ao enviar fotos');
+                          }
+                        }}
+                      />
+                    </Button>
+                    <Button
+                      variant="text"
+                      onClick={() => handleFormChange('fotos', [])}
+                    >
+                      Limpar Fotos
+                    </Button>
+                  </Box>
+                  <Grid container spacing={1}>
+                    {(formData.fotos || []).map((f, idx) => (
+                      <Grid item xs={6} sm={3} md={2} key={`foto-${idx}`}>
+                        <Box position="relative">
+                          <img src={buildAssetUrl(f.url)} alt={`foto-${idx}`} style={{ width: '100%', height: 100, objectFit: 'cover', borderRadius: 4 }} />
+                          <Button
+                            size="small"
+                            color="error"
+                            onClick={() => {
+                              const next = [...(formData.fotos || [])];
+                              next.splice(idx, 1);
+                              handleFormChange('fotos', next);
+                            }}
+                          >
+                            Remover
+                          </Button>
+                        </Box>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+          {dialogType === 'emprestimo' && (
+            <Box mt={1}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Equipamento ID"
+                    value={formData.equipamento_id || ''}
+                    onChange={(e) => handleFormChange('equipamento_id', e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Data Prevista de Devolução"
+                    type="date"
+                    value={formData.data_prevista_devolucao || ''}
+                    onChange={(e) => handleFormChange('data_prevista_devolucao', e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2">Assinatura do Solicitante</Typography>
+                  <canvas
+                    ref={canvasRefSolic}
+                    width={500}
+                    height={120}
+                    style={{ border: '1px solid #ccc', width: '100%' }}
+                    onMouseDown={(e) => startDraw(canvasRefSolic, e)}
+                    onMouseMove={(e) => drawMove(canvasRefSolic, e)}
+                    onMouseUp={() => endDraw(canvasRefSolic, setAssinaturaSolic)}
+                    onMouseLeave={() => endDraw(canvasRefSolic, setAssinaturaSolic)}
+                  />
+                  <Box mt={1} display="flex" gap={1}>
+                    <Button variant="text" onClick={() => { clearCanvas(canvasRefSolic); setAssinaturaSolic(null); }}>Limpar</Button>
+                  </Box>
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2">Assinatura do Autorizador</Typography>
+                  <canvas
+                    ref={canvasRefAuto}
+                    width={500}
+                    height={120}
+                    style={{ border: '1px solid #ccc', width: '100%' }}
+                    onMouseDown={(e) => startDraw(canvasRefAuto, e)}
+                    onMouseMove={(e) => drawMove(canvasRefAuto, e)}
+                    onMouseUp={() => endDraw(canvasRefAuto, setAssinaturaAuto)}
+                    onMouseLeave={() => endDraw(canvasRefAuto, setAssinaturaAuto)}
+                  />
+                  <Box mt={1} display="flex" gap={1}>
+                    <Button variant="text" onClick={() => { clearCanvas(canvasRefAuto); setAssinaturaAuto(null); }}>Limpar</Button>
+                  </Box>
+                </Grid>
+                <Grid item xs={12}>
+                  <Button
+                    variant="outlined"
+                    onClick={async () => {
+                      try {
+                        const id = selectedItem?.id || formData.id;
+                        if (!id) return;
+                        const resp = await emprestimosService.gerarTermoPdf(id, {
+                          assinatura_solicitante: assinaturaSolic,
+                          assinatura_autorizador: assinaturaAuto
+                        });
+                        const blob = new Blob([resp.data], { type: 'application/pdf' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `termo_cautela_${id}.pdf`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      } catch (err) {
+                        setError('Erro ao gerar termo PDF');
+                      }
+                    }}
+                  >
+                    Gerar Termo PDF
+                  </Button>
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+          {dialogType === 'devolucao' && (
+            <Box mt={1}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Condição de Devolução"
+                    value={formData.condicao_devolucao || ''}
+                    onChange={(e) => handleFormChange('condicao_devolucao', e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Observações"
+                    value={formData.observacoes_devolucao || ''}
+                    onChange={(e) => handleFormChange('observacoes_devolucao', e.target.value)}
+                  />
+                </Grid>
+              </Grid>
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog}>Cancelar</Button>

@@ -647,6 +647,23 @@ const createTables = async () => {
     await query('CREATE INDEX IF NOT EXISTS idx_membros_usuario_unidade ON membros_unidade(usuario_id, unidade_id)');
     await query('CREATE INDEX IF NOT EXISTS idx_produtos_codigo ON produtos(codigo)');
     await query('CREATE INDEX IF NOT EXISTS idx_equipamentos_codigo ON equipamentos(codigo)');
+    await query('ALTER TABLE produtos ADD COLUMN IF NOT EXISTS barcode VARCHAR(64)');
+    await query('ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS barcode VARCHAR(64)');
+    await query('CREATE UNIQUE INDEX IF NOT EXISTS idx_produtos_barcode ON produtos(barcode) WHERE barcode IS NOT NULL');
+    await query('CREATE UNIQUE INDEX IF NOT EXISTS idx_equipamentos_barcode ON equipamentos(barcode) WHERE barcode IS NOT NULL');
+    await query(`
+      CREATE TABLE IF NOT EXISTS termos_cautela (
+        id SERIAL PRIMARY KEY,
+        emprestimo_id INTEGER REFERENCES emprestimos(id),
+        url_pdf VARCHAR(255),
+        assinatura_solicitante VARCHAR(255),
+        assinatura_autorizador VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await query(`ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS fotos JSONB`);
+    await query(`ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS tipo VARCHAR(30)`);
+    await query(`ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS localizacao VARCHAR(80)`);
     await query('CREATE INDEX IF NOT EXISTS idx_notificacoes_usuario ON notificacoes(usuario_id)');
     await query('CREATE INDEX IF NOT EXISTS idx_emprestimos_status ON emprestimos(status)');
     await query('CREATE INDEX IF NOT EXISTS idx_escalas_data ON escalas(data_inicio, data_fim)');

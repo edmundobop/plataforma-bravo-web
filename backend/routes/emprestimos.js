@@ -2,11 +2,16 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { query, transaction } = require('../config/database');
 const { authenticateToken, authorizeRoles } = require('../middleware/auth');
+const { optionalTenant } = require('../middleware/tenant');
+const PDFDocument = require('pdfkit');
+const fs = require('fs');
+const path = require('path');
 
 const router = express.Router();
 
 // Aplicar autenticação em todas as rotas
 router.use(authenticateToken);
+router.use(['/equipamentos'], optionalTenant);
 
 // EQUIPAMENTOS
 
@@ -26,6 +31,14 @@ router.get('/equipamentos', async (req, res) => {
     `;
     const params = [];
     let paramCount = 0;
+
+    // Filtro por unidade (tenant)
+    const unidadeId = req.unidade?.id || req.user?.unidade_id || null;
+    if (unidadeId) {
+      paramCount++;
+      queryText += ` AND e.unidade_id = $${paramCount}`;
+      params.push(unidadeId);
+    }
 
     if (status) {
       paramCount++;
@@ -47,7 +60,7 @@ router.get('/equipamentos', async (req, res) => {
 
     if (search) {
       paramCount++;
-      queryText += ` AND (e.nome ILIKE $${paramCount} OR e.codigo ILIKE $${paramCount} OR e.numero_serie ILIKE $${paramCount})`;
+      queryText += ` AND (e.nome ILIKE $${paramCount} OR e.codigo ILIKE $${paramCount} OR e.numero_serie ILIKE $${paramCount} OR e.barcode ILIKE $${paramCount})`;
       params.push(`%${search}%`);
     }
 
@@ -64,6 +77,12 @@ router.get('/equipamentos', async (req, res) => {
     let countQuery = 'SELECT COUNT(*) FROM equipamentos e WHERE 1=1';
     const countParams = [];
     let countParamCount = 0;
+
+    if (unidadeId) {
+      countParamCount++;
+      countQuery += ` AND e.unidade_id = $${countParamCount}`;
+      countParams.push(unidadeId);
+    }
 
     if (status) {
       countParamCount++;
@@ -146,7 +165,7 @@ router.get('/equipamentos/:id', async (req, res) => {
 });
 
 // Criar equipamento
-router.post('/equipamentos', authorizeRoles('Administrador', 'Chefe'), [
+router.post('/equipamentos', authorizeRoles('Administrador', 'Chefe', 'Comandante'), [
   body('codigo').notEmpty().withMessage('Código é obrigatório'),
   body('nome').notEmpty().withMessage('Nome é obrigatório'),
   body('marca').notEmpty().withMessage('Marca é obrigatória'),
@@ -160,16 +179,50 @@ router.post('/equipamentos', authorizeRoles('Administrador', 'Chefe'), [
 
     const {
       codigo, nome, descricao, marca, modelo, numero_serie,
-      valor, data_aquisicao, setor_responsavel, observacoes
+      valor, data_aquisicao, setor_responsavel, observacoes, barcode, status, condicao, fotos
     } = req.body;
+    const unidadeId = req.unidade?.id || req.user?.unidade_id || null;
 
-    const result = await query(
-      `INSERT INTO equipamentos 
-       (codigo, nome, descricao, marca, modelo, numero_serie, valor, data_aquisicao, setor_responsavel, observacoes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-       RETURNING *`,
-      [codigo, nome, descricao, marca, modelo, numero_serie, valor, data_aquisicao, setor_responsavel, observacoes]
-    );
+    const isEmpty = (v) => v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
+    const parseValor = (v) => {
+      if (isEmpty(v)) return null;
+      const num = parseFloat(String(v).replace(',', '.'));
+      return Number.isNaN(num) ? null : num;
+    };
+    const valorSafe = parseValor(valor);
+    const dataAquisicaoSafe = isEmpty(data_aquisicao) ? null : data_aquisicao;
+    const setorRespSafe = isEmpty(setor_responsavel) ? null : setor_responsavel;
+    const observacoesSafe = isEmpty(observacoes) ? null : observacoes;
+    const barcodeSafe = isEmpty(barcode) ? null : barcode;
+    const statusSafe = isEmpty(status) ? 'disponivel' : status;
+    const condicaoSafe = isEmpty(condicao) ? 'bom' : condicao;
+    const fotosSafe = Array.isArray(fotos) ? JSON.stringify(fotos) : null;
+    const tipoSafe = isEmpty(req.body.tipo) ? null : req.body.tipo;
+    const localizacaoSafe = isEmpty(req.body.localizacao) ? null : req.body.localizacao;
+
+    let result;
+    try {
+      result = await query(
+        `INSERT INTO equipamentos 
+         (codigo, nome, descricao, marca, modelo, numero_serie, valor, data_aquisicao, setor_responsavel, observacoes, unidade_id, barcode, status, condicao, fotos, tipo, localizacao)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+         RETURNING *`,
+        [codigo, nome, descricao, marca, modelo, numero_serie, valorSafe, dataAquisicaoSafe, setorRespSafe, observacoesSafe, unidadeId, barcodeSafe, statusSafe, condicaoSafe, fotosSafe, tipoSafe, localizacaoSafe]
+      );
+    } catch (e) {
+      if (e.code === '42703') {
+        // Column does not exist (e.g., fotos) - reinsert without the optional column
+        result = await query(
+          `INSERT INTO equipamentos 
+           (codigo, nome, descricao, marca, modelo, numero_serie, valor, data_aquisicao, setor_responsavel, observacoes, unidade_id, barcode, status, condicao)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+           RETURNING *`,
+          [codigo, nome, descricao, marca, modelo, numero_serie, valorSafe, dataAquisicaoSafe, setorRespSafe, observacoesSafe, unidadeId, barcodeSafe, statusSafe, condicaoSafe]
+        );
+      } else {
+        throw e;
+      }
+    }
 
     res.status(201).json({
       message: 'Equipamento criado com sucesso',
@@ -177,9 +230,89 @@ router.post('/equipamentos', authorizeRoles('Administrador', 'Chefe'), [
     });
   } catch (error) {
     if (error.code === '23505') {
-      return res.status(400).json({ error: 'Código do equipamento já existe' });
+      const msg = (error.detail || '').includes('barcode') ? 'Código de barras já existe' : 'Código do equipamento já existe';
+      return res.status(400).json({ error: msg });
     }
     console.error('Erro ao criar equipamento:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+router.put('/equipamentos/:id', authorizeRoles('Administrador', 'Chefe'), [
+  body('nome').optional().notEmpty(),
+  body('marca').optional().notEmpty(),
+  body('modelo').optional().notEmpty()
+], async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      codigo, nome, descricao, marca, modelo, numero_serie,
+      valor, data_aquisicao, setor_responsavel, observacoes, status, condicao, barcode, fotos
+    } = req.body;
+    const fields = [];
+    const params = [];
+    let i = 1;
+    if (codigo !== undefined) { fields.push(`codigo = $${i++}`); params.push(codigo); }
+    if (nome !== undefined) { fields.push(`nome = $${i++}`); params.push(nome); }
+    if (descricao !== undefined) { fields.push(`descricao = $${i++}`); params.push(descricao); }
+    if (marca !== undefined) { fields.push(`marca = $${i++}`); params.push(marca); }
+    if (modelo !== undefined) { fields.push(`modelo = $${i++}`); params.push(modelo); }
+    if (numero_serie !== undefined) { fields.push(`numero_serie = $${i++}`); params.push(numero_serie); }
+    if (valor !== undefined) {
+      const num = parseFloat(String(valor).replace(',', '.'));
+      fields.push(`valor = $${i++}`); params.push(Number.isNaN(num) ? null : num);
+    }
+    if (data_aquisicao !== undefined) { fields.push(`data_aquisicao = $${i++}`); params.push(data_aquisicao || null); }
+    if (setor_responsavel !== undefined) { fields.push(`setor_responsavel = $${i++}`); params.push(setor_responsavel || null); }
+    if (observacoes !== undefined) { fields.push(`observacoes = $${i++}`); params.push(observacoes || null); }
+    if (status !== undefined) { fields.push(`status = $${i++}`); params.push(status); }
+    if (condicao !== undefined) { fields.push(`condicao = $${i++}`); params.push(condicao); }
+    if (barcode !== undefined) { fields.push(`barcode = $${i++}`); params.push(barcode || null); }
+    if (fotos !== undefined) { fields.push(`fotos = $${i++}`); params.push(Array.isArray(fotos) ? JSON.stringify(fotos) : null); }
+    if (req.body.tipo !== undefined) { fields.push(`tipo = $${i++}`); params.push(req.body.tipo || null); }
+    if (req.body.localizacao !== undefined) { fields.push(`localizacao = $${i++}`); params.push(req.body.localizacao || null); }
+    if (fields.length === 0) return res.status(400).json({ error: 'Nenhum campo para atualizar' });
+    params.push(id);
+    let result;
+    try {
+      result = await query(
+        `UPDATE equipamentos SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${i} RETURNING *`,
+        params
+      );
+    } catch (e) {
+      if (e.code === '42703') {
+        // Remove fotos from update if column missing and retry
+        const idx = fields.findIndex(f => f.startsWith('fotos ='));
+        if (idx >= 0) {
+          fields.splice(idx, 1);
+          params.splice(idx, 1);
+          i--;
+        }
+        result = await query(
+          `UPDATE equipamentos SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${i} RETURNING *`,
+          params
+        );
+      } else {
+        throw e;
+      }
+    }
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Equipamento não encontrado' });
+    res.json({ message: 'Equipamento atualizado com sucesso', equipamento: result.rows[0] });
+  } catch (error) {
+    console.error('Erro ao atualizar equipamento:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+router.delete('/equipamentos/:id', authorizeRoles('Administrador', 'Chefe'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const emp = await query('SELECT id FROM emprestimos WHERE equipamento_id = $1 LIMIT 1', [id]);
+    if (emp.rows.length > 0) return res.status(400).json({ error: 'Equipamento possui empréstimos vinculados' });
+    const result = await query('DELETE FROM equipamentos WHERE id = $1', [id]);
+    res.json({ message: 'Equipamento removido com sucesso' });
+  } catch (error) {
+    console.error('Erro ao remover equipamento:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
@@ -361,6 +494,54 @@ router.post('/', [
   }
 });
 
+router.post('/lote', [
+  body('equipamentos').isArray({ min: 1 }),
+  body('data_prevista_devolucao').isISO8601(),
+  body('motivo').notEmpty()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+    const { equipamentos, data_prevista_devolucao, motivo, observacoes_emprestimo, condicao_emprestimo } = req.body;
+    const solicitanteId = req.user.id;
+    const results = [];
+    const failures = [];
+    for (const item of equipamentos) {
+      const equipamento_id = item.id || item.equipamento_id;
+      try {
+        await transaction(async (client) => {
+          const equipamentoResult = await client.query('SELECT status, nome FROM equipamentos WHERE id = $1', [equipamento_id]);
+          if (equipamentoResult.rows.length === 0) throw new Error('Equipamento não encontrado');
+          const equipamento = equipamentoResult.rows[0];
+          if (equipamento.status !== 'disponivel') throw new Error('Equipamento não está disponível para empréstimo');
+          const emprestimoAtivoResult = await client.query('SELECT id FROM emprestimos WHERE equipamento_id = $1 AND status = $2', [equipamento_id, 'ativo']);
+          if (emprestimoAtivoResult.rows.length > 0) throw new Error('Equipamento já possui empréstimo ativo');
+          const emprestimoResult = await client.query(
+            `INSERT INTO emprestimos 
+             (equipamento_id, usuario_solicitante_id, usuario_autorizador_id, data_prevista_devolucao, motivo, observacoes_emprestimo, condicao_emprestimo)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             RETURNING *`,
+            [equipamento_id, solicitanteId, req.user.id, data_prevista_devolucao, motivo, observacoes_emprestimo, condicao_emprestimo]
+          );
+          await client.query('UPDATE equipamentos SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', ['emprestado', equipamento_id]);
+          await client.query(
+            `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [solicitanteId, 'Empréstimo Registrado', `Empréstimo do equipamento ${equipamento.nome} registrado com sucesso.`, 'success', 'emprestimos', emprestimoResult.rows[0].id]
+          );
+        });
+        results.push({ equipamento_id, status: 'ok' });
+      } catch (e) {
+        failures.push({ equipamento_id, error: e.message });
+      }
+    }
+    res.status(201).json({ created: results.length, failures, results });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
 // Devolver equipamento
 router.put('/:id/devolver', [
   body('condicao_devolucao').notEmpty().withMessage('Condição de devolução é obrigatória')
@@ -481,4 +662,135 @@ router.get('/relatorio/geral', async (req, res) => {
   }
 });
 
+// Gerar termo de cautela em PDF
+router.post('/:id/termo', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { assinatura_solicitante, assinatura_autorizador } = req.body || {};
+    const result = await query(
+      `SELECT e.*, 
+              eq.nome as equipamento_nome, eq.codigo as equipamento_codigo, eq.marca, eq.modelo,
+              us.nome as solicitante_nome, us.matricula as solicitante_matricula, us.setor as solicitante_setor,
+              ua.nome as autorizador_nome, ua.matricula as autorizador_matricula
+       FROM emprestimos e
+       JOIN equipamentos eq ON e.equipamento_id = eq.id
+       JOIN usuarios us ON e.usuario_solicitante_id = us.id
+       LEFT JOIN usuarios ua ON e.usuario_autorizador_id = ua.id
+       WHERE e.id = $1`,
+      [id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Empréstimo não encontrado' });
+    }
+    const emp = result.rows[0];
+    const termDir = path.join(__dirname, '..', 'uploads', 'termos');
+    const signDir = path.join(__dirname, '..', 'uploads', 'assinaturas');
+    fs.mkdirSync(termDir, { recursive: true });
+    fs.mkdirSync(signDir, { recursive: true });
+    const pdfName = `termo_cautela_${id}_${Date.now()}.pdf`;
+    const pdfPathFs = path.join(termDir, pdfName);
+    const pdfUrl = `/uploads/termos/${pdfName}`;
+    const doc = new PDFDocument({ size: 'A4', margin: 50 });
+    const fileStream = fs.createWriteStream(pdfPathFs);
+    doc.pipe(fileStream);
+    // Header
+    doc.fontSize(16).text('Termo de Cautela de Equipamento', { align: 'center' });
+    doc.moveDown();
+    // Dados
+    doc.fontSize(12).text(`Equipamento: ${emp.equipamento_nome} (${emp.equipamento_codigo})`);
+    doc.text(`Marca/Modelo: ${emp.marca || '-'} / ${emp.modelo || '-'}`);
+    doc.text(`Solicitante: ${emp.solicitante_nome} (Matrícula: ${emp.solicitante_matricula || '-'})`);
+    doc.text(`Autorizador: ${emp.autorizador_nome || '-'} (Matrícula: ${emp.autorizador_matricula || '-'})`);
+    doc.text(`Data da Cautela: ${new Date(emp.data_emprestimo).toLocaleDateString('pt-BR')}`);
+    doc.text(`Devolução Prevista: ${emp.data_prevista_devolucao ? new Date(emp.data_prevista_devolucao).toLocaleDateString('pt-BR') : '-'}`);
+    doc.moveDown();
+    // Termo
+    doc.text('Declaro ter recebido o equipamento acima e me comprometo com seu uso adequado, conservação e devolução na data prevista, sujeito às normas internas.');
+    doc.moveDown();
+    // Assinaturas
+    let assinSolicUrl = null;
+    let assinAutoUrl = null;
+    const drawSignature = (label, dataUrl, filenameBase) => {
+      doc.text(label);
+      if (dataUrl && typeof dataUrl === 'string' && dataUrl.startsWith('data:image')) {
+        const base64 = dataUrl.split(',')[1];
+        const buffer = Buffer.from(base64, 'base64');
+        const x = doc.x, y = doc.y;
+        doc.image(buffer, x, y, { width: 200 }).moveDown(3);
+        const fileName = `${filenameBase}_${Date.now()}.png`;
+        const filePath = path.join(signDir, fileName);
+        fs.writeFileSync(filePath, buffer);
+        if (filenameBase.includes('solicitante')) assinSolicUrl = `/uploads/assinaturas/${fileName}`;
+        if (filenameBase.includes('autorizador')) assinAutoUrl = `/uploads/assinaturas/${fileName}`;
+      } else {
+        doc.moveDown(2);
+        doc.text('______________________________');
+        doc.moveDown();
+      }
+    };
+    drawSignature('Assinatura do Solicitante:', assinatura_solicitante, `assinatura_solicitante_${id}`);
+    drawSignature('Assinatura do Autorizador:', assinatura_autorizador, `assinatura_autorizador_${id}`);
+    doc.end();
+    fileStream.on('finish', async () => {
+      try {
+        await query(
+          `INSERT INTO termos_cautela (emprestimo_id, url_pdf, assinatura_solicitante, assinatura_autorizador)
+           VALUES ($1, $2, $3, $4)`,
+          [id, pdfUrl, assinSolicUrl, assinAutoUrl]
+        );
+        res.download(pdfPathFs, pdfName);
+      } catch (e) {
+        console.error('Erro ao salvar termo_cautela:', e);
+        res.status(500).json({ error: 'Erro ao salvar termo' });
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao gerar termo:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
 module.exports = router;
+ 
+// Lista de termos de cautela (recentes ou por emprestimo_id)
+router.get('/termos', async (req, res) => {
+  try {
+    const { emprestimo_id, limit = 50 } = req.query;
+    const params = [];
+    let q = `
+      SELECT t.*, 
+             e.equipamento_id, e.usuario_solicitante_id, e.data_emprestimo,
+             eq.nome AS equipamento_nome, eq.codigo AS equipamento_codigo
+      FROM termos_cautela t
+      LEFT JOIN emprestimos e ON t.emprestimo_id = e.id
+      LEFT JOIN equipamentos eq ON e.equipamento_id = eq.id
+    `;
+    if (emprestimo_id) {
+      params.push(parseInt(emprestimo_id, 10));
+      q += ` WHERE t.emprestimo_id = $1`;
+    }
+    q += ` ORDER BY t.created_at DESC LIMIT ${parseInt(limit, 10)}`;
+    const r = await query(q, params);
+    res.json({ termos: r.rows || [] });
+  } catch (error) {
+    console.error('Erro ao listar termos:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Top equipamentos mais emprestados
+router.get('/relatorio/top-equipamentos', async (_req, res) => {
+  try {
+    const r = await query(`
+      SELECT eq.id, eq.codigo, eq.nome, COUNT(e.id) AS total
+      FROM emprestimos e
+      JOIN equipamentos eq ON e.equipamento_id = eq.id
+      GROUP BY eq.id, eq.codigo, eq.nome
+      ORDER BY total DESC
+      LIMIT 10
+    `);
+    res.json({ top: r.rows || [] });
+  } catch (error) {
+    console.error('Erro ao listar top equipamentos:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});

@@ -100,7 +100,7 @@ router.get('/produtos', async (req, res) => {
 
     if (busca) {
       paramCount++;
-      queryText += ` AND (p.nome ILIKE $${paramCount} OR p.codigo ILIKE $${paramCount})`;
+      queryText += ` AND (p.nome ILIKE $${paramCount} OR p.codigo ILIKE $${paramCount} OR p.barcode ILIKE $${paramCount})`;
       params.push(`%${busca}%`);
     }
 
@@ -212,14 +212,15 @@ router.post('/produtos', authorizeRoles('Administrador', 'Chefe'), [
 
     const {
       codigo, nome, descricao, categoria_id, unidade_medida,
-      estoque_minimo, valor_unitario
+      estoque_minimo, valor_unitario, barcode
     } = req.body;
+    const unidadeId = req.unidade?.id || null;
 
     const result = await query(
-      `INSERT INTO produtos (codigo, nome, descricao, categoria_id, unidade_medida, estoque_minimo, valor_unitario)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO produtos (codigo, nome, descricao, categoria_id, unidade_medida, estoque_minimo, valor_unitario, unidade_id, barcode)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
-      [codigo, nome, descricao, categoria_id, unidade_medida, estoque_minimo || 0, valor_unitario]
+      [codigo, nome, descricao, categoria_id, unidade_medida, estoque_minimo || 0, valor_unitario, unidadeId, barcode || null]
     );
 
     res.status(201).json({
@@ -228,9 +229,61 @@ router.post('/produtos', authorizeRoles('Administrador', 'Chefe'), [
     });
   } catch (error) {
     if (error.code === '23505') {
-      return res.status(400).json({ error: 'Código do produto já existe' });
+      const msg = (error.detail || '').includes('barcode') ? 'Código de barras já existe' : 'Código do produto já existe';
+      return res.status(400).json({ error: msg });
     }
     console.error('Erro ao criar produto:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+router.put('/produtos/:id', authorizeRoles('Administrador', 'Chefe'), [
+  body('nome').optional().notEmpty(),
+  body('categoria_id').optional().isInt(),
+  body('unidade_medida').optional().notEmpty()
+], async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      codigo, nome, descricao, categoria_id, unidade_medida,
+      estoque_minimo, valor_unitario, ativo
+    } = req.body;
+    const fields = [];
+    const params = [];
+    let i = 1;
+    if (codigo !== undefined) { fields.push(`codigo = $${i++}`); params.push(codigo); }
+    if (nome !== undefined) { fields.push(`nome = $${i++}`); params.push(nome); }
+    if (descricao !== undefined) { fields.push(`descricao = $${i++}`); params.push(descricao); }
+    if (categoria_id !== undefined) { fields.push(`categoria_id = $${i++}`); params.push(categoria_id); }
+    if (unidade_medida !== undefined) { fields.push(`unidade_medida = $${i++}`); params.push(unidade_medida); }
+    if (estoque_minimo !== undefined) { fields.push(`estoque_minimo = $${i++}`); params.push(estoque_minimo); }
+    if (valor_unitario !== undefined) { fields.push(`valor_unitario = $${i++}`); params.push(valor_unitario); }
+    if (ativo !== undefined) { fields.push(`ativo = $${i++}`); params.push(ativo); }
+    if (fields.length === 0) return res.status(400).json({ error: 'Nenhum campo para atualizar' });
+    params.push(id);
+    const result = await query(
+      `UPDATE produtos SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${i} RETURNING *`,
+      params
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Produto não encontrado' });
+    res.json({ message: 'Produto atualizado com sucesso', produto: result.rows[0] });
+  } catch (error) {
+    console.error('Erro ao atualizar produto:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+router.delete('/produtos/:id', authorizeRoles('Administrador', 'Chefe'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await query(
+      'UPDATE produtos SET ativo = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
+      [id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Produto não encontrado' });
+    res.json({ message: 'Produto removido com sucesso' });
+  } catch (error) {
+    console.error('Erro ao remover produto:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
@@ -308,6 +361,10 @@ router.post('/movimentacoes', [
       produto_id, tipo, quantidade, valor_unitario,
       motivo, documento, fornecedor
     } = req.body;
+    const isOperador = (req.user?.perfil_nome === 'Operador') || (req.user?.papel === 'Operador');
+    if (isOperador && tipo === 'entrada') {
+      return res.status(403).json({ error: 'Operador não pode registrar entradas' });
+    }
 
     await transaction(async (client) => {
       // Buscar produto atual

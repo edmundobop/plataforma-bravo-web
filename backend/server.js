@@ -200,6 +200,32 @@ async function processarAutomacoes() {
   }
 }
 
+async function processarAlertasEmprestimosVencidos() {
+  try {
+    const res = await query(`
+      SELECT e.id, e.equipamento_id, e.usuario_solicitante_id, e.data_prevista_devolucao
+      FROM emprestimos e
+      WHERE e.status = 'ativo' AND e.data_prevista_devolucao < CURRENT_DATE
+    `);
+    for (const row of (res.rows || [])) {
+      await query(`
+        INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT DO NOTHING
+      `, [
+        row.usuario_solicitante_id,
+        'Cautela Vencida',
+        `Cautela ${row.id} está vencida desde ${new Date(row.data_prevista_devolucao).toLocaleDateString('pt-BR')}`,
+        'warning',
+        'emprestimos',
+        row.id
+      ]);
+    }
+  } catch (e) {
+    console.error('Erro ao processar alertas de empréstimos vencidos:', e);
+  }
+}
+
 server.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
   console.log(`🌐 API disponível em http://localhost:${PORT}/api`);
@@ -210,7 +236,16 @@ server.listen(PORT, () => {
     setTimeout(() => {
       // Executa no início do minuto e segue a cada 60s ancorado
       processarAutomacoes();
+      const [alvoHora, alvoMin] = (process.env.ALERT_HOUR || '08:00').split(':').map(s => parseInt(s, 10));
+      const tick = async () => {
+        const now = new Date();
+        if (now.getHours() === alvoHora && now.getMinutes() === alvoMin) {
+          await processarAlertasEmprestimosVencidos();
+        }
+      };
+      tick();
       setInterval(processarAutomacoes, 60 * 1000);
+      setInterval(tick, 60 * 1000);
     }, Math.max(msAteProximoMinuto, 0));
   }
   agendarSchedulerMinuto();
