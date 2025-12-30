@@ -7,6 +7,8 @@ import {
   Typography,
   Button,
   TextField,
+  Switch,
+  FormControlLabel,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -201,15 +203,46 @@ const Emprestimos = () => {
 
   const loadRelatorios = async () => {
     try {
-      const [rResumo, rTop, rTermos] = await Promise.all([
+      const results = await Promise.allSettled([
         emprestimosService.getRelatorioEmprestimos(),
         emprestimosService.getRelatorioTopEquipamentos(),
         emprestimosService.getTermosCautela({ limit: 20 })
       ]);
-      setRelResumo(rResumo.data);
-      setRelTop(rTop.data.top || []);
-      setTermosRecentes(rTermos.data.termos || []);
-    } catch (err) {
+      const [resResumo, resTop, resTermos] = results;
+      if (resResumo.status === 'fulfilled') {
+        setRelResumo(resResumo.value.data);
+      } else {
+        setRelResumo(null);
+      }
+      if (resTop.status === 'fulfilled') {
+        setRelTop(resTop.value.data.top || []);
+      } else {
+        setRelTop([]);
+      }
+      if (resTermos.status === 'fulfilled') {
+        setTermosRecentes(resTermos.value.data.termos || []);
+      } else {
+        setTermosRecentes([]);
+      }
+      const allRejected = results.every(r => r.status === 'rejected');
+      if (allRejected) {
+        const msgs = results
+          .map((r, idx) => {
+            if (r.status !== 'rejected') return null;
+            const reason = r.reason;
+            const errMsg =
+              (reason && reason.response && reason.response.data && reason.response.data.error) ||
+              (reason && reason.message) ||
+              'erro';
+            return `falha${idx+1}: ${errMsg}`;
+          })
+          .filter(Boolean)
+          .join(' | ');
+        setError(`Erro ao carregar relatórios: ${msgs}`);
+      } else {
+        setError('');
+      }
+    } catch {
       setError('Erro ao carregar relatórios');
     }
   };
@@ -221,8 +254,10 @@ const Emprestimos = () => {
       setEquipamentos(response.data.equipamentos || []);
       setEquipamentosPagination(response.data.pagination || {});
     } catch (err) {
+      const status = err?.response?.status;
+      const msg = err?.response?.data?.error || 'Erro ao carregar equipamentos';
       console.error('Erro ao carregar equipamentos:', err);
-      setError('Erro ao carregar equipamentos');
+      setError(status ? `${msg} (HTTP ${status})` : msg);
     } finally {
       setEquipamentosLoading(false);
     }
@@ -235,8 +270,10 @@ const Emprestimos = () => {
       setEmprestimos(response.data.emprestimos || []);
       setEmprestimosPagination(response.data.pagination || {});
     } catch (err) {
+      const status = err?.response?.status;
+      const msg = err?.response?.data?.error || 'Erro ao carregar cautelas';
       console.error('Erro ao carregar cautelas:', err);
-      setError('Erro ao carregar cautelas');
+      setError(status ? `${msg} (HTTP ${status})` : msg);
     } finally {
       setEmprestimosLoading(false);
     }
@@ -326,11 +363,26 @@ const Emprestimos = () => {
         }
         loadEquipamentos();
       } else if (dialogType === 'emprestimo') {
-        await emprestimosService.createEmprestimo(formData);
+        const payload = {
+          equipamento_id: formData.equipamento_id,
+          data_prevista_devolucao: formData.data_prevista_devolucao,
+          motivo: formData.motivo || 'Cautela de equipamento',
+          observacoes_emprestimo: formData.observacoes_emprestimo,
+          condicao_emprestimo: formData.condicao_emprestimo,
+        };
+        const resp = await emprestimosService.createEmprestimo(payload);
+        const status = resp?.data?.status;
+        if (status === 'pendente') {
+          setError('Cautela pendente de autorização do Administrador');
+        }
         loadEmprestimos();
         loadEquipamentos(); // Atualizar status dos equipamentos
       } else if (dialogType === 'devolucao') {
-        await emprestimosService.devolverEquipamento(selectedItem.id, formData);
+        await emprestimosService.devolverEmprestimo(
+          selectedItem.id,
+          formData.condicao_devolucao,
+          formData.observacoes_devolucao
+        );
         loadEmprestimos();
         loadEquipamentos();
       }
@@ -1257,6 +1309,28 @@ const Emprestimos = () => {
                     </Select>
                   </FormControl>
                 </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={formData.exige_autorizacao !== false}
+                        onChange={(e) => handleFormChange('exige_autorizacao', e.target.checked)}
+                      />
+                    }
+                    label="Exige Autorização"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={!!formData.exige_data_devolucao}
+                        onChange={(e) => handleFormChange('exige_data_devolucao', e.target.checked)}
+                      />
+                    }
+                    label="Exige Data de Devolução"
+                  />
+                </Grid>
                 <Grid item xs={12}>
                   <TextField
                     fullWidth
@@ -1341,6 +1415,14 @@ const Emprestimos = () => {
                     value={formData.data_prevista_devolucao || ''}
                     onChange={(e) => handleFormChange('data_prevista_devolucao', e.target.value)}
                     InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Motivo do Empréstimo"
+                    value={formData.motivo || ''}
+                    onChange={(e) => handleFormChange('motivo', e.target.value)}
                   />
                 </Grid>
                 <Grid item xs={12}>

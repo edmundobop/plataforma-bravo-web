@@ -179,7 +179,8 @@ router.post('/equipamentos', authorizeRoles('Administrador', 'Chefe', 'Comandant
 
     const {
       codigo, nome, descricao, marca, modelo, numero_serie,
-      valor, data_aquisicao, setor_responsavel, observacoes, barcode, status, condicao, fotos
+      valor, data_aquisicao, setor_responsavel, observacoes, barcode, status, condicao, fotos,
+      exige_autorizacao, exige_data_devolucao, tipo, localizacao
     } = req.body;
     const unidadeId = req.unidade?.id || req.user?.unidade_id || null;
 
@@ -197,17 +198,19 @@ router.post('/equipamentos', authorizeRoles('Administrador', 'Chefe', 'Comandant
     const statusSafe = isEmpty(status) ? 'disponivel' : status;
     const condicaoSafe = isEmpty(condicao) ? 'bom' : condicao;
     const fotosSafe = Array.isArray(fotos) ? JSON.stringify(fotos) : null;
-    const tipoSafe = isEmpty(req.body.tipo) ? null : req.body.tipo;
-    const localizacaoSafe = isEmpty(req.body.localizacao) ? null : req.body.localizacao;
+    const tipoSafe = isEmpty(tipo) ? null : tipo;
+    const localizacaoSafe = isEmpty(localizacao) ? null : localizacao;
+    const exigeAutSafe = (exige_autorizacao === undefined || exige_autorizacao === null) ? true : !!exige_autorizacao;
+    const exigeDataDevSafe = (exige_data_devolucao === undefined || exige_data_devolucao === null) ? false : !!exige_data_devolucao;
 
     let result;
     try {
       result = await query(
         `INSERT INTO equipamentos 
-         (codigo, nome, descricao, marca, modelo, numero_serie, valor, data_aquisicao, setor_responsavel, observacoes, unidade_id, barcode, status, condicao, fotos, tipo, localizacao)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+         (codigo, nome, descricao, marca, modelo, numero_serie, valor, data_aquisicao, setor_responsavel, observacoes, unidade_id, barcode, status, condicao, fotos, tipo, localizacao, exige_autorizacao, exige_data_devolucao)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
          RETURNING *`,
-        [codigo, nome, descricao, marca, modelo, numero_serie, valorSafe, dataAquisicaoSafe, setorRespSafe, observacoesSafe, unidadeId, barcodeSafe, statusSafe, condicaoSafe, fotosSafe, tipoSafe, localizacaoSafe]
+        [codigo, nome, descricao, marca, modelo, numero_serie, valorSafe, dataAquisicaoSafe, setorRespSafe, observacoesSafe, unidadeId, barcodeSafe, statusSafe, condicaoSafe, fotosSafe, tipoSafe, localizacaoSafe, exigeAutSafe, exigeDataDevSafe]
       );
     } catch (e) {
       if (e.code === '42703') {
@@ -247,7 +250,8 @@ router.put('/equipamentos/:id', authorizeRoles('Administrador', 'Chefe'), [
     const { id } = req.params;
     const {
       codigo, nome, descricao, marca, modelo, numero_serie,
-      valor, data_aquisicao, setor_responsavel, observacoes, status, condicao, barcode, fotos
+      valor, data_aquisicao, setor_responsavel, observacoes, status, condicao, barcode, fotos,
+      exige_autorizacao, exige_data_devolucao, tipo, localizacao
     } = req.body;
     const fields = [];
     const params = [];
@@ -269,8 +273,10 @@ router.put('/equipamentos/:id', authorizeRoles('Administrador', 'Chefe'), [
     if (condicao !== undefined) { fields.push(`condicao = $${i++}`); params.push(condicao); }
     if (barcode !== undefined) { fields.push(`barcode = $${i++}`); params.push(barcode || null); }
     if (fotos !== undefined) { fields.push(`fotos = $${i++}`); params.push(Array.isArray(fotos) ? JSON.stringify(fotos) : null); }
-    if (req.body.tipo !== undefined) { fields.push(`tipo = $${i++}`); params.push(req.body.tipo || null); }
-    if (req.body.localizacao !== undefined) { fields.push(`localizacao = $${i++}`); params.push(req.body.localizacao || null); }
+    if (tipo !== undefined) { fields.push(`tipo = $${i++}`); params.push(tipo || null); }
+    if (localizacao !== undefined) { fields.push(`localizacao = $${i++}`); params.push(localizacao || null); }
+    if (exige_autorizacao !== undefined) { fields.push(`exige_autorizacao = $${i++}`); params.push(!!exige_autorizacao); }
+    if (exige_data_devolucao !== undefined) { fields.push(`exige_data_devolucao = $${i++}`); params.push(!!exige_data_devolucao); }
     if (fields.length === 0) return res.status(400).json({ error: 'Nenhum campo para atualizar' });
     params.push(id);
     let result;
@@ -339,6 +345,12 @@ router.get('/', async (req, res) => {
     `;
     const params = [];
     let paramCount = 0;
+    const unidadeId = req.unidade?.id || req.user?.unidade_id || null;
+    if (unidadeId) {
+      paramCount++;
+      queryText += ` AND eq.unidade_id = $${paramCount}`;
+      params.push(unidadeId);
+    }
 
     if (status) {
       paramCount++;
@@ -369,7 +381,49 @@ router.get('/', async (req, res) => {
     params.push(limit, offset);
 
     const result = await query(queryText, params);
-    res.json(result.rows);
+    // Contagem total
+    let countQuery = `
+      SELECT COUNT(*) 
+      FROM emprestimos e
+      JOIN equipamentos eq ON e.equipamento_id = eq.id
+      WHERE 1=1
+    `;
+    const countParams = [];
+    let countParamCount = 0;
+    if (unidadeId) {
+      countParamCount++;
+      countQuery += ` AND eq.unidade_id = $${countParamCount}`;
+      countParams.push(unidadeId);
+    }
+    if (status) {
+      countParamCount++;
+      countQuery += ` AND e.status = $${countParamCount}`;
+      countParams.push(status);
+    }
+    if (equipamento_id) {
+      countParamCount++;
+      countQuery += ` AND e.equipamento_id = $${countParamCount}`;
+      countParams.push(equipamento_id);
+    }
+    if (usuario_id) {
+      countParamCount++;
+      countQuery += ` AND e.usuario_solicitante_id = $${countParamCount}`;
+      countParams.push(usuario_id);
+    }
+    if (vencidos === 'true') {
+      countQuery += ' AND e.data_prevista_devolucao < CURRENT_DATE AND e.status = \'ativo\'';
+    }
+    const countResult = await query(countQuery, countParams);
+    const total = parseInt(countResult.rows[0].count || '0', 10);
+    res.json({
+      emprestimos: result.rows,
+      pagination: {
+        page: parseInt(page, 10),
+        limit: parseInt(limit, 10),
+        total,
+        pages: Math.ceil(total / limit || 1)
+      }
+    });
   } catch (error) {
     console.error('Erro ao listar empréstimos:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
@@ -408,7 +462,7 @@ router.get('/:id', async (req, res) => {
 // Criar empréstimo
 router.post('/', [
   body('equipamento_id').isInt().withMessage('ID do equipamento é obrigatório'),
-  body('data_prevista_devolucao').isISO8601().withMessage('Data prevista de devolução inválida'),
+  body('data_prevista_devolucao').optional().isISO8601().withMessage('Data prevista de devolução inválida'),
   body('motivo').notEmpty().withMessage('Motivo do empréstimo é obrigatório')
 ], async (req, res) => {
   try {
@@ -424,10 +478,11 @@ router.post('/', [
 
     const solicitanteId = usuario_solicitante_id || req.user.id;
 
+    let statusEmp = 'ativo';
     await transaction(async (client) => {
       // Verificar se equipamento está disponível
       const equipamentoResult = await client.query(
-        'SELECT status, nome FROM equipamentos WHERE id = $1',
+        'SELECT status, nome, exige_autorizacao, exige_data_devolucao FROM equipamentos WHERE id = $1',
         [equipamento_id]
       );
 
@@ -450,20 +505,29 @@ router.post('/', [
         throw new Error('Equipamento já possui empréstimo ativo');
       }
 
-      // Criar empréstimo
+      if (equipamento.exige_data_devolucao && !data_prevista_devolucao) {
+        throw new Error('Este equipamento exige data de devolução');
+      }
+      let autorizadorId = req.user.id;
+      if (equipamento.exige_autorizacao) {
+        statusEmp = 'pendente';
+        autorizadorId = null;
+      }
       const emprestimoResult = await client.query(
         `INSERT INTO emprestimos 
-         (equipamento_id, usuario_solicitante_id, usuario_autorizador_id, data_prevista_devolucao, motivo, observacoes_emprestimo, condicao_emprestimo)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         (equipamento_id, usuario_solicitante_id, usuario_autorizador_id, data_prevista_devolucao, motivo, observacoes_emprestimo, condicao_emprestimo, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING *`,
-        [equipamento_id, solicitanteId, req.user.id, data_prevista_devolucao, motivo, observacoes_emprestimo, condicao_emprestimo]
+        [equipamento_id, solicitanteId, autorizadorId, data_prevista_devolucao, motivo, observacoes_emprestimo, condicao_emprestimo, statusEmp]
       );
 
       // Atualizar status do equipamento
-      await client.query(
-        'UPDATE equipamentos SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-        ['emprestado', equipamento_id]
-      );
+      if (statusEmp === 'ativo') {
+        await client.query(
+          'UPDATE equipamentos SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+          ['emprestado', equipamento_id]
+        );
+      }
 
       // Criar notificação
       await client.query(
@@ -471,9 +535,11 @@ router.post('/', [
          VALUES ($1, $2, $3, $4, $5, $6)`,
         [
           solicitanteId,
-          'Empréstimo Registrado',
-          `Empréstimo do equipamento ${equipamento.nome} registrado com sucesso. Data prevista de devolução: ${data_prevista_devolucao}`,
-          'success',
+          statusEmp === 'pendente' ? 'Cautela Pendente' : 'Empréstimo Registrado',
+          statusEmp === 'pendente'
+            ? `Cautela do equipamento ${equipamento.nome} está pendente de autorização do Administrador.`
+            : `Empréstimo do equipamento ${equipamento.nome} registrado com sucesso. Data prevista de devolução: ${data_prevista_devolucao}`,
+          statusEmp === 'pendente' ? 'warning' : 'success',
           'emprestimos',
           emprestimoResult.rows[0].id
         ]
@@ -483,13 +549,54 @@ router.post('/', [
     });
 
     res.status(201).json({
-      message: 'Empréstimo registrado com sucesso'
+      message: statusEmp === 'pendente' ? 'Cautela pendente de autorização' : 'Empréstimo registrado com sucesso',
+      status: statusEmp
     });
   } catch (error) {
     if (error.message.includes('não encontrado') || error.message.includes('não está disponível') || error.message.includes('já possui empréstimo')) {
       return res.status(400).json({ error: error.message });
     }
     console.error('Erro ao criar empréstimo:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Autorizar cautela pendente
+router.put('/:id/autorizar', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userRole = req.user?.perfil_nome || req.user?.papel;
+    // Buscar unidade e config
+    const empRes = await query('SELECT equipamento_id, status FROM emprestimos WHERE id = $1', [id]);
+    if (empRes.rows.length === 0) return res.status(404).json({ error: 'Empréstimo não encontrado' });
+    const emprestimo = empRes.rows[0];
+    if (emprestimo.status !== 'pendente') return res.status(400).json({ error: 'Empréstimo não está pendente' });
+    const eqRes = await query('SELECT unidade_id, nome FROM equipamentos WHERE id = $1', [emprestimo.equipamento_id]);
+    const unidadeId = eqRes.rows[0]?.unidade_id || null;
+    const configRes = await query('SELECT cautelas_autorizacao_roles FROM almox_config WHERE unidade_id = $1 LIMIT 1', [unidadeId]);
+    const roles = (configRes.rows[0]?.cautelas_autorizacao_roles) || ['Administrador', 'Chefe', 'Comandante'];
+    const allowed = Array.isArray(roles) ? roles.includes(userRole) : false;
+    if (!allowed) return res.status(403).json({ error: 'Usuário não pode autorizar cautelas' });
+    await transaction(async (client) => {
+      await client.query(
+        `UPDATE emprestimos 
+         SET status = 'ativo', usuario_autorizador_id = $1, data_emprestimo = CURRENT_TIMESTAMP
+         WHERE id = $2`,
+        [req.user.id, id]
+      );
+      await client.query(
+        'UPDATE equipamentos SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+        ['emprestado', emprestimo.equipamento_id]
+      );
+      await client.query(
+        `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [req.user.id, 'Cautela Autorizada', `Cautela do equipamento ${eqRes.rows[0]?.nome} foi autorizada.`, 'success', 'emprestimos', id]
+      );
+    });
+    res.json({ message: 'Cautela autorizada' });
+  } catch (error) {
+    console.error('Erro ao autorizar cautela:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
@@ -512,24 +619,44 @@ router.post('/lote', [
       const equipamento_id = item.id || item.equipamento_id;
       try {
         await transaction(async (client) => {
-          const equipamentoResult = await client.query('SELECT status, nome FROM equipamentos WHERE id = $1', [equipamento_id]);
+          const equipamentoResult = await client.query('SELECT status, nome, exige_autorizacao, exige_data_devolucao FROM equipamentos WHERE id = $1', [equipamento_id]);
           if (equipamentoResult.rows.length === 0) throw new Error('Equipamento não encontrado');
           const equipamento = equipamentoResult.rows[0];
           if (equipamento.status !== 'disponivel') throw new Error('Equipamento não está disponível para empréstimo');
           const emprestimoAtivoResult = await client.query('SELECT id FROM emprestimos WHERE equipamento_id = $1 AND status = $2', [equipamento_id, 'ativo']);
           if (emprestimoAtivoResult.rows.length > 0) throw new Error('Equipamento já possui empréstimo ativo');
+          if (equipamento.exige_data_devolucao && !data_prevista_devolucao) {
+            throw new Error('Este equipamento exige data de devolução');
+          }
+          let statusEmp = 'ativo';
+          let autorizadorId = req.user.id;
+          if (equipamento.exige_autorizacao) {
+            statusEmp = 'pendente';
+            autorizadorId = null;
+          }
           const emprestimoResult = await client.query(
             `INSERT INTO emprestimos 
-             (equipamento_id, usuario_solicitante_id, usuario_autorizador_id, data_prevista_devolucao, motivo, observacoes_emprestimo, condicao_emprestimo)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             (equipamento_id, usuario_solicitante_id, usuario_autorizador_id, data_prevista_devolucao, motivo, observacoes_emprestimo, condicao_emprestimo, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
              RETURNING *`,
-            [equipamento_id, solicitanteId, req.user.id, data_prevista_devolucao, motivo, observacoes_emprestimo, condicao_emprestimo]
+            [equipamento_id, solicitanteId, autorizadorId, data_prevista_devolucao, motivo, observacoes_emprestimo, condicao_emprestimo, statusEmp]
           );
-          await client.query('UPDATE equipamentos SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', ['emprestado', equipamento_id]);
+          if (statusEmp === 'ativo') {
+            await client.query('UPDATE equipamentos SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', ['emprestado', equipamento_id]);
+          }
           await client.query(
             `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id)
              VALUES ($1, $2, $3, $4, $5, $6)`,
-            [solicitanteId, 'Empréstimo Registrado', `Empréstimo do equipamento ${equipamento.nome} registrado com sucesso.`, 'success', 'emprestimos', emprestimoResult.rows[0].id]
+            [
+              solicitanteId, 
+              statusEmp === 'pendente' ? 'Cautela Pendente' : 'Empréstimo Registrado', 
+              statusEmp === 'pendente'
+                ? `Cautela do equipamento ${equipamento.nome} está pendente de autorização do Administrador.`
+                : `Empréstimo do equipamento ${equipamento.nome} registrado com sucesso.`,
+              statusEmp === 'pendente' ? 'warning' : 'success',
+              'emprestimos', 
+              emprestimoResult.rows[0].id
+            ]
           );
         });
         results.push({ equipamento_id, status: 'ok' });
@@ -772,6 +899,9 @@ router.get('/termos', async (req, res) => {
     const r = await query(q, params);
     res.json({ termos: r.rows || [] });
   } catch (error) {
+    if (error.code === '42P01') {
+      return res.json({ termos: [] });
+    }
     console.error('Erro ao listar termos:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }

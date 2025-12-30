@@ -10,7 +10,7 @@ const router = express.Router();
 router.use(authenticateToken);
 
 // Aplicar verificação de tenant em rotas que precisam de filtro por unidade
-router.use(['/produtos', '/movimentacoes'], optionalTenant);
+router.use(['/produtos', '/movimentacoes', '/config'], optionalTenant);
 
 // CATEGORIAS
 
@@ -500,3 +500,64 @@ router.get('/relatorio/estoque', async (req, res) => {
 });
 
 module.exports = router;
+ 
+// Configurações do Almoxarifado (por unidade)
+router.get('/config', async (req, res) => {
+  try {
+    const unidadeId = req.unidade?.id || req.user?.unidade_id || null;
+    if (!unidadeId) return res.status(400).json({ error: 'Unidade não identificada' });
+    const defaults = {
+      cautelas_notificacao_intervals: [7, 2, 1],
+      cautelas_autorizacao_roles: ['Administrador', 'Chefe', 'Comandante']
+    };
+    const r = await query('SELECT cautelas_notificacao_intervals, cautelas_autorizacao_roles FROM almox_config WHERE unidade_id = $1 LIMIT 1', [unidadeId]);
+    if (r.rows.length === 0) return res.json(defaults);
+    const cfg = r.rows[0];
+    res.json({
+      cautelas_notificacao_intervals: cfg.cautelas_notificacao_intervals || defaults.cautelas_notificacao_intervals,
+      cautelas_autorizacao_roles: cfg.cautelas_autorizacao_roles || defaults.cautelas_autorizacao_roles
+    });
+  } catch (error) {
+    if (error.code === '42P01') {
+      return res.json({
+        cautelas_notificacao_intervals: [7, 2, 1],
+        cautelas_autorizacao_roles: ['Administrador', 'Chefe', 'Comandante']
+      });
+    }
+    console.error('Erro ao obter config do almoxarifado:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+router.put('/config', async (req, res) => {
+  try {
+    const unidadeId = req.unidade?.id || req.user?.unidade_id || null;
+    if (!unidadeId) return res.status(400).json({ error: 'Unidade não identificada' });
+    const { cautelas_notificacao_intervals, cautelas_autorizacao_roles } = req.body || {};
+    const intervals = Array.isArray(cautelas_notificacao_intervals) ? cautelas_notificacao_intervals : [7, 2, 1];
+    const roles = Array.isArray(cautelas_autorizacao_roles) ? cautelas_autorizacao_roles : ['Administrador', 'Chefe', 'Comandante'];
+    await query(`
+      CREATE TABLE IF NOT EXISTS almox_config (
+        id SERIAL PRIMARY KEY,
+        unidade_id INTEGER,
+        cautelas_notificacao_intervals JSONB DEFAULT '[]'::jsonb,
+        cautelas_autorizacao_roles JSONB DEFAULT '[]'::jsonb
+      )
+    `);
+    const existing = await query('SELECT id FROM almox_config WHERE unidade_id = $1 LIMIT 1', [unidadeId]);
+    if (existing.rows.length === 0) {
+      await query(
+        'INSERT INTO almox_config (unidade_id, cautelas_notificacao_intervals, cautelas_autorizacao_roles) VALUES ($1, $2, $3)',
+        [unidadeId, JSON.stringify(intervals), JSON.stringify(roles)]
+      );
+    } else {
+      await query(
+        'UPDATE almox_config SET cautelas_notificacao_intervals = $1, cautelas_autorizacao_roles = $2 WHERE unidade_id = $3',
+        [JSON.stringify(intervals), JSON.stringify(roles), unidadeId]
+      );
+    }
+    res.json({ message: 'Configurações atualizadas' });
+  } catch (error) {
+    console.error('Erro ao atualizar config do almoxarifado:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
