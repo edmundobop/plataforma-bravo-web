@@ -664,6 +664,26 @@ const createTables = async () => {
     await query(`ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS fotos JSONB`);
     await query(`ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS tipo VARCHAR(30)`);
     await query(`ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS localizacao VARCHAR(80)`);
+    await query(`ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS exige_autorizacao BOOLEAN DEFAULT TRUE`);
+    await query(`ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS exige_data_devolucao BOOLEAN DEFAULT FALSE`);
+    await query(`
+      CREATE TABLE IF NOT EXISTS almox_config (
+        id SERIAL PRIMARY KEY,
+        unidade_id INTEGER,
+        cautelas_notificacao_intervals JSONB DEFAULT '[]'::jsonb,
+        cautelas_autorizacao_roles JSONB DEFAULT '[]'::jsonb
+      )
+    `);
+    // Garantir que colunas novas existam (caso a tabela já existisse)
+    await query(`ALTER TABLE almox_config ADD COLUMN IF NOT EXISTS cautelas_autorizacao_roles JSONB DEFAULT '[]'::jsonb`);
+    await query(`
+      CREATE TABLE IF NOT EXISTS emprestimo_reminders (
+        id SERIAL PRIMARY KEY,
+        emprestimo_id INTEGER,
+        interval_days INTEGER,
+        sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
     await query('CREATE INDEX IF NOT EXISTS idx_notificacoes_usuario ON notificacoes(usuario_id)');
     await query('CREATE INDEX IF NOT EXISTS idx_emprestimos_status ON emprestimos(status)');
     await query('CREATE INDEX IF NOT EXISTS idx_escalas_data ON escalas(data_inicio, data_fim)');

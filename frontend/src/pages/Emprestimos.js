@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Box,
   Grid,
@@ -60,6 +61,7 @@ import { emprestimosService, formatters } from '../services/api';
 import { uploadService } from '../services/api';
 
 const Emprestimos = () => {
+  const location = useLocation();
   const theme = useTheme();
   const { user, isOperador } = useAuth();
   const { currentUnit } = useTenant();
@@ -263,10 +265,10 @@ const Emprestimos = () => {
     }
   };
 
-  const loadEmprestimos = async () => {
+  const loadEmprestimos = async (customFilters = null) => {
     try {
       setEmprestimosLoading(true);
-      const response = await emprestimosService.getEmprestimos(emprestimosFilters);
+      const response = await emprestimosService.getEmprestimos(customFilters || emprestimosFilters);
       setEmprestimos(response.data.emprestimos || []);
       setEmprestimosPagination(response.data.pagination || {});
     } catch (err) {
@@ -278,6 +280,28 @@ const Emprestimos = () => {
       setEmprestimosLoading(false);
     }
   };
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tabParam = params.get('tab');
+    const statusParam = params.get('status');
+
+    if (tabParam === 'cautelas') {
+      setActiveTab(1);
+    }
+    
+    if (statusParam) {
+       setEmprestimosFilters(prev => {
+         const newFilters = { ...prev, status: statusParam };
+         // Se a aba já for cautelas ou estivermos mudando para ela, carrega com o novo filtro
+         // Nota: se activeTab mudar para 1, o useEffect do activeTab chamará loadData->loadEmprestimos
+         // Mas loadData usará o state emprestimosFilters que pode não ter atualizado ainda.
+         // Por segurança, chamamos explicitamente aqui.
+         loadEmprestimos(newFilters);
+         return newFilters;
+       });
+    }
+  }, [location.search]);
 
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
@@ -415,7 +439,13 @@ const Emprestimos = () => {
         setError('Equipamento já está no carrinho');
         return;
       }
-      setCarrinho((prev) => [...prev, { id: eq.id, codigo: eq.codigo, nome: eq.nome }]);
+      setCarrinho((prev) => [...prev, { 
+        id: eq.id, 
+        codigo: eq.codigo, 
+        nome: eq.nome,
+        exige_autorizacao: eq.exige_autorizacao,
+        exige_data_devolucao: eq.exige_data_devolucao
+      }]);
       setBarcodeEquip('');
     } catch (err) {
       setError('Erro ao adicionar equipamento pelo código de barras');
@@ -429,19 +459,48 @@ const Emprestimos = () => {
   const confirmarCautelaEmLote = async () => {
     try {
       if (!carrinho.length) return;
+
+      // Validação de exigências
+      const itensExigemData = carrinho.filter(i => i.exige_data_devolucao);
+      if (itensExigemData.length > 0 && !formData.data_prevista_devolucao) {
+        setError(`Os seguintes equipamentos exigem data de devolução: ${itensExigemData.map(i => i.codigo).join(', ')}. Por favor, selecione uma data.`);
+        return;
+      }
+
       setLoteLoading(true);
+      
+      // Se algum item exige data, não podemos usar data padrão automática se o usuário não preencheu (mas o check acima já garante isso).
+      // Se NENHUM item exige data, podemos manter o comportamento padrão ou obrigar sempre.
+      // O comportamento anterior era: formData.data || data_padrao
+      // Vamos manter a data padrão apenas se não houver exigência explícita bloqueando.
+      
       const payload = {
         equipamentos: carrinho.map((i) => ({ id: i.id })),
         data_prevista_devolucao: formData.data_prevista_devolucao || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
         motivo: formData.motivo || 'Cautela em lote',
       };
+      
       const res = await emprestimosService.createEmprestimosLote(payload);
       setCarrinho([]);
       loadEmprestimos();
       loadEquipamentos();
-      if (res.data?.failures?.length) {
-        setError(`Falhas: ${res.data.failures.length}`);
-      }
+      
+      const failures = res.data?.failures || [];
+       const successes = res.data?.results || [];
+       const pendingCount = successes.filter(s => s.loan_status === 'pendente').length;
+       
+       let msg = '';
+       if (failures.length) {
+         msg = `Falhas: ${failures.length}. `;
+       }
+       if (successes.length) {
+         msg += `Sucesso: ${successes.length}`;
+         if (pendingCount > 0) {
+            msg += ` (${pendingCount} pendente${pendingCount > 1 ? 's' : ''} de autorização)`;
+         }
+         msg += '.';
+       }
+      
     } catch (err) {
       setError('Erro ao registrar cautela em lote');
     } finally {
@@ -683,6 +742,7 @@ const Emprestimos = () => {
                   label="Status"
                 >
                   <MenuItem key="todos-emp-status" value="">Todos</MenuItem>
+                  <MenuItem key="pendente" value="pendente">Pendente</MenuItem>
                   <MenuItem key="ativo" value="ativo">Ativo</MenuItem>
                   <MenuItem key="devolvido" value="devolvido">Devolvido</MenuItem>
                   <MenuItem key="vencido" value="vencido">Vencido</MenuItem>
@@ -780,14 +840,14 @@ const Emprestimos = () => {
                     <TableCell>
                       <Box display="flex" alignItems="center" gap={1}>
                         <Avatar sx={{ width: 32, height: 32, fontSize: '0.875rem' }}>
-                          {emprestimo.usuario_nome?.charAt(0)}
+                          {(emprestimo.solicitante_nome || emprestimo.usuario_nome || '?').charAt(0)}
                         </Avatar>
                         <Box>
                           <Typography variant="body2" fontWeight="medium">
-                            {emprestimo.usuario_nome}
+                            {emprestimo.solicitante_nome || emprestimo.usuario_nome}
                           </Typography>
                           <Typography variant="caption" color="textSecondary">
-                            {emprestimo.usuario_matricula}
+                            {emprestimo.solicitante_matricula || emprestimo.usuario_matricula}
                           </Typography>
                         </Box>
                       </Box>
@@ -1054,7 +1114,7 @@ const Emprestimos = () => {
             setAnchorEl(null);
           }}>
             <AssignmentIcon sx={{ mr: 1 }} />
-            Emprestar
+            Cautelar
           </MenuItem>
         )}
       </Menu>
@@ -1441,22 +1501,24 @@ const Emprestimos = () => {
                     <Button variant="text" onClick={() => { clearCanvas(canvasRefSolic); setAssinaturaSolic(null); }}>Limpar</Button>
                   </Box>
                 </Grid>
-                <Grid item xs={12}>
-                  <Typography variant="subtitle2">Assinatura do Autorizador</Typography>
-                  <canvas
-                    ref={canvasRefAuto}
-                    width={500}
-                    height={120}
-                    style={{ border: '1px solid #ccc', width: '100%' }}
-                    onMouseDown={(e) => startDraw(canvasRefAuto, e)}
-                    onMouseMove={(e) => drawMove(canvasRefAuto, e)}
-                    onMouseUp={() => endDraw(canvasRefAuto, setAssinaturaAuto)}
-                    onMouseLeave={() => endDraw(canvasRefAuto, setAssinaturaAuto)}
-                  />
-                  <Box mt={1} display="flex" gap={1}>
-                    <Button variant="text" onClick={() => { clearCanvas(canvasRefAuto); setAssinaturaAuto(null); }}>Limpar</Button>
-                  </Box>
-                </Grid>
+                {selectedItem?.id && user?.id !== selectedItem?.usuario_solicitante_id && !isOperador() && (
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2">Assinatura do Autorizador</Typography>
+                    <canvas
+                      ref={canvasRefAuto}
+                      width={500}
+                      height={120}
+                      style={{ border: '1px solid #ccc', width: '100%' }}
+                      onMouseDown={(e) => startDraw(canvasRefAuto, e)}
+                      onMouseMove={(e) => drawMove(canvasRefAuto, e)}
+                      onMouseUp={() => endDraw(canvasRefAuto, setAssinaturaAuto)}
+                      onMouseLeave={() => endDraw(canvasRefAuto, setAssinaturaAuto)}
+                    />
+                    <Box mt={1} display="flex" gap={1}>
+                      <Button variant="text" onClick={() => { clearCanvas(canvasRefAuto); setAssinaturaAuto(null); }}>Limpar</Button>
+                    </Box>
+                  </Grid>
+                )}
                 <Grid item xs={12}>
                   <Button
                     variant="outlined"

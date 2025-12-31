@@ -194,6 +194,10 @@ export const almoxarifadoService = {
   
   // Relatórios
   getRelatorioEstoque: (params) => api.get('/almoxarifado/relatorio/estoque', { params }),
+  
+  // Configurações
+  getConfig: () => api.get('/almoxarifado/config'),
+  updateConfig: (payload) => api.put('/almoxarifado/config', payload),
 };
 
 // Serviços de cautelas

@@ -149,6 +149,12 @@ const Layout = () => {
           path: '/emprestimos',
           roles: ['Administrador', 'Chefe', 'Operador'],
         },
+        {
+          text: 'Configurações',
+          icon: <SettingsIcon />,
+          path: '/configuracoes',
+          roles: ['Administrador', 'Chefe'],
+        },
       ],
     },
     {

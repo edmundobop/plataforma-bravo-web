@@ -226,6 +226,56 @@ async function processarAlertasEmprestimosVencidos() {
   }
 }
 
+async function processarLembretesDevolucao() {
+  try {
+    // Carregar intervalos por unidade
+    const cfgRes = await query('SELECT unidade_id, cautelas_notificacao_intervals FROM almox_config');
+    const cfgMap = new Map();
+    for (const c of (cfgRes.rows || [])) {
+      const arr = Array.isArray(c.cautelas_notificacao_intervals) ? c.cautelas_notificacao_intervals : parseMaybeJson(c.cautelas_notificacao_intervals);
+      const vals = (arr && arr.length) ? arr : [7, 2, 1];
+      cfgMap.set(c.unidade_id, vals);
+    }
+    // Buscar empréstimos ativos com devolução prevista
+    const empRes = await query(`
+      SELECT e.id, e.equipamento_id, e.usuario_solicitante_id, e.data_prevista_devolucao, eq.unidade_id, eq.nome as equipamento_nome
+      FROM emprestimos e
+      JOIN equipamentos eq ON e.equipamento_id = eq.id
+      WHERE e.status = 'ativo' AND e.data_prevista_devolucao IS NOT NULL
+    `);
+    const today = new Date();
+    for (const row of (empRes.rows || [])) {
+      const due = new Date(row.data_prevista_devolucao);
+      const diffMs = due.setHours(0,0,0,0) - new Date(today).setHours(0,0,0,0);
+      const dias = Math.round(diffMs / (1000 * 60 * 60 * 24));
+      const intervals = cfgMap.get(row.unidade_id) || [7, 2, 1];
+      if (!intervals.includes(dias)) continue;
+      // Deduplicação: já enviou lembrete para este intervalo?
+      const exists = await query(
+        'SELECT id FROM emprestimo_reminders WHERE emprestimo_id = $1 AND interval_days = $2 LIMIT 1',
+        [row.id, dias]
+      );
+      if (exists.rows.length > 0) continue;
+      await query(`
+        INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id)
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `, [
+        row.usuario_solicitante_id,
+        'Lembrete de Devolução',
+        `Faltam ${dias} dia(s) para devolver o equipamento ${row.equipamento_nome} (cautela ${row.id}).`,
+        'info',
+        'emprestimos',
+        row.id
+      ]);
+      await query(
+        'INSERT INTO emprestimo_reminders (emprestimo_id, interval_days) VALUES ($1, $2)',
+        [row.id, dias]
+      );
+    }
+  } catch (e) {
+    console.error('Erro ao processar lembretes de devolução:', e);
+  }
+}
 server.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
   console.log(`🌐 API disponível em http://localhost:${PORT}/api`);
@@ -241,6 +291,7 @@ server.listen(PORT, () => {
         const now = new Date();
         if (now.getHours() === alvoHora && now.getMinutes() === alvoMin) {
           await processarAlertasEmprestimosVencidos();
+          await processarLembretesDevolucao();
         }
       };
       tick();

@@ -499,8 +499,6 @@ router.get('/relatorio/estoque', async (req, res) => {
   }
 });
 
-module.exports = router;
- 
 // Configurações do Almoxarifado (por unidade)
 router.get('/config', async (req, res) => {
   try {
@@ -561,3 +559,5 @@ router.put('/config', async (req, res) => {
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
+
+module.exports = router;

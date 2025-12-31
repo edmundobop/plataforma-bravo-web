@@ -331,11 +331,17 @@ router.get('/', async (req, res) => {
     const { status, equipamento_id, usuario_id, vencidos, page = 1, limit = 10 } = req.query;
     const offset = (page - 1) * limit;
 
+    // Verificar se é Operador (perfil 1 - Operador segundo solicitação, ou nome 'Operador')
+    // Se for operador, filtra apenas suas próprias cautelas
+    const isOperador = (req.user.perfil_nome && req.user.perfil_nome.toLowerCase() === 'operador') || 
+                       (req.user.papel && req.user.papel.toLowerCase() === 'operador');
+    const filterUsuarioId = isOperador ? req.user.id : usuario_id;
+
     let queryText = `
       SELECT e.*, 
              eq.nome as equipamento_nome, eq.codigo as equipamento_codigo,
-             us.nome as solicitante_nome, us.matricula as solicitante_matricula,
-             ua.nome as autorizador_nome, ua.matricula as autorizador_matricula,
+             COALESCE(us.nome_completo, us.nome) as solicitante_nome, us.matricula as solicitante_matricula,
+             COALESCE(ua.nome_completo, ua.nome) as autorizador_nome, ua.matricula as autorizador_matricula,
              CASE WHEN e.data_prevista_devolucao < CURRENT_DATE AND e.status = 'ativo' THEN true ELSE false END as vencido
       FROM emprestimos e
       JOIN equipamentos eq ON e.equipamento_id = eq.id
@@ -346,9 +352,11 @@ router.get('/', async (req, res) => {
     const params = [];
     let paramCount = 0;
     const unidadeId = req.unidade?.id || req.user?.unidade_id || null;
+
     if (unidadeId) {
       paramCount++;
-      queryText += ` AND eq.unidade_id = $${paramCount}`;
+      // Mostrar empréstimos onde o equipamento é da unidade OU o solicitante é da unidade
+      queryText += ` AND (eq.unidade_id = $${paramCount} OR us.unidade_id = $${paramCount})`;
       params.push(unidadeId);
     }
 
@@ -364,10 +372,10 @@ router.get('/', async (req, res) => {
       params.push(equipamento_id);
     }
 
-    if (usuario_id) {
+    if (filterUsuarioId) {
       paramCount++;
       queryText += ` AND e.usuario_solicitante_id = $${paramCount}`;
-      params.push(usuario_id);
+      params.push(filterUsuarioId);
     }
 
     if (vencidos === 'true') {
@@ -386,13 +394,14 @@ router.get('/', async (req, res) => {
       SELECT COUNT(*) 
       FROM emprestimos e
       JOIN equipamentos eq ON e.equipamento_id = eq.id
+      JOIN usuarios us ON e.usuario_solicitante_id = us.id
       WHERE 1=1
     `;
     const countParams = [];
     let countParamCount = 0;
     if (unidadeId) {
       countParamCount++;
-      countQuery += ` AND eq.unidade_id = $${countParamCount}`;
+      countQuery += ` AND (eq.unidade_id = $${countParamCount} OR us.unidade_id = $${countParamCount})`;
       countParams.push(unidadeId);
     }
     if (status) {
@@ -405,10 +414,10 @@ router.get('/', async (req, res) => {
       countQuery += ` AND e.equipamento_id = $${countParamCount}`;
       countParams.push(equipamento_id);
     }
-    if (usuario_id) {
+    if (filterUsuarioId) {
       countParamCount++;
       countQuery += ` AND e.usuario_solicitante_id = $${countParamCount}`;
-      countParams.push(usuario_id);
+      countParams.push(filterUsuarioId);
     }
     if (vencidos === 'true') {
       countQuery += ' AND e.data_prevista_devolucao < CURRENT_DATE AND e.status = \'ativo\'';
@@ -430,6 +439,53 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Lista de termos de cautela (recentes ou por emprestimo_id)
+router.get('/termos', async (req, res) => {
+  try {
+    const { emprestimo_id, limit = 50 } = req.query;
+    const params = [];
+    let q = `
+      SELECT t.*, 
+             e.equipamento_id, e.usuario_solicitante_id, e.data_emprestimo,
+             eq.nome AS equipamento_nome, eq.codigo AS equipamento_codigo
+      FROM termos_cautela t
+      LEFT JOIN emprestimos e ON t.emprestimo_id = e.id
+      LEFT JOIN equipamentos eq ON e.equipamento_id = eq.id
+    `;
+    if (emprestimo_id) {
+      params.push(parseInt(emprestimo_id, 10));
+      q += ` WHERE t.emprestimo_id = $1`;
+    }
+    q += ` ORDER BY t.created_at DESC LIMIT ${parseInt(limit, 10)}`;
+    const r = await query(q, params);
+    res.json({ termos: r.rows || [] });
+  } catch (error) {
+    if (error.code === '42P01') {
+      return res.json({ termos: [] });
+    }
+    console.error('Erro ao listar termos:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Top equipamentos mais emprestados
+router.get('/relatorio/top-equipamentos', async (_req, res) => {
+  try {
+    const r = await query(`
+      SELECT eq.id, eq.codigo, eq.nome, COUNT(e.id) AS total
+      FROM emprestimos e
+      JOIN equipamentos eq ON e.equipamento_id = eq.id
+      GROUP BY eq.id, eq.codigo, eq.nome
+      ORDER BY total DESC
+      LIMIT 10
+    `);
+    res.json({ top: r.rows || [] });
+  } catch (error) {
+    console.error('Erro ao listar top equipamentos:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 // Buscar empréstimo por ID
 router.get('/:id', async (req, res) => {
   try {
@@ -438,8 +494,8 @@ router.get('/:id', async (req, res) => {
     const result = await query(
       `SELECT e.*, 
               eq.nome as equipamento_nome, eq.codigo as equipamento_codigo, eq.marca, eq.modelo,
-              us.nome as solicitante_nome, us.matricula as solicitante_matricula, us.setor as solicitante_setor,
-              ua.nome as autorizador_nome, ua.matricula as autorizador_matricula
+              COALESCE(us.nome_completo, us.nome) as solicitante_nome, us.matricula as solicitante_matricula, us.setor as solicitante_setor,
+              COALESCE(ua.nome_completo, ua.nome) as autorizador_nome, ua.matricula as autorizador_matricula
        FROM emprestimos e
        JOIN equipamentos eq ON e.equipamento_id = eq.id
        JOIN usuarios us ON e.usuario_solicitante_id = us.id
@@ -567,10 +623,11 @@ router.put('/:id/autorizar', async (req, res) => {
     const { id } = req.params;
     const userRole = req.user?.perfil_nome || req.user?.papel;
     // Buscar unidade e config
-    const empRes = await query('SELECT equipamento_id, status FROM emprestimos WHERE id = $1', [id]);
+    const empRes = await query('SELECT equipamento_id, status, usuario_solicitante_id FROM emprestimos WHERE id = $1', [id]);
     if (empRes.rows.length === 0) return res.status(404).json({ error: 'Empréstimo não encontrado' });
     const emprestimo = empRes.rows[0];
     if (emprestimo.status !== 'pendente') return res.status(400).json({ error: 'Empréstimo não está pendente' });
+    if (emprestimo.usuario_solicitante_id === req.user.id) return res.status(403).json({ error: 'Você não pode autorizar sua própria cautela' });
     const eqRes = await query('SELECT unidade_id, nome FROM equipamentos WHERE id = $1', [emprestimo.equipamento_id]);
     const unidadeId = eqRes.rows[0]?.unidade_id || null;
     const configRes = await query('SELECT cautelas_autorizacao_roles FROM almox_config WHERE unidade_id = $1 LIMIT 1', [unidadeId]);
@@ -618,7 +675,7 @@ router.post('/lote', [
     for (const item of equipamentos) {
       const equipamento_id = item.id || item.equipamento_id;
       try {
-        await transaction(async (client) => {
+        const txStatus = await transaction(async (client) => {
           const equipamentoResult = await client.query('SELECT status, nome, exige_autorizacao, exige_data_devolucao FROM equipamentos WHERE id = $1', [equipamento_id]);
           if (equipamentoResult.rows.length === 0) throw new Error('Equipamento não encontrado');
           const equipamento = equipamentoResult.rows[0];
@@ -658,8 +715,9 @@ router.post('/lote', [
               emprestimoResult.rows[0].id
             ]
           );
+          return statusEmp;
         });
-        results.push({ equipamento_id, status: 'ok' });
+        results.push({ equipamento_id, status: 'ok', loan_status: txStatus });
       } catch (e) {
         failures.push({ equipamento_id, error: e.message });
       }
