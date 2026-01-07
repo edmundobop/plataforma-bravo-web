@@ -39,6 +39,7 @@ import {
   Pagination,
   Avatar,
 } from '@mui/material';
+import SignatureCanvas from 'react-signature-canvas';
 import {
   Add as AddIcon,
   Assignment as AssignmentIcon,
@@ -139,39 +140,15 @@ const Emprestimos = () => {
   
   // Estados para formulários
   const [formData, setFormData] = useState({});
-  const [assinaturaSolic, setAssinaturaSolic] = useState(null);
-  const [assinaturaAuto, setAssinaturaAuto] = useState(null);
-  const canvasRefSolic = React.useRef(null);
-  const canvasRefAuto = React.useRef(null);
-  const clearCanvas = (ref) => {
-    const c = ref.current;
-    if (!c) return;
-    const ctx = c.getContext('2d');
-    ctx.clearRect(0, 0, c.width, c.height);
+  const [observacoesAvaliador, setObservacoesAvaliador] = useState('');
+  const sigPad = React.useRef({});
+  
+  const clearSignature = () => {
+    if (sigPad.current) {
+      sigPad.current.clear();
+    }
   };
-  const startDraw = (ref, e) => {
-    const c = ref.current;
-    if (!c) return;
-    const ctx = c.getContext('2d');
-    ctx.beginPath();
-    const rect = c.getBoundingClientRect();
-    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
-    c.isDrawing = true;
-  };
-  const drawMove = (ref, e) => {
-    const c = ref.current;
-    if (!c || !c.isDrawing) return;
-    const ctx = c.getContext('2d');
-    const rect = c.getBoundingClientRect();
-    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
-    ctx.stroke();
-  };
-  const endDraw = (ref, setState) => {
-    const c = ref.current;
-    if (!c) return;
-    c.isDrawing = false;
-    setState(c.toDataURL('image/png'));
-  };
+
   const [barcodeEquip, setBarcodeEquip] = useState('');
   const [carrinho, setCarrinho] = useState([]);
   const [loteLoading, setLoteLoading] = useState(false);
@@ -308,6 +285,34 @@ const Emprestimos = () => {
     setError('');
   };
 
+  const handleAutorizar = async (id) => {
+    try {
+      setLoading(true);
+      await emprestimosService.autorizarEmprestimo(id, observacoesAvaliador);
+      loadEmprestimos();
+      handleCloseDialog();
+    } catch (err) {
+      console.error('Erro ao autorizar:', err);
+      setError('Erro ao autorizar cautela');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRejeitar = async (id) => {
+    try {
+      setLoading(true);
+      await emprestimosService.deleteEmprestimo(id, observacoesAvaliador);
+      loadEmprestimos();
+      handleCloseDialog();
+    } catch (err) {
+      console.error('Erro ao rejeitar:', err);
+      setError('Erro ao rejeitar cautela');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 2) {
       loadRelatorios();
@@ -317,27 +322,30 @@ const Emprestimos = () => {
   const handleOpenDialog = (type, item = null) => {
     setDialogType(type);
     setSelectedItem(item);
-    const data = item || {};
-    if (type === 'equipamento') {
-      const toInputDate = (v) => {
+    setObservacoesAvaliador('');
+    const data = item ? { ...item } : {};
+    
+    const toInputDate = (v) => {
         if (!v) return '';
         try {
-          // Accept ISO strings or Date; format yyyy-MM-dd
           const d = new Date(v);
           if (!isNaN(d.getTime())) {
-            const yyyy = d.getFullYear();
-            const mm = String(d.getMonth() + 1).padStart(2, '0');
-            const dd = String(d.getDate()).padStart(2, '0');
-            return `${yyyy}-${mm}-${dd}`;
+            return d.toISOString().slice(0, 10);
           }
         } catch {}
-        // Fallback: if already yyyy-MM-dd or longer ISO, slice
         return String(v).slice(0, 10);
-      };
+    };
+
+    if (type === 'equipamento') {
       if (data.data_aquisicao) {
         data.data_aquisicao = toInputDate(data.data_aquisicao);
       }
+    } else if (type === 'emprestimo') {
+        if (data.data_prevista_devolucao) {
+            data.data_prevista_devolucao = toInputDate(data.data_prevista_devolucao);
+        }
     }
+    
     setFormData(data);
     setDialogOpen(true);
   };
@@ -394,6 +402,17 @@ const Emprestimos = () => {
           observacoes_emprestimo: formData.observacoes_emprestimo,
           condicao_emprestimo: formData.condicao_emprestimo,
         };
+
+        if (!selectedItem?.id) {
+           if (sigPad.current && !sigPad.current.isEmpty()) {
+             payload.assinatura_solicitante = sigPad.current.getTrimmedCanvas().toDataURL('image/png');
+           } else {
+             setError('A assinatura do solicitante é obrigatória');
+             setLoading(false);
+             return;
+           }
+        }
+
         const resp = await emprestimosService.createEmprestimo(payload);
         const status = resp?.data?.status;
         if (status === 'pendente') {
@@ -1487,38 +1506,74 @@ const Emprestimos = () => {
                 </Grid>
                 <Grid item xs={12}>
                   <Typography variant="subtitle2">Assinatura do Solicitante</Typography>
-                  <canvas
-                    ref={canvasRefSolic}
-                    width={500}
-                    height={120}
-                    style={{ border: '1px solid #ccc', width: '100%' }}
-                    onMouseDown={(e) => startDraw(canvasRefSolic, e)}
-                    onMouseMove={(e) => drawMove(canvasRefSolic, e)}
-                    onMouseUp={() => endDraw(canvasRefSolic, setAssinaturaSolic)}
-                    onMouseLeave={() => endDraw(canvasRefSolic, setAssinaturaSolic)}
-                  />
-                  <Box mt={1} display="flex" gap={1}>
-                    <Button variant="text" onClick={() => { clearCanvas(canvasRefSolic); setAssinaturaSolic(null); }}>Limpar</Button>
-                  </Box>
+                  {!selectedItem?.id ? (
+                    <>
+                      <Box sx={{ border: '1px solid #ccc', borderRadius: 1, overflow: 'hidden' }}>
+                        <SignatureCanvas
+                          ref={sigPad}
+                          penColor="black"
+                          canvasProps={{ width: 500, height: 150, className: 'sigCanvas' }}
+                        />
+                      </Box>
+                      <Button size="small" onClick={clearSignature} sx={{ mt: 1 }}>
+                        Limpar Assinatura
+                      </Button>
+                    </>
+                  ) : (
+                    <Box sx={{ mt: 1, border: '1px solid #ccc', borderRadius: 1, p: 1 }}>
+                      {selectedItem.assinatura_solicitante ? (
+                        <img 
+                          src={selectedItem.assinatura_solicitante} 
+                          alt="Assinatura do Solicitante" 
+                          style={{ maxWidth: '100%', maxHeight: 150 }} 
+                        />
+                      ) : (
+                        <Typography variant="body2" color="textSecondary">
+                          Assinatura não disponível
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
                 </Grid>
                 {selectedItem?.id && user?.id !== selectedItem?.usuario_solicitante_id && !isOperador() && (
                   <Grid item xs={12}>
                     <Typography variant="subtitle2">Assinatura do Autorizador</Typography>
-                    <canvas
-                      ref={canvasRefAuto}
-                      width={500}
-                      height={120}
-                      style={{ border: '1px solid #ccc', width: '100%' }}
-                      onMouseDown={(e) => startDraw(canvasRefAuto, e)}
-                      onMouseMove={(e) => drawMove(canvasRefAuto, e)}
-                      onMouseUp={() => endDraw(canvasRefAuto, setAssinaturaAuto)}
-                      onMouseLeave={() => endDraw(canvasRefAuto, setAssinaturaAuto)}
-                    />
-                    <Box mt={1} display="flex" gap={1}>
-                      <Button variant="text" onClick={() => { clearCanvas(canvasRefAuto); setAssinaturaAuto(null); }}>Limpar</Button>
-                    </Box>
+                     {/* Futuro: Implementar assinatura do autorizador se necessário */}
+                     <Typography variant="body2" color="textSecondary">
+                        (Assinatura do autorizador será implementada futuramente)
+                     </Typography>
                   </Grid>
                 )}
+
+                {selectedItem?.observacoes_autorizacao && (
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Observações do Avaliador"
+                      value={selectedItem.observacoes_autorizacao}
+                      InputProps={{
+                        readOnly: true,
+                      }}
+                      multiline
+                      rows={2}
+                    />
+                  </Grid>
+                )}
+                
+                {selectedItem?.id && user?.id !== selectedItem?.usuario_solicitante_id && !isOperador() && selectedItem?.status === 'pendente' && (
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Observações do Avaliador (Motivo da Aprovação/Rejeição)"
+                      value={observacoesAvaliador}
+                      onChange={(e) => setObservacoesAvaliador(e.target.value)}
+                      multiline
+                      rows={2}
+                      placeholder="Insira aqui o motivo da aprovação ou rejeição, se necessário."
+                    />
+                  </Grid>
+                )}
+
                 <Grid item xs={12}>
                   <Button
                     variant="outlined"
@@ -1527,8 +1582,8 @@ const Emprestimos = () => {
                         const id = selectedItem?.id || formData.id;
                         if (!id) return;
                         const resp = await emprestimosService.gerarTermoPdf(id, {
-                          assinatura_solicitante: assinaturaSolic,
-                          assinatura_autorizador: assinaturaAuto
+                          assinatura_solicitante: selectedItem?.assinatura_solicitante,
+                          assinatura_autorizador: selectedItem?.assinatura_autorizador
                         });
                         const blob = new Blob([resp.data], { type: 'application/pdf' });
                         const url = URL.createObjectURL(blob);
@@ -1572,16 +1627,38 @@ const Emprestimos = () => {
           )}
         </DialogContent>
         <DialogActions>
+          {dialogType === 'emprestimo' && selectedItem?.status === 'pendente' && user?.id !== selectedItem?.usuario_solicitante_id && !isOperador() && (
+            <>
+              <Button
+                onClick={() => handleAutorizar(selectedItem.id)}
+                variant="contained"
+                color="success"
+                disabled={loading}
+              >
+                {loading ? <CircularProgress size={20} /> : 'Autorizar'}
+              </Button>
+              <Button
+                onClick={() => handleRejeitar(selectedItem.id)}
+                variant="contained"
+                color="error"
+                disabled={loading}
+              >
+                {loading ? <CircularProgress size={20} /> : 'Rejeitar'}
+              </Button>
+            </>
+          )}
           <Button onClick={handleCloseDialog}>Cancelar</Button>
-          <Button
-            onClick={handleSubmit}
-            variant="contained"
-            disabled={loading}
-          >
-            {loading ? <CircularProgress size={20} /> : (
-              dialogType === 'devolucao' ? 'Devolver' : 'Salvar'
-            )}
-          </Button>
+          {(!selectedItem?.id || dialogType !== 'emprestimo') && (
+            <Button
+              onClick={handleSubmit}
+              variant="contained"
+              disabled={loading}
+            >
+              {loading ? <CircularProgress size={20} /> : (
+                dialogType === 'devolucao' ? 'Devolver' : 'Salvar'
+              )}
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
     </Box>

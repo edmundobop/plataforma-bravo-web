@@ -295,6 +295,7 @@ router.get('/movimentacoes', async (req, res) => {
   try {
     const { produto_id, tipo, data_inicio, data_fim, page = 1, limit = 10 } = req.query;
     const offset = (page - 1) * limit;
+    const unidadeId = req.unidade?.id || req.user?.unidade_id || null;
 
     let queryText = `
       SELECT m.*, p.nome as produto_nome, p.codigo as produto_codigo, u.nome as usuario_nome
@@ -305,6 +306,12 @@ router.get('/movimentacoes', async (req, res) => {
     `;
     const params = [];
     let paramCount = 0;
+
+    if (unidadeId) {
+      paramCount++;
+      queryText += ` AND p.unidade_id = $${paramCount}`;
+      params.push(unidadeId);
+    }
 
     if (produto_id) {
       paramCount++;
@@ -523,7 +530,7 @@ router.get('/config', async (req, res) => {
       });
     }
     console.error('Erro ao obter config do almoxarifado:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    res.status(500).json({ error: 'Erro interno do servidor', details: error.message, code: error.code });
   }
 });
 router.put('/config', async (req, res) => {

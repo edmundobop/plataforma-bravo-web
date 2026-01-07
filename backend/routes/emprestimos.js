@@ -11,7 +11,7 @@ const router = express.Router();
 
 // Aplicar autenticação em todas as rotas
 router.use(authenticateToken);
-router.use(['/equipamentos'], optionalTenant);
+router.use(optionalTenant);
 
 // EQUIPAMENTOS
 
@@ -355,8 +355,8 @@ router.get('/', async (req, res) => {
 
     if (unidadeId) {
       paramCount++;
-      // Mostrar empréstimos onde o equipamento é da unidade OU o solicitante é da unidade
-      queryText += ` AND (eq.unidade_id = $${paramCount} OR us.unidade_id = $${paramCount})`;
+      // Mostrar empréstimos onde o equipamento é da unidade
+      queryText += ` AND eq.unidade_id = $${paramCount}`;
       params.push(unidadeId);
     }
 
@@ -401,7 +401,7 @@ router.get('/', async (req, res) => {
     let countParamCount = 0;
     if (unidadeId) {
       countParamCount++;
-      countQuery += ` AND (eq.unidade_id = $${countParamCount} OR us.unidade_id = $${countParamCount})`;
+      countQuery += ` AND eq.unidade_id = $${countParamCount}`;
       countParams.push(unidadeId);
     }
     if (status) {
@@ -444,6 +444,10 @@ router.get('/termos', async (req, res) => {
   try {
     const { emprestimo_id, limit = 50 } = req.query;
     const params = [];
+    let paramCount = 0;
+    
+    const unidadeId = req.unidade?.id || req.user?.unidade_id || null;
+
     let q = `
       SELECT t.*, 
              e.equipamento_id, e.usuario_solicitante_id, e.data_emprestimo,
@@ -451,12 +455,23 @@ router.get('/termos', async (req, res) => {
       FROM termos_cautela t
       LEFT JOIN emprestimos e ON t.emprestimo_id = e.id
       LEFT JOIN equipamentos eq ON e.equipamento_id = eq.id
+      WHERE 1=1
     `;
-    if (emprestimo_id) {
-      params.push(parseInt(emprestimo_id, 10));
-      q += ` WHERE t.emprestimo_id = $1`;
+
+    if (unidadeId) {
+      paramCount++;
+      q += ` AND eq.unidade_id = $${paramCount}`;
+      params.push(unidadeId);
     }
+
+    if (emprestimo_id) {
+      paramCount++;
+      params.push(parseInt(emprestimo_id, 10));
+      q += ` AND t.emprestimo_id = $${paramCount}`;
+    }
+    
     q += ` ORDER BY t.created_at DESC LIMIT ${parseInt(limit, 10)}`;
+    
     const r = await query(q, params);
     res.json({ termos: r.rows || [] });
   } catch (error) {
@@ -468,17 +483,105 @@ router.get('/termos', async (req, res) => {
   }
 });
 
-// Top equipamentos mais emprestados
-router.get('/relatorio/top-equipamentos', async (_req, res) => {
+// Resumo de empréstimos para relatório
+router.get('/relatorio/geral', async (req, res) => {
   try {
-    const r = await query(`
+    const { data_inicio, data_fim } = req.query;
+    const unidadeId = req.unidade?.id || req.user?.unidade_id || null;
+    
+    let queryText = `
+      SELECT
+        COUNT(*) as total_emprestimos,
+        COUNT(CASE WHEN e.status = 'ativo' THEN 1 END) as emprestimos_ativos,
+        COUNT(CASE WHEN e.status = 'devolvido' THEN 1 END) as emprestimos_devolvidos,
+        COUNT(CASE WHEN e.data_prevista_devolucao < CURRENT_DATE AND e.status = 'ativo' THEN 1 END) as emprestimos_vencidos
+      FROM emprestimos e
+      JOIN equipamentos eq ON e.equipamento_id = eq.id
+      WHERE 1=1
+    `;
+    const params = [];
+    let paramCount = 0;
+
+    if (unidadeId) {
+      paramCount++;
+      queryText += ` AND eq.unidade_id = $${paramCount}`;
+      params.push(unidadeId);
+    }
+
+    if (data_inicio) {
+      paramCount++;
+      queryText += ` AND e.data_emprestimo >= $${paramCount}`;
+      params.push(data_inicio);
+    }
+
+    if (data_fim) {
+      paramCount++;
+      queryText += ` AND e.data_emprestimo <= $${paramCount}`;
+      params.push(data_fim);
+    }
+
+    const result = await query(queryText, params);
+
+    // Equipamentos mais emprestados (Top 10)
+    let topQuery = `
+      SELECT eq.nome, eq.codigo, COUNT(e.id) as total_emprestimos
+      FROM emprestimos e
+      JOIN equipamentos eq ON e.equipamento_id = eq.id
+      WHERE 1=1
+    `;
+    const topParams = [];
+    let topParamCount = 0;
+
+    if (unidadeId) {
+      topParamCount++;
+      topQuery += ` AND eq.unidade_id = $${topParamCount}`;
+      topParams.push(unidadeId);
+    }
+    
+    // Opcional: filtrar top por data também, se desejado. Por enquanto manter apenas unidade para consistência.
+    
+    topQuery += `
+      GROUP BY eq.id, eq.nome, eq.codigo
+      ORDER BY total_emprestimos DESC
+      LIMIT 10
+    `;
+
+    const equipamentosResult = await query(topQuery, topParams);
+
+    res.json({ 
+      resumo: result.rows[0],
+      equipamentos_mais_emprestados: equipamentosResult.rows
+    });
+  } catch (error) {
+    console.error('Erro ao buscar resumo de empréstimos:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Top equipamentos mais emprestados
+router.get('/relatorio/top-equipamentos', async (req, res) => {
+  try {
+    const unidadeId = req.unidade?.id || req.user?.unidade_id || null;
+    let queryText = `
       SELECT eq.id, eq.codigo, eq.nome, COUNT(e.id) AS total
       FROM emprestimos e
       JOIN equipamentos eq ON e.equipamento_id = eq.id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (unidadeId) {
+      queryText += ` AND eq.unidade_id = $1`;
+      params.push(unidadeId);
+    }
+
+    queryText += `
       GROUP BY eq.id, eq.codigo, eq.nome
       ORDER BY total DESC
       LIMIT 10
-    `);
+    `;
+
+    const r = await query(queryText, params);
     res.json({ top: r.rows || [] });
   } catch (error) {
     console.error('Erro ao listar top equipamentos:', error);
@@ -529,7 +632,7 @@ router.post('/', [
 
     const {
       equipamento_id, usuario_solicitante_id, data_prevista_devolucao,
-      motivo, observacoes_emprestimo, condicao_emprestimo
+      motivo, observacoes_emprestimo, condicao_emprestimo, assinatura_solicitante
     } = req.body;
 
     const solicitanteId = usuario_solicitante_id || req.user.id;
@@ -571,10 +674,10 @@ router.post('/', [
       }
       const emprestimoResult = await client.query(
         `INSERT INTO emprestimos 
-         (equipamento_id, usuario_solicitante_id, usuario_autorizador_id, data_prevista_devolucao, motivo, observacoes_emprestimo, condicao_emprestimo, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         (equipamento_id, usuario_solicitante_id, usuario_autorizador_id, data_prevista_devolucao, motivo, observacoes_emprestimo, condicao_emprestimo, status, assinatura_solicitante)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING *`,
-        [equipamento_id, solicitanteId, autorizadorId, data_prevista_devolucao, motivo, observacoes_emprestimo, condicao_emprestimo, statusEmp]
+        [equipamento_id, solicitanteId, autorizadorId, data_prevista_devolucao, motivo, observacoes_emprestimo, condicao_emprestimo, statusEmp, assinatura_solicitante]
       );
 
       // Atualizar status do equipamento
@@ -621,14 +724,15 @@ router.post('/', [
 router.put('/:id/autorizar', async (req, res) => {
   try {
     const { id } = req.params;
+    const { observacoes } = req.body;
     const userRole = req.user?.perfil_nome || req.user?.papel;
     // Buscar unidade e config
-    const empRes = await query('SELECT equipamento_id, status, usuario_solicitante_id FROM emprestimos WHERE id = $1', [id]);
+    const empRes = await query('SELECT e.equipamento_id, e.status, e.usuario_solicitante_id, eq.nome as equipamento_nome FROM emprestimos e JOIN equipamentos eq ON e.equipamento_id = eq.id WHERE e.id = $1', [id]);
     if (empRes.rows.length === 0) return res.status(404).json({ error: 'Empréstimo não encontrado' });
     const emprestimo = empRes.rows[0];
     if (emprestimo.status !== 'pendente') return res.status(400).json({ error: 'Empréstimo não está pendente' });
     if (emprestimo.usuario_solicitante_id === req.user.id) return res.status(403).json({ error: 'Você não pode autorizar sua própria cautela' });
-    const eqRes = await query('SELECT unidade_id, nome FROM equipamentos WHERE id = $1', [emprestimo.equipamento_id]);
+    const eqRes = await query('SELECT unidade_id FROM equipamentos WHERE id = $1', [emprestimo.equipamento_id]);
     const unidadeId = eqRes.rows[0]?.unidade_id || null;
     const configRes = await query('SELECT cautelas_autorizacao_roles FROM almox_config WHERE unidade_id = $1 LIMIT 1', [unidadeId]);
     const roles = (configRes.rows[0]?.cautelas_autorizacao_roles) || ['Administrador', 'Chefe', 'Comandante'];
@@ -637,9 +741,9 @@ router.put('/:id/autorizar', async (req, res) => {
     await transaction(async (client) => {
       await client.query(
         `UPDATE emprestimos 
-         SET status = 'ativo', usuario_autorizador_id = $1, data_emprestimo = CURRENT_TIMESTAMP
-         WHERE id = $2`,
-        [req.user.id, id]
+         SET status = 'ativo', usuario_autorizador_id = $1, data_emprestimo = CURRENT_TIMESTAMP, observacoes_autorizacao = $2
+         WHERE id = $3`,
+        [req.user.id, observacoes || null, id]
       );
       await client.query(
         'UPDATE equipamentos SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
@@ -648,13 +752,70 @@ router.put('/:id/autorizar', async (req, res) => {
       await client.query(
         `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id)
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [req.user.id, 'Cautela Autorizada', `Cautela do equipamento ${eqRes.rows[0]?.nome} foi autorizada.`, 'success', 'emprestimos', id]
+        [emprestimo.usuario_solicitante_id, 'Cautela Autorizada', `Sua cautela do equipamento ${emprestimo.equipamento_nome} foi autorizada.${observacoes ? ' Observações: ' + observacoes : ''}`, 'success', 'emprestimos', id]
       );
     });
     res.json({ message: 'Cautela autorizada' });
   } catch (error) {
     console.error('Erro ao autorizar cautela:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    res.status(500).json({ error: 'Erro interno do servidor', details: error.message });
+  }
+});
+
+// Rejeitar/Cancelar cautela
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { observacoes } = req.body; // Observações no body do DELETE (alguns clients não suportam, mas axios suporta)
+    const userRole = req.user?.perfil_nome || req.user?.papel;
+    
+    const empRes = await query('SELECT e.equipamento_id, e.status, e.usuario_solicitante_id, eq.nome as equipamento_nome FROM emprestimos e JOIN equipamentos eq ON e.equipamento_id = eq.id WHERE e.id = $1', [id]);
+    if (empRes.rows.length === 0) return res.status(404).json({ error: 'Empréstimo não encontrado' });
+    const emprestimo = empRes.rows[0];
+
+    // Apenas cautelas pendentes podem ser rejeitadas/canceladas por essa rota
+    // (Devoluções usam a rota de devolver)
+    if (emprestimo.status !== 'pendente') {
+      return res.status(400).json({ error: 'Apenas cautelas pendentes podem ser canceladas/rejeitadas' });
+    }
+
+    // Quem pode cancelar: O próprio solicitante ou quem tem permissão de autorizar
+    const isSolicitante = emprestimo.usuario_solicitante_id === req.user.id;
+    
+    const eqRes = await query('SELECT unidade_id FROM equipamentos WHERE id = $1', [emprestimo.equipamento_id]);
+    const unidadeId = eqRes.rows[0]?.unidade_id || null;
+    const configRes = await query('SELECT cautelas_autorizacao_roles FROM almox_config WHERE unidade_id = $1 LIMIT 1', [unidadeId]);
+    const roles = (configRes.rows[0]?.cautelas_autorizacao_roles) || ['Administrador', 'Chefe', 'Comandante'];
+    const isAutorizador = Array.isArray(roles) ? roles.includes(userRole) : false;
+
+    if (!isSolicitante && !isAutorizador) {
+      return res.status(403).json({ error: 'Permissão negada' });
+    }
+
+    await transaction(async (client) => {
+      // Remover empréstimo
+      await client.query('DELETE FROM emprestimos WHERE id = $1', [id]);
+      
+      // Liberar equipamento (embora já devesse estar 'disponivel' se estava pendente, mas garantindo)
+      // Se estava pendente, o status do equipamento não muda para emprestado, mas vamos garantir que fique disponivel
+      // Na logica de criação: se pendente, equipamento fica 'disponivel' (nao muda status). 
+      // Mas se tiver logica que muda, aqui reverte.
+      // O create não mudava status se pendente.
+      
+      // Notificar solicitante se foi rejeitado por outro
+      if (!isSolicitante) {
+        await client.query(
+            `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [emprestimo.usuario_solicitante_id, 'Cautela Rejeitada', `Sua solicitação de cautela do equipamento ${emprestimo.equipamento_nome} foi rejeitada/cancelada.${observacoes ? ' Motivo: ' + observacoes : ''}`, 'error', 'emprestimos', null]
+          );
+      }
+    });
+
+    res.json({ message: 'Cautela cancelada/rejeitada com sucesso' });
+  } catch (error) {
+    console.error('Erro ao cancelar cautela:', error);
+    res.status(500).json({ error: 'Erro interno do servidor', details: error.message });
   }
 });
 
@@ -796,56 +957,6 @@ router.put('/:id/devolver', [
   }
 });
 
-// Relatório de empréstimos
-router.get('/relatorio/geral', async (req, res) => {
-  try {
-    const { data_inicio, data_fim } = req.query;
-
-    let queryText = `
-      SELECT 
-        COUNT(*) as total_emprestimos,
-        COUNT(CASE WHEN status = 'ativo' THEN 1 END) as emprestimos_ativos,
-        COUNT(CASE WHEN status = 'devolvido' THEN 1 END) as emprestimos_devolvidos,
-        COUNT(CASE WHEN data_prevista_devolucao < CURRENT_DATE AND status = 'ativo' THEN 1 END) as emprestimos_vencidos
-      FROM emprestimos
-      WHERE 1=1
-    `;
-    const params = [];
-    let paramCount = 0;
-
-    if (data_inicio) {
-      paramCount++;
-      queryText += ` AND data_emprestimo >= $${paramCount}`;
-      params.push(data_inicio);
-    }
-
-    if (data_fim) {
-      paramCount++;
-      queryText += ` AND data_emprestimo <= $${paramCount}`;
-      params.push(data_fim);
-    }
-
-    const result = await query(queryText, params);
-
-    // Equipamentos mais emprestados
-    const equipamentosResult = await query(`
-      SELECT eq.nome, eq.codigo, COUNT(e.id) as total_emprestimos
-      FROM emprestimos e
-      JOIN equipamentos eq ON e.equipamento_id = eq.id
-      GROUP BY eq.id, eq.nome, eq.codigo
-      ORDER BY total_emprestimos DESC
-      LIMIT 10
-    `);
-
-    res.json({
-      resumo: result.rows[0],
-      equipamentos_mais_emprestados: equipamentosResult.rows
-    });
-  } catch (error) {
-    console.error('Erro ao gerar relatório:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
 
 // Gerar termo de cautela em PDF
 router.post('/:id/termo', async (req, res) => {
@@ -935,50 +1046,4 @@ router.post('/:id/termo', async (req, res) => {
   }
 });
 module.exports = router;
- 
-// Lista de termos de cautela (recentes ou por emprestimo_id)
-router.get('/termos', async (req, res) => {
-  try {
-    const { emprestimo_id, limit = 50 } = req.query;
-    const params = [];
-    let q = `
-      SELECT t.*, 
-             e.equipamento_id, e.usuario_solicitante_id, e.data_emprestimo,
-             eq.nome AS equipamento_nome, eq.codigo AS equipamento_codigo
-      FROM termos_cautela t
-      LEFT JOIN emprestimos e ON t.emprestimo_id = e.id
-      LEFT JOIN equipamentos eq ON e.equipamento_id = eq.id
-    `;
-    if (emprestimo_id) {
-      params.push(parseInt(emprestimo_id, 10));
-      q += ` WHERE t.emprestimo_id = $1`;
-    }
-    q += ` ORDER BY t.created_at DESC LIMIT ${parseInt(limit, 10)}`;
-    const r = await query(q, params);
-    res.json({ termos: r.rows || [] });
-  } catch (error) {
-    if (error.code === '42P01') {
-      return res.json({ termos: [] });
-    }
-    console.error('Erro ao listar termos:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
 
-// Top equipamentos mais emprestados
-router.get('/relatorio/top-equipamentos', async (_req, res) => {
-  try {
-    const r = await query(`
-      SELECT eq.id, eq.codigo, eq.nome, COUNT(e.id) AS total
-      FROM emprestimos e
-      JOIN equipamentos eq ON e.equipamento_id = eq.id
-      GROUP BY eq.id, eq.codigo, eq.nome
-      ORDER BY total DESC
-      LIMIT 10
-    `);
-    res.json({ top: r.rows || [] });
-  } catch (error) {
-    console.error('Erro ao listar top equipamentos:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});

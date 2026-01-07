@@ -1,81 +1,215 @@
-checklists?page=1:1 Error while trying to use the following icon from the Manifest: https://plataforma-bravo-web.vercel.app/logo192.png (Download error or resource isn't a valid image)
-Checklists.js:220 🔍 Carregando checklists...
-Checklists.js:221 🏢 CurrentUnit: null
-installHook.js:1 ⚠️ CurrentUnit não definido ou sem ID
-overrideMethod @ installHook.js:1
-(anonymous) @ Checklists.js:229
-(anonymous) @ Checklists.js:269
-nl @ react-dom.production.min.js:243
-wc @ react-dom.production.min.js:285
-lc @ react-dom.production.min.js:272
-Uo @ react-dom.production.min.js:127
-(anonymous) @ react-dom.production.min.js:282
-jc @ react-dom.production.min.js:280
-oc @ react-dom.production.min.js:269
-w @ scheduler.production.min.js:13
-P @ scheduler.production.min.js:14
-Checklists.js:232 📤 Filtros da requisição: {viatura_id: '', status: '', data_inicio: '', data_fim: '', tipo_checklist: '', …}
-Checklists.js:234 📥 Resposta da API: {checklists: Array(6), pagination: {…}}
-Checklists.js:237 📋 Checklists carregados: 6 (6) [{…}, {…}, {…}, {…}, {…}, {…}]
-ChecklistViatura.js:231 🚗 ChecklistViatura - Carregando viaturas...
-ChecklistViatura.js:232 🏢 CurrentUnit: null
-installHook.js:1 ⚠️ CurrentUnit não definido ou sem ID
-overrideMethod @ installHook.js:1
-ie @ ChecklistViatura.js:241
-(anonymous) @ ChecklistViatura.js:132
-nl @ react-dom.production.min.js:243
-wc @ react-dom.production.min.js:285
-(anonymous) @ react-dom.production.min.js:282
-jc @ react-dom.production.min.js:280
-lc @ react-dom.production.min.js:272
-Uo @ react-dom.production.min.js:127
-(anonymous) @ react-dom.production.min.js:266
-ChecklistViatura.js:244 📤 Parâmetros da requisição: {}
-ChecklistViatura.js:97 📋 ChecklistViatura - Carregando templates...
-ChecklistViatura.js:98 🏢 CurrentUnit: null
-installHook.js:1 ⚠️ CurrentUnit não definido ou sem ID para templates
-overrideMethod @ installHook.js:1
-(anonymous) @ ChecklistViatura.js:107
-(anonymous) @ ChecklistViatura.js:136
-nl @ react-dom.production.min.js:243
-wc @ react-dom.production.min.js:285
-(anonymous) @ react-dom.production.min.js:282
-jc @ react-dom.production.min.js:280
-lc @ react-dom.production.min.js:272
-Uo @ react-dom.production.min.js:127
-(anonymous) @ react-dom.production.min.js:266
-ChecklistViatura.js:110 📤 Filtros para templates: {}
+login:1 Error while trying to use the following icon from the Manifest: http://localhost:3003/logo192.png (Download error or resource isn't a valid image)
 TenantContext.js:37 🏢 TenantContext - Definindo currentUnit...
 TenantContext.js:38 📋 Available units: (2) [{…}, {…}]
 TenantContext.js:39 👤 User: {id: 3, nome: 'EDMUNDO DIAS MORAES NETO', email: 'edmundobop@gmail.com', matricula: '03925', posto_graduacao: 'Cabo', …}
 TenantContext.js:42 💾 Saved unit ID from localStorage: 1
 TenantContext.js:47 ✅ Usando unidade salva: {id: 1, codigo: '13BBM', nome: '13º BBM JATAÍ', tipo: 'quartel', cidade: 'Jataí', …}
-ChecklistViatura.js:231 🚗 ChecklistViatura - Carregando viaturas...
-ChecklistViatura.js:232 🏢 CurrentUnit: {id: 1, codigo: '13BBM', nome: '13º BBM JATAÍ', tipo: 'quartel', cidade: 'Jataí', …}
-ChecklistViatura.js:239 📍 Usando unidade_id: 1
-ChecklistViatura.js:244 📤 Parâmetros da requisição: {unidade_id: 1}
-ChecklistViatura.js:97 📋 ChecklistViatura - Carregando templates...
-ChecklistViatura.js:98 🏢 CurrentUnit: {id: 1, codigo: '13BBM', nome: '13º BBM JATAÍ', tipo: 'quartel', cidade: 'Jataí', …}
-ChecklistViatura.js:105 📍 Usando unidade_id para templates: 1
-ChecklistViatura.js:110 📤 Filtros para templates: {unidade_id: 1}
-Checklists.js:220 🔍 Carregando checklists...
-Checklists.js:221 🏢 CurrentUnit: {id: 1, codigo: '13BBM', nome: '13º BBM JATAÍ', tipo: 'quartel', cidade: 'Jataí', …}
-Checklists.js:227 📍 Aplicando filtro de unidade: 1
-Checklists.js:232 📤 Filtros da requisição: {viatura_id: '', status: '', data_inicio: '', data_fim: '', tipo_checklist: '', …}
-Checklists.js:220 🔍 Carregando checklists...
-Checklists.js:221 🏢 CurrentUnit: {id: 1, codigo: '13BBM', nome: '13º BBM JATAÍ', tipo: 'quartel', cidade: 'Jataí', …}
-Checklists.js:227 📍 Aplicando filtro de unidade: 1
-Checklists.js:232 📤 Filtros da requisição: {viatura_id: '', status: '', data_inicio: '', data_fim: '', tipo_checklist: '', …}
-ChecklistViatura.js:112 📥 Resposta da API templates: [{…}]
-ChecklistViatura.js:115 📋 Templates carregados: 1 [{…}]
-Checklists.js:234 📥 Resposta da API: {checklists: Array(6), pagination: {…}}
-Checklists.js:237 📋 Checklists carregados: 6 (6) [{…}, {…}, {…}, {…}, {…}, {…}]
-ChecklistViatura.js:112 📥 Resposta da API templates: [{…}]
-ChecklistViatura.js:115 📋 Templates carregados: 1 [{…}]
-ChecklistViatura.js:246 📥 Resposta da API: {data: {…}, status: 200, statusText: '', headers: mn, config: {…}, …}
-ChecklistViatura.js:249 🚗 Viaturas carregadas: 2 (2) [{…}, {…}]
-ChecklistViatura.js:246 📥 Resposta da API: {data: {…}, status: 200, statusText: '', headers: mn, config: {…}, …}
-ChecklistViatura.js:249 🚗 Viaturas carregadas: 2 (2) [{…}, {…}]
-Checklists.js:234 📥 Resposta da API: {checklists: Array(6), pagination: {…}}
-Checklists.js:237 📋 Checklists carregados: 6 (6) [{…}, {…}, {…}, {…}, {…}, {…}]
-checklists?page=1:1 Mixed Content: The page at 'https://plataforma-bravo-web.vercel.app/frota/checklists?page=1' was loaded over HTTPS, but requested an insecure element 'http://localhost:5000/uploads/fotos/foto-1761855892263-843288180.png'. This request was automatically upgraded to HTTPS, For more information see https://blog.chromium.org/2019/10/no-more-mixed-messages-about-https.html
+api.js:199  GET http://localhost:5000/api/almoxarifado/config 500 (Internal Server Error)
+dispatchXhrRequest @ xhr.js:195
+xhr @ xhr.js:15
+dispatchRequest @ dispatchRequest.js:51
+Promise.then
+_request @ Axios.js:163
+request @ Axios.js:40
+(anonymous) @ Axios.js:213
+wrap @ bind.js:5
+getConfig @ api.js:199
+loadConfig @ Configuracoes.js:22
+(anonymous) @ Configuracoes.js:40
+commitHookEffectListMount @ react-dom.development.js:23189
+commitPassiveMountOnFiber @ react-dom.development.js:24965
+commitPassiveMountEffects_complete @ react-dom.development.js:24930
+commitPassiveMountEffects_begin @ react-dom.development.js:24917
+commitPassiveMountEffects @ react-dom.development.js:24905
+flushPassiveEffectsImpl @ react-dom.development.js:27078
+flushPassiveEffects @ react-dom.development.js:27023
+performSyncWorkOnRoot @ react-dom.development.js:26115
+flushSyncCallbacks @ react-dom.development.js:12042
+commitRootImpl @ react-dom.development.js:26998
+commitRoot @ react-dom.development.js:26721
+finishConcurrentRender @ react-dom.development.js:26020
+performConcurrentWorkOnRoot @ react-dom.development.js:25848
+workLoop @ scheduler.development.js:266
+flushWork @ scheduler.development.js:239
+performWorkUntilDeadline @ scheduler.development.js:533
+api.js:199  GET http://localhost:5000/api/almoxarifado/config 500 (Internal Server Error)
+dispatchXhrRequest @ xhr.js:195
+xhr @ xhr.js:15
+dispatchRequest @ dispatchRequest.js:51
+Promise.then
+_request @ Axios.js:163
+request @ Axios.js:40
+(anonymous) @ Axios.js:213
+wrap @ bind.js:5
+getConfig @ api.js:199
+loadConfig @ Configuracoes.js:22
+(anonymous) @ Configuracoes.js:40
+commitHookEffectListMount @ react-dom.development.js:23189
+invokePassiveEffectMountInDEV @ react-dom.development.js:25193
+invokeEffectsInDev @ react-dom.development.js:27390
+commitDoubleInvokeEffectsInDEV @ react-dom.development.js:27369
+flushPassiveEffectsImpl @ react-dom.development.js:27095
+flushPassiveEffects @ react-dom.development.js:27023
+performSyncWorkOnRoot @ react-dom.development.js:26115
+flushSyncCallbacks @ react-dom.development.js:12042
+commitRootImpl @ react-dom.development.js:26998
+commitRoot @ react-dom.development.js:26721
+finishConcurrentRender @ react-dom.development.js:26020
+performConcurrentWorkOnRoot @ react-dom.development.js:25848
+workLoop @ scheduler.development.js:266
+flushWork @ scheduler.development.js:239
+performWorkUntilDeadline @ scheduler.development.js:533
+api.js:199  GET http://localhost:5000/api/almoxarifado/config 500 (Internal Server Error)
+dispatchXhrRequest @ xhr.js:195
+xhr @ xhr.js:15
+dispatchRequest @ dispatchRequest.js:51
+Promise.then
+_request @ Axios.js:163
+request @ Axios.js:40
+(anonymous) @ Axios.js:213
+wrap @ bind.js:5
+getConfig @ api.js:199
+loadConfig @ Configuracoes.js:22
+(anonymous) @ Configuracoes.js:40
+commitHookEffectListMount @ react-dom.development.js:23189
+commitPassiveMountOnFiber @ react-dom.development.js:24965
+commitPassiveMountEffects_complete @ react-dom.development.js:24930
+commitPassiveMountEffects_begin @ react-dom.development.js:24917
+commitPassiveMountEffects @ react-dom.development.js:24905
+flushPassiveEffectsImpl @ react-dom.development.js:27078
+flushPassiveEffects @ react-dom.development.js:27023
+(anonymous) @ react-dom.development.js:26808
+workLoop @ scheduler.development.js:266
+flushWork @ scheduler.development.js:239
+performWorkUntilDeadline @ scheduler.development.js:533
+installHook.js:1 Warning: validateDOMNesting(...): <div> cannot appear as a descendant of <p>. Error Component Stack
+    at div (<anonymous>)
+    at emotion-element-489459f2.browser.development.esm.js:33:1
+    at Chip (Chip.js:283:1)
+    at span (<anonymous>)
+    at p (<anonymous>)
+    at emotion-element-489459f2.browser.development.esm.js:33:1
+    at Typography (Typography.js:84:1)
+    at div (<anonymous>)
+    at emotion-element-489459f2.browser.development.esm.js:33:1
+    at ListItemText (ListItemText.js:59:1)
+    at li (<anonymous>)
+    at emotion-element-489459f2.browser.development.esm.js:33:1
+    at ButtonBase (ButtonBase.js:87:1)
+    at emotion-element-489459f2.browser.development.esm.js:33:1
+    at MenuItem (MenuItem.js:128:1)
+    at ul (<anonymous>)
+    at emotion-element-489459f2.browser.development.esm.js:33:1
+    at List (List.js:51:1)
+    at MenuList (MenuList.js:86:1)
+    at emotion-element-489459f2.browser.development.esm.js:33:1
+    at div (<anonymous>)
+    at emotion-element-489459f2.browser.development.esm.js:33:1
+    at Paper (Paper.js:62:1)
+    at emotion-element-489459f2.browser.development.esm.js:33:1
+    at Transition (Transition.js:113:1)
+    at Grow (Grow.js:43:1)
+    at FocusTrap (FocusTrap.js:79:1)
+    at div (<anonymous>)
+    at emotion-element-489459f2.browser.development.esm.js:33:1
+    at Portal (Portal.js:26:1)
+    at Modal (Modal.js:81:1)
+    at emotion-element-489459f2.browser.development.esm.js:33:1
+    at Popover (Popover.js:92:1)
+    at emotion-element-489459f2.browser.development.esm.js:33:1
+    at Menu (Menu.js:68:1)
+    at UnitSelector (UnitSelector.js:26:1)
+    at div (<anonymous>)
+    at emotion-element-489459f2.browser.development.esm.js:33:1
+    at Toolbar (Toolbar.js:55:1)
+    at header (<anonymous>)
+    at emotion-element-489459f2.browser.development.esm.js:33:1
+    at Paper (Paper.js:62:1)
+    at emotion-element-489459f2.browser.development.esm.js:33:1
+    at AppBar (AppBar.js:112:1)
+    at div (<anonymous>)
+    at emotion-element-489459f2.browser.development.esm.js:33:1
+    at Box (createBox.js:23:1)
+    at Layout (Layout.js:60:1)
+    at ProtectedRoute (ProtectedRoute.js:6:1)
+    at RenderedRoute (hooks.tsx:658:1)
+    at Routes (components.tsx:512:1)
+    at Router (components.tsx:421:1)
+    at BrowserRouter (index.tsx:789:1)
+    at NotificationProvider (NotificationContext.js:17:1)
+    at TenantProvider (TenantContext.js:15:1)
+    at AuthProvider (AuthContext.js:31:1)
+    at DefaultPropsProvider (DefaultPropsProvider.js:9:1)
+    at RtlProvider (index.js:10:1)
+    at ThemeProvider (ThemeProvider.js:31:1)
+    at ThemeProvider (ThemeProvider.js:46:1)
+    at ThemeProvider (ThemeProvider.js:13:1)
+    at App (<anonymous>)
+overrideMethod @ installHook.js:1
+printWarning @ react-dom.development.js:86
+error @ react-dom.development.js:60
+validateDOMNesting @ react-dom.development.js:10849
+createInstance @ react-dom.development.js:10930
+completeWork @ react-dom.development.js:22226
+completeUnitOfWork @ react-dom.development.js:26635
+performUnitOfWork @ react-dom.development.js:26607
+workLoopSync @ react-dom.development.js:26505
+renderRootSync @ react-dom.development.js:26473
+performSyncWorkOnRoot @ react-dom.development.js:26124
+flushSyncCallbacks @ react-dom.development.js:12042
+(anonymous) @ react-dom.development.js:25690
+api.js:199  GET http://localhost:5000/api/almoxarifado/config 500 (Internal Server Error)
+dispatchXhrRequest @ xhr.js:195
+xhr @ xhr.js:15
+dispatchRequest @ dispatchRequest.js:51
+Promise.then
+_request @ Axios.js:163
+request @ Axios.js:40
+(anonymous) @ Axios.js:213
+wrap @ bind.js:5
+getConfig @ api.js:199
+loadConfig @ Configuracoes.js:22
+(anonymous) @ Configuracoes.js:40
+commitHookEffectListMount @ react-dom.development.js:23189
+commitPassiveMountOnFiber @ react-dom.development.js:24965
+commitPassiveMountEffects_complete @ react-dom.development.js:24930
+commitPassiveMountEffects_begin @ react-dom.development.js:24917
+commitPassiveMountEffects @ react-dom.development.js:24905
+flushPassiveEffectsImpl @ react-dom.development.js:27078
+flushPassiveEffects @ react-dom.development.js:27023
+performSyncWorkOnRoot @ react-dom.development.js:26115
+flushSyncCallbacks @ react-dom.development.js:12042
+commitRootImpl @ react-dom.development.js:26998
+commitRoot @ react-dom.development.js:26721
+finishConcurrentRender @ react-dom.development.js:26020
+performConcurrentWorkOnRoot @ react-dom.development.js:25848
+workLoop @ scheduler.development.js:266
+flushWork @ scheduler.development.js:239
+performWorkUntilDeadline @ scheduler.development.js:533
+api.js:199  GET http://localhost:5000/api/almoxarifado/config 500 (Internal Server Error)
+dispatchXhrRequest @ xhr.js:195
+xhr @ xhr.js:15
+dispatchRequest @ dispatchRequest.js:51
+Promise.then
+_request @ Axios.js:163
+request @ Axios.js:40
+(anonymous) @ Axios.js:213
+wrap @ bind.js:5
+getConfig @ api.js:199
+loadConfig @ Configuracoes.js:22
+(anonymous) @ Configuracoes.js:40
+commitHookEffectListMount @ react-dom.development.js:23189
+invokePassiveEffectMountInDEV @ react-dom.development.js:25193
+invokeEffectsInDev @ react-dom.development.js:27390
+commitDoubleInvokeEffectsInDEV @ react-dom.development.js:27369
+flushPassiveEffectsImpl @ react-dom.development.js:27095
+flushPassiveEffects @ react-dom.development.js:27023
+performSyncWorkOnRoot @ react-dom.development.js:26115
+flushSyncCallbacks @ react-dom.development.js:12042
+commitRootImpl @ react-dom.development.js:26998
+commitRoot @ react-dom.development.js:26721
+finishConcurrentRender @ react-dom.development.js:26020
+performConcurrentWorkOnRoot @ react-dom.development.js:25848
+workLoop @ scheduler.development.js:266
+flushWork @ scheduler.development.js:239
+performWorkUntilDeadline @ scheduler.development.js:533

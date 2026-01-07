@@ -212,6 +212,8 @@ export const emprestimosService = {
   getEmprestimos: (params) => api.get('/emprestimos', { params }),
   getEmprestimoById: (id) => api.get(`/emprestimos/${id}`),
   createEmprestimo: (emprestimoData) => api.post('/emprestimos', emprestimoData),
+  autorizarEmprestimo: (id, observacoes) => api.put(`/emprestimos/${id}/autorizar`, { observacoes }),
+  deleteEmprestimo: (id, observacoes) => api.delete(`/emprestimos/${id}`, { data: { observacoes } }),
   devolverEmprestimo: (id, condicao_devolucao, observacoes_devolucao) => 
     api.put(`/emprestimos/${id}/devolver`, { condicao_devolucao, observacoes_devolucao }),
   

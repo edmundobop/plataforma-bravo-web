@@ -719,9 +719,15 @@ router.post('/escalas/pdf', async (req, res) => {
       WHERE se.data_servico = $1
     `;
 
-    if (hasExtraUnidadeColumn && unidadeId) {
+    if (unidadeId) {
       extrasParams.push(unidadeId);
-      extrasQuery += ` AND se.unidade_id = $${extrasParams.length}`;
+      if (hasExtraUnidadeColumn) {
+        extrasQuery += ` AND se.unidade_id = $${extrasParams.length}`;
+      } else {
+        // Fallback: filtrar pelo usuário se a tabela servicos_extra não tiver unidade_id
+        const userUnidadeCol = await getUsuariosUnidadeColumn() || 'unidade_id';
+        extrasQuery += ` AND u.${userUnidadeCol} = $${extrasParams.length}`;
+      }
     }
 
     extrasQuery += ' ORDER BY se.turno, u.nome';
@@ -1189,6 +1195,8 @@ router.get('/extras', async (req, res) => {
     const { status, usuario_id, data_inicio, data_fim, page = 1, limit = 10 } = req.query;
     const offset = (page - 1) * limit;
     const unidadeId = determineUnidadeId(req);
+    const hasUnidadeId = await columnExists('servicos_extra', 'unidade_id');
+    const userUnidadeCol = await getUsuariosUnidadeColumn() || 'unidade_id';
 
     let queryText = `
       SELECT se.*, u.nome as usuario_nome, u.matricula,
@@ -1225,7 +1233,16 @@ router.get('/extras', async (req, res) => {
       params.push(data_fim);
     }
 
-    queryText = applyTenantFilter(queryText, params, unidadeId, 'se.unidade_id');
+    if (unidadeId) {
+      paramCount++;
+      if (hasUnidadeId) {
+        queryText += ` AND se.unidade_id = $${paramCount}`;
+      } else {
+        queryText += ` AND u.${userUnidadeCol} = $${paramCount}`;
+      }
+      params.push(unidadeId);
+    }
+
     const baseParamCount = params.length;
     queryText += `
       ORDER BY se.data_servico DESC
@@ -1263,13 +1280,24 @@ router.post('/extras', [
     }
 
     const usuarioServicoId = usuario_id || req.user.id;
+    const hasUnidadeId = await columnExists('servicos_extra', 'unidade_id');
 
-    const result = await query(
-      `INSERT INTO servicos_extra (usuario_id, data_servico, turno, horas, tipo, descricao, valor, unidade_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING *`,
-      [usuarioServicoId, data_servico, turno, horas, tipo, descricao, valor, unidadeId]
-    );
+    let result;
+    if (hasUnidadeId) {
+      result = await query(
+        `INSERT INTO servicos_extra (usuario_id, data_servico, turno, horas, tipo, descricao, valor, unidade_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING *`,
+        [usuarioServicoId, data_servico, turno, horas, tipo, descricao, valor, unidadeId]
+      );
+    } else {
+      result = await query(
+        `INSERT INTO servicos_extra (usuario_id, data_servico, turno, horas, tipo, descricao, valor)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING *`,
+        [usuarioServicoId, data_servico, turno, horas, tipo, descricao, valor]
+      );
+    }
 
     res.status(201).json({
       message: 'Serviço extra registrado com sucesso',
@@ -1294,15 +1322,34 @@ router.put('/extras/:id/status', authorizeRoles('Administrador', 'Chefe'), [
     const { id } = req.params;
     const { status } = req.body;
     const unidadeId = determineUnidadeId(req);
+    const hasUnidadeId = await columnExists('servicos_extra', 'unidade_id');
+    const userUnidadeCol = await getUsuariosUnidadeColumn() || 'unidade_id';
 
-    const queryText = unidadeId
-      ? 'UPDATE servicos_extra SET status = $1, aprovado_por = $2 WHERE id = $3 AND unidade_id = $4 RETURNING *'
-      : 'UPDATE servicos_extra SET status = $1, aprovado_por = $2 WHERE id = $3 RETURNING *';
-    const queryParams = unidadeId
-      ? [status, req.user.id, id, unidadeId]
-      : [status, req.user.id, id];
+    if (unidadeId) {
+      // Verificar se o serviço pertence à unidade
+      let checkQuery;
+      let checkParams = [id, unidadeId];
+      
+      if (hasUnidadeId) {
+        checkQuery = `SELECT 1 FROM servicos_extra WHERE id = $1 AND unidade_id = $2`;
+      } else {
+        checkQuery = `
+          SELECT 1 FROM servicos_extra se
+          JOIN usuarios u ON se.usuario_id = u.id
+          WHERE se.id = $1 AND u.${userUnidadeCol} = $2
+        `;
+      }
+      
+      const checkResult = await query(checkQuery, checkParams);
+      if (checkResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Serviço extra não encontrado ou não pertence à sua unidade' });
+      }
+    }
 
-    const result = await query(queryText, queryParams);
+    const result = await query(
+      'UPDATE servicos_extra SET status = $1, aprovado_por = $2 WHERE id = $3 RETURNING *',
+      [status, req.user.id, id]
+    );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Serviço extra não encontrado' });
@@ -1338,15 +1385,26 @@ router.put('/extras/:id/status', authorizeRoles('Administrador', 'Chefe'), [
 router.get('/relatorio', async (req, res) => {
   try {
     const { data_inicio, data_fim } = req.query;
+    const unidadeId = determineUnidadeId(req);
+    const hasUnidadeId = await columnExists('servicos_extra', 'unidade_id');
+    const userUnidadeCol = await getUsuariosUnidadeColumn() || 'unidade_id';
 
     // Estatísticas gerais
-    const estatisticas = await query(`
+    let extrasQueryPart;
+    if (hasUnidadeId) {
+      extrasQueryPart = `(SELECT COUNT(*) FROM servicos_extra WHERE status = 'pendente' ${unidadeId ? 'AND unidade_id = $1' : ''})`;
+    } else {
+      extrasQueryPart = `(SELECT COUNT(*) FROM servicos_extra se JOIN usuarios u ON se.usuario_id = u.id WHERE se.status = 'pendente' ${unidadeId ? `AND u.${userUnidadeCol} = $1` : ''})`;
+    }
+
+    const estatisticasQuery = `
       SELECT 
-        (SELECT COUNT(*) FROM escalas WHERE ativa = true) as escalas_ativas,
-        (SELECT COUNT(*) FROM trocas_servico WHERE status = 'pendente') as trocas_pendentes,
-        (SELECT COUNT(*) FROM servicos_extra WHERE status = 'pendente') as extras_pendentes,
-        (SELECT COUNT(*) FROM escala_usuarios WHERE data_servico = CURRENT_DATE) as servicos_hoje
-    `);
+        (SELECT COUNT(*) FROM escalas WHERE ativa = true ${unidadeId ? 'AND unidade_id = $1' : ''}) as escalas_ativas,
+        (SELECT COUNT(*) FROM trocas_servico WHERE status = 'pendente' ${unidadeId ? 'AND unidade_id = $1' : ''}) as trocas_pendentes,
+        ${extrasQueryPart} as extras_pendentes,
+        (SELECT COUNT(*) FROM escala_usuarios eu JOIN escalas e ON eu.escala_id = e.id WHERE eu.data_servico = CURRENT_DATE ${unidadeId ? 'AND e.unidade_id = $1' : ''}) as servicos_hoje
+    `;
+    const estatisticas = await query(estatisticasQuery, unidadeId ? [unidadeId] : []);
 
     // Serviços por usuário
     let servicosQuery = `
@@ -1357,9 +1415,15 @@ router.get('/relatorio', async (req, res) => {
       LEFT JOIN escala_usuarios eu ON u.id = eu.usuario_id
       LEFT JOIN servicos_extra se ON u.id = se.usuario_id AND se.status = 'aprovado'
       WHERE u.ativo = true
+      ${unidadeId ? `AND u.${userUnidadeCol} = $1` : ''}
     `;
     const params = [];
     let paramCount = 0;
+
+    if (unidadeId) {
+        paramCount++;
+        params.push(unidadeId);
+    }
 
     if (data_inicio) {
       paramCount++;

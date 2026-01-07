@@ -506,7 +506,7 @@ router.get('/operacional', async (req, res) => {
       SELECT 
         (SELECT COUNT(*) FROM escalas WHERE ativa = true ${unidadeId ? 'AND unidade_id = $1' : ''}) as escalas_ativas,
         (SELECT COUNT(*) FROM trocas_servico WHERE status = 'pendente' ${unidadeId ? 'AND unidade_id = $1' : ''}) as trocas_pendentes,
-        (SELECT COUNT(*) FROM servicos_extra WHERE status = 'pendente' ${unidadeId ? 'AND unidade_id = $1' : ''}) as extras_pendentes,
+        (SELECT COUNT(*) FROM servicos_extra se JOIN usuarios u ON se.usuario_id = u.id WHERE se.status = 'pendente' ${unidadeId ? 'AND u.unidade_id = $1' : ''}) as extras_pendentes,
         (SELECT COUNT(*) FROM escala_usuarios eu JOIN escalas e ON eu.escala_id = e.id WHERE eu.data_servico = CURRENT_DATE ${unidadeId ? 'AND e.unidade_id = $1' : ''}) as servicos_hoje
     `;
     
@@ -535,6 +535,7 @@ router.get('/operacional', async (req, res) => {
         COUNT(*) as quantidade
       FROM trocas_servico
       WHERE data_solicitacao >= CURRENT_DATE - INTERVAL '30 days'
+      ${unidadeId ? 'AND unidade_id = $1' : ''}
       GROUP BY status
     `;
     
@@ -543,13 +544,15 @@ router.get('/operacional', async (req, res) => {
     // Serviços extra por mês
     let servicosExtraQuery = `
       SELECT 
-        TO_CHAR(data_servico, 'YYYY-MM') as mes,
+        TO_CHAR(se.data_servico, 'YYYY-MM') as mes,
         COUNT(*) as quantidade,
-        SUM(horas) as total_horas,
-        SUM(valor) as valor_total
-      FROM servicos_extra
-      WHERE data_servico >= CURRENT_DATE - INTERVAL '6 months' AND status = 'aprovado'
-      GROUP BY TO_CHAR(data_servico, 'YYYY-MM')
+        SUM(se.horas) as total_horas,
+        SUM(se.valor) as valor_total
+      FROM servicos_extra se
+      JOIN usuarios u ON se.usuario_id = u.id
+      WHERE se.data_servico >= CURRENT_DATE - INTERVAL '6 months' AND se.status = 'aprovado'
+      ${unidadeId ? 'AND u.unidade_id = $1' : ''}
+      GROUP BY TO_CHAR(se.data_servico, 'YYYY-MM')
       ORDER BY mes
     `;
     
