@@ -67,7 +67,7 @@ router.post('/categorias', authorizeRoles('Administrador', 'Chefe'), [
 // Listar produtos
 router.get('/produtos', async (req, res) => {
   try {
-    const { categoria_id, baixo_estoque, busca, page = 1, limit = 20 } = req.query;
+    const { categoria_id, baixo_estoque, busca, ativo, page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;
     const unidadeId = req.unidade?.id;
 
@@ -92,6 +92,12 @@ router.get('/produtos', async (req, res) => {
       paramCount++;
       queryText += ` AND p.categoria_id = $${paramCount}`;
       params.push(categoria_id);
+    }
+
+    if (ativo !== undefined && ativo !== '') {
+      paramCount++;
+      queryText += ` AND p.ativo = $${paramCount}`;
+      params.push(ativo === 'true');
     }
 
     if (baixo_estoque === 'true') {
@@ -128,6 +134,12 @@ router.get('/produtos', async (req, res) => {
       countParamCount++;
       countQuery += ` AND p.categoria_id = $${countParamCount}`;
       countParams.push(categoria_id);
+    }
+
+    if (ativo !== undefined && ativo !== '') {
+      countParamCount++;
+      countQuery += ` AND p.ativo = $${countParamCount}`;
+      countParams.push(ativo === 'true');
     }
 
     if (baixo_estoque === 'true') {
@@ -277,12 +289,15 @@ router.delete('/produtos/:id', authorizeRoles('Administrador', 'Chefe'), async (
   try {
     const { id } = req.params;
     const result = await query(
-      'UPDATE produtos SET ativo = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
+      'DELETE FROM produtos WHERE id = $1 RETURNING *',
       [id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Produto não encontrado' });
-    res.json({ message: 'Produto removido com sucesso' });
+    res.json({ message: 'Produto excluído permanentemente' });
   } catch (error) {
+    if (error.code === '23503') {
+      return res.status(400).json({ error: 'Não é possível excluir este produto pois existem movimentações associadas. Tente desativá-lo.' });
+    }
     console.error('Erro ao remover produto:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
@@ -496,9 +511,29 @@ router.get('/relatorio/estoque', async (req, res) => {
       valor_total: 0
     });
 
+    // Calcular por categoria
+    const porCategoria = result.rows.reduce((acc, produto) => {
+      const catNome = produto.categoria_nome || 'Sem Categoria';
+      if (!acc[catNome]) {
+        acc[catNome] = {
+          categoria: catNome,
+          total_itens: 0,
+          valor_total: 0,
+          baixo_estoque: 0
+        };
+      }
+      acc[catNome].total_itens++;
+      acc[catNome].valor_total += parseFloat(produto.valor_total_estoque || 0);
+      if (produto.baixo_estoque) {
+        acc[catNome].baixo_estoque++;
+      }
+      return acc;
+    }, {});
+
     res.json({
       produtos: result.rows,
-      resumo: totais
+      resumo: totais,
+      por_categoria: Object.values(porCategoria).sort((a, b) => b.valor_total - a.valor_total)
     });
   } catch (error) {
     console.error('Erro ao gerar relatório:', error);

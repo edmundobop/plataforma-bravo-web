@@ -683,7 +683,11 @@ const Usuarios = () => {
                   <TableRow key={usuario.id} hover>
                     <TableCell>
                       <Box display="flex" alignItems="center" gap={2}>
-                        <Avatar sx={{ bgcolor: theme.palette.primary.main }}>
+                        <Avatar 
+                          src={usuario.foto} 
+                          alt={usuario.nome}
+                          sx={{ bgcolor: theme.palette.primary.main }}
+                        >
                           {usuario.nome?.charAt(0)?.toUpperCase()}
                         </Avatar>
                         <Box>

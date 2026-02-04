@@ -174,6 +174,9 @@ const createTables = async () => {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='precisa_trocar_senha') THEN
           ALTER TABLE usuarios ADD COLUMN precisa_trocar_senha BOOLEAN DEFAULT false;
         END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='foto') THEN
+          ALTER TABLE usuarios ADD COLUMN foto TEXT;
+        END IF;
       END $$;
     `);
 

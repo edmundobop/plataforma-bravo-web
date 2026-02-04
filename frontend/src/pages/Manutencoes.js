@@ -149,12 +149,20 @@ const Manutencoes = () => {
     setManutencoesPage(1);
     setQueryParam('page', 1);
   }, [manutencoesFilters, isMobile]);
-  const handleOpenDialog = (type, item = null) => {
+  const [viewMode, setViewMode] = useState(false);
+
+  const handleOpenDialog = (type, item = null, mode = 'edit') => {
     setDialogType(type);
     setSelectedItem(item);
+    setViewMode(mode === 'view');
     
     if (item) {
-      setFormData({ ...item });
+      setFormData({ 
+        ...item,
+        data_inicio: item.data_manutencao ? item.data_manutencao.split('T')[0] : '',
+        data_fim: item.data_fim ? item.data_fim.split('T')[0] : '',
+        custo: item.valor
+      });
     } else {
       setFormData({});
     }
@@ -162,6 +170,7 @@ const Manutencoes = () => {
     setFormErrors({});
     setDialogOpen(true);
   };
+
 
   const handleCloseDialog = () => {
     setDialogOpen(false);
@@ -178,6 +187,7 @@ const Manutencoes = () => {
   };
 
   const handleMenuOpen = (event, item) => {
+    event.stopPropagation();
     setAnchorEl(event.currentTarget);
     setSelectedItem(item);
   };
@@ -218,10 +228,21 @@ const Manutencoes = () => {
       setLoading(true);
       const dialogType = 'manutencao';
       
+      // Adicionar unidade_id ao payload e mapear campos para o backend
+      const payload = {
+        ...formData,
+        unidade_id: currentUnit?.id,
+        data_manutencao: formData.data_inicio, // Mapeia data_inicio para data_manutencao
+        data_fim: formData.data_fim, // Envia data_fim
+        valor: formData.custo, // Mapeia custo para valor
+      };
+      
+      console.log('DEBUG - Enviando payload:', payload);
+
       if (selectedItem) {
-        await frotaService.updateManutencao(selectedItem.id, formData);
+        await frotaService.updateManutencao(selectedItem.id, payload);
       } else {
-        await frotaService.createManutencao(formData);
+        await frotaService.createManutencao(payload);
       }
       loadManutencoes();
       handleCloseDialog();
@@ -461,7 +482,11 @@ const Manutencoes = () => {
                 </TableRow>
               ) : (
                 paginatedManutencoes.map((manutencao) => (
-                  <TableRow key={manutencao.id}>
+                  <TableRow 
+                    key={manutencao.id} 
+                    onClick={() => handleOpenDialog('manutencao', manutencao, 'view')}
+                    sx={{ cursor: 'pointer', '&:hover': { backgroundColor: 'action.hover' } }}
+                  >
                     <TableCell>{manutencao.viatura_prefixo}</TableCell>
                     <TableCell>{manutencao.tipo}</TableCell>
                     <TableCell>{manutencao.descricao}</TableCell>
@@ -472,7 +497,7 @@ const Manutencoes = () => {
                         size="small"
                       />
                     </TableCell>
-                    <TableCell>{formatDate(manutencao.data_inicio)}</TableCell>
+                    <TableCell>{formatDate(manutencao.data_manutencao)}</TableCell>
                     <TableCell>{formatDate(manutencao.data_fim)}</TableCell>
                     <TableCell>
                       <IconButton onClick={(e) => handleMenuOpen(e, manutencao)}>
@@ -511,7 +536,11 @@ const Manutencoes = () => {
           ) : (
             paginatedManutencoes.map((manutencao) => (
               <Grid item xs={12} key={manutencao.id}>
-                <Paper variant="outlined" sx={{ p: 2 }}>
+                <Paper 
+                  variant="outlined" 
+                  sx={{ p: 2, cursor: 'pointer', '&:hover': { borderColor: 'primary.main' } }}
+                  onClick={() => handleOpenDialog('manutencao', manutencao, 'view')}
+                >
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <Avatar sx={{ bgcolor: 'primary.main' }}>
@@ -533,7 +562,7 @@ const Manutencoes = () => {
                     </Typography>
                   )}
                   <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
-                    <Typography variant="caption" color="text.secondary">Início: {formatDate(manutencao.data_inicio)}</Typography>
+                    <Typography variant="caption" color="text.secondary">Início: {formatDate(manutencao.data_manutencao)}</Typography>
                     <Typography variant="caption" color="text.secondary">Fim: {formatDate(manutencao.data_fim)}</Typography>
                   </Box>
                 </Paper>
@@ -584,7 +613,7 @@ const Manutencoes = () => {
       {/* Diálogo de formulário */}
       <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>
-          {selectedItem ? 'Editar Manutenção' : 'Nova Manutenção'}
+          {viewMode ? 'Visualizar Manutenção' : (selectedItem ? 'Editar Manutenção' : 'Nova Manutenção')}
         </DialogTitle>
         <DialogContent sx={{ p: isMobile ? 1.5 : 3 }}>
           <Grid container spacing={2} sx={{ mt: 1 }}>
@@ -595,6 +624,7 @@ const Manutencoes = () => {
                   value={formData.viatura_id || ''}
                   onChange={(e) => handleFormChange('viatura_id', e.target.value)}
                   label="Viatura"
+                  disabled={viewMode}
                 >
                   {viaturasDisponiveis.map((v) => (
                     <MenuItem key={v.id} value={v.id}>
@@ -626,6 +656,7 @@ const Manutencoes = () => {
                 onChange={(e) => handleFormChange('descricao', e.target.value)}
                 multiline
                 rows={3}
+                disabled={viewMode}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -635,6 +666,7 @@ const Manutencoes = () => {
                   value={formData.status || ''}
                   onChange={(e) => handleFormChange('status', e.target.value)}
                   label="Status"
+                  disabled={viewMode}
                 >
                   <MenuItem key="pendente-form" value="pendente">Pendente</MenuItem>
                   <MenuItem key="em_andamento-form" value="em_andamento">Em Andamento</MenuItem>
@@ -651,6 +683,7 @@ const Manutencoes = () => {
                 value={formData.data_inicio || ''}
                 onChange={(e) => handleFormChange('data_inicio', e.target.value)}
                 InputLabelProps={{ shrink: true }}
+                disabled={viewMode}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -673,15 +706,18 @@ const Manutencoes = () => {
                 InputProps={{
                   startAdornment: 'R$ '
                 }}
+                disabled={viewMode}
               />
             </Grid>
           </Grid>
         </DialogContent>
         <DialogActions sx={{ position: isMobile ? 'sticky' : 'static', bottom: 0, bgcolor: isMobile ? 'background.paper' : undefined, zIndex: 1 }}>
-          <Button onClick={handleCloseDialog}>Cancelar</Button>
-          <Button onClick={handleSubmit} variant="contained" disabled={loading}>
-            {loading ? 'Salvando...' : 'Salvar'}
-          </Button>
+          <Button onClick={handleCloseDialog}>{viewMode ? 'Fechar' : 'Cancelar'}</Button>
+          {!viewMode && (
+            <Button onClick={handleSubmit} variant="contained" disabled={loading}>
+              {loading ? 'Salvando...' : 'Salvar'}
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 

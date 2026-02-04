@@ -187,6 +187,8 @@ export const almoxarifadoService = {
   },
   getProdutoById: (id) => api.get(`/almoxarifado/produtos/${id}`),
   createProduto: (produtoData) => api.post('/almoxarifado/produtos', produtoData),
+  updateProduto: (id, produtoData) => api.put(`/almoxarifado/produtos/${id}`, produtoData),
+  deleteProduto: (id) => api.delete(`/almoxarifado/produtos/${id}`),
   
   // Movimentações
   getMovimentacoes: (params) => api.get('/almoxarifado/movimentacoes', { params }),

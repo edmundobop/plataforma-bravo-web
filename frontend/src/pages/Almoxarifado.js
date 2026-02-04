@@ -49,6 +49,9 @@ import {
   TrendingUp as TrendingUpIcon,
   TrendingDown as TrendingDownIcon,
   Assessment as ReportIcon,
+  Delete as DeleteIcon,
+  Block as BlockIcon,
+  CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
 import { FormControlLabel, Switch } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
@@ -69,7 +72,7 @@ const Almoxarifado = () => {
   const [produtosLoading, setProdutosLoading] = useState(false);
   const [produtosFilters, setProdutosFilters] = useState({
     categoria_id: '',
-    ativo: '',
+    ativo: 'true',
     baixo_estoque: false,
     search: '',
     page: 1,
@@ -101,6 +104,10 @@ const Almoxarifado = () => {
     pages: 0,
     current_page: 1,
   });
+  
+  // Estado para exclusão
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
   
   // Estados para diálogos
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -276,14 +283,66 @@ const Almoxarifado = () => {
               </Grid>
             </Grid>
           )}
+
+          {relatorio?.por_categoria && relatorio.por_categoria.length > 0 && (
+            <Box mt={4}>
+              <Typography variant="h6" gutterBottom>
+                Detalhamento por Categoria
+              </Typography>
+              <TableContainer component={Paper} variant="outlined">
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Categoria</TableCell>
+                      <TableCell align="right">Total de Itens</TableCell>
+                      <TableCell align="right">Baixo Estoque</TableCell>
+                      <TableCell align="right">Valor Total</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {relatorio.por_categoria.map((cat, index) => (
+                      <TableRow key={index}>
+                        <TableCell component="th" scope="row">
+                          {cat.categoria}
+                        </TableCell>
+                        <TableCell align="right">{cat.total_itens}</TableCell>
+                        <TableCell align="right">
+                          <Typography color={cat.baixo_estoque > 0 ? 'error' : 'inherit'} variant="body2">
+                            {cat.baixo_estoque}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cat.valor_total)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+          )}
         </CardContent>
       </Card>
     </Box>
   );
-  const handleOpenDialog = (type, item = null) => {
+  const [viewMode, setViewMode] = useState(false);
+
+  const handleOpenDialog = (type, item = null, mode = 'edit') => {
     setDialogType(type);
     setSelectedItem(item);
-    setFormData(item || {});
+    setViewMode(mode === 'view');
+    
+    if (item && type === 'produto') {
+      setFormData({ 
+        ...item,
+        // Garantir que valor_unitario venha formatado se for número
+        valor_unitario: item.valor_unitario ? Number(item.valor_unitario).toFixed(2) : ''
+      });
+    } else {
+      setFormData(item || {});
+    }
+    
+    setAnchorEl(null);
     setDialogOpen(true);
   };
 
@@ -319,8 +378,19 @@ const Almoxarifado = () => {
         // Conversões
         if (payload.categoria_id !== undefined) payload.categoria_id = parseInt(payload.categoria_id || '0', 10);
         if (payload.estoque_minimo !== undefined) payload.estoque_minimo = parseInt(payload.estoque_minimo || '0', 10);
-        if (payload.valor_unitario !== undefined) {
-          const v = String(payload.valor_unitario).replace('.', '').replace(',', '.');
+        if (payload.valor_unitario !== undefined && typeof payload.valor_unitario === 'string') {
+          // Se for string, tentar converter. Se já for número (do parseCurrencyInput), mantém.
+          // parseCurrencyInput já retorna string com ponto ("50.00"), que parseFloat aceita direto.
+          // Mas se o usuário editou manualmente ou colou, pode ter vírgula.
+          // Se tiver vírgula e ponto, assume formato BR ("1.000,00") -> remove ponto, troca vírgula por ponto.
+          // Se tiver só vírgula, troca por ponto.
+          // Se tiver só ponto, mantém.
+          let v = payload.valor_unitario;
+          if (v.includes(',') && v.includes('.')) {
+             v = v.replace(/\./g, '').replace(',', '.');
+          } else if (v.includes(',')) {
+             v = v.replace(',', '.');
+          }
           payload.valor_unitario = parseFloat(v || '0');
         }
         // Envio
@@ -390,6 +460,36 @@ const Almoxarifado = () => {
       style: 'currency',
       currency: 'BRL',
     }).format(value);
+  };
+
+  const handleToggleStatus = async (produto) => {
+    try {
+      setLoading(true);
+      await almoxarifadoService.updateProduto(produto.id, { ativo: !produto.ativo });
+      loadProdutos();
+      setAnchorEl(null);
+    } catch (err) {
+      console.error('Erro ao alterar status do produto:', err);
+      setError('Erro ao alterar status do produto.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteProduct = async () => {
+    if (!itemToDelete) return;
+    try {
+      setLoading(true);
+      await almoxarifadoService.deleteProduto(itemToDelete.id);
+      loadProdutos();
+      setDeleteDialogOpen(false);
+      setItemToDelete(null);
+    } catch (err) {
+      console.error('Erro ao excluir produto:', err);
+      setError(err.response?.data?.error || 'Erro ao excluir produto. Verifique se existem movimentações associadas.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const renderProdutosTab = () => (
@@ -526,7 +626,7 @@ const Almoxarifado = () => {
                 onClick={() => {
                   setProdutosFilters({
                     categoria_id: '',
-                    ativo: '',
+                    ativo: 'true',
                     baixo_estoque: false,
                     search: '',
                     page: 1,
@@ -573,7 +673,11 @@ const Almoxarifado = () => {
               </TableRow>
             ) : (
               produtos.map((produto) => (
-                <TableRow key={produto.id}>
+                <TableRow 
+                  key={produto.id}
+                  onClick={() => handleOpenDialog('produto', produto, 'view')}
+                  sx={{ cursor: 'pointer', '&:hover': { backgroundColor: 'action.hover' } }}
+                >
                   <TableCell>{produto.codigo}</TableCell>
                   <TableCell>{produto.barcode || '-'}</TableCell>
                   <TableCell>{produto.nome}</TableCell>
@@ -604,6 +708,7 @@ const Almoxarifado = () => {
                     {!isOperador() && (
                       <IconButton
                         onClick={(e) => {
+                          e.stopPropagation();
                           setAnchorEl(e.currentTarget);
                           setSelectedItem(produto);
                         }}
@@ -941,6 +1046,22 @@ const Almoxarifado = () => {
             Nova Movimentação
           </MenuItem>
         )}
+        {activeTab === 0 && !isOperador() && (
+          <MenuItem key="toggle-status-almoxarifado" onClick={() => handleToggleStatus(selectedItem)}>
+            {selectedItem?.ativo ? <BlockIcon sx={{ mr: 1 }} /> : <CheckCircleIcon sx={{ mr: 1 }} />}
+            {selectedItem?.ativo ? 'Desativar' : 'Ativar'}
+          </MenuItem>
+        )}
+        {activeTab === 0 && !isOperador() && (
+          <MenuItem key="delete-almoxarifado" onClick={() => {
+            setItemToDelete(selectedItem);
+            setDeleteDialogOpen(true);
+            setAnchorEl(null);
+          }}>
+            <DeleteIcon sx={{ mr: 1 }} />
+            Excluir
+          </MenuItem>
+        )}
       </Menu>
 
       {/* Dialog para formulários */}
@@ -951,7 +1072,7 @@ const Almoxarifado = () => {
         fullWidth
       >
         <DialogTitle>
-          {dialogType === 'produto' && (selectedItem ? 'Editar Produto' : 'Novo Produto')}
+          {dialogType === 'produto' && (selectedItem ? (viewMode ? 'Visualizar Produto' : 'Editar Produto') : 'Novo Produto')}
           {dialogType === 'categoria' && (selectedItem ? 'Editar Categoria' : 'Nova Categoria')}
           {dialogType === 'movimentacao' && 'Nova Movimentação'}
         </DialogTitle>
@@ -965,6 +1086,7 @@ const Almoxarifado = () => {
                     label="Código do Produto"
                     value={formData.codigo || ''}
                     onChange={(e) => handleFormChange('codigo', e.target.value)}
+                    disabled={viewMode}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
@@ -973,6 +1095,7 @@ const Almoxarifado = () => {
                     label="Nome"
                     value={formData.nome || ''}
                     onChange={(e) => handleFormChange('nome', e.target.value)}
+                    disabled={viewMode}
                   />
                 </Grid>
                 <Grid item xs={12}>
@@ -983,6 +1106,7 @@ const Almoxarifado = () => {
                     label="Descrição"
                     value={formData.descricao || ''}
                     onChange={(e) => handleFormChange('descricao', e.target.value)}
+                    disabled={viewMode}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
@@ -992,6 +1116,7 @@ const Almoxarifado = () => {
                       value={formData.categoria_id || ''}
                       label="Categoria"
                       onChange={(e) => handleFormChange('categoria_id', e.target.value)}
+                      disabled={viewMode}
                     >
                       <MenuItem key="cat-none" value="">Selecione</MenuItem>
                       {categorias.map((categoria) => (
@@ -1009,15 +1134,32 @@ const Almoxarifado = () => {
                     placeholder="Aponte o leitor aqui"
                     value={formData.barcode || ''}
                     onChange={(e) => handleFormChange('barcode', e.target.value)}
+                    disabled={viewMode}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Unidade de Medida"
-                    value={formData.unidade_medida || ''}
-                    onChange={(e) => handleFormChange('unidade_medida', e.target.value)}
-                  />
+                  <FormControl fullWidth>
+                    <InputLabel>Unidade de Medida</InputLabel>
+                    <Select
+                      value={formData.unidade_medida || ''}
+                      label="Unidade de Medida"
+                      onChange={(e) => handleFormChange('unidade_medida', e.target.value)}
+                      disabled={viewMode}
+                    >
+                      <MenuItem value="UNIDADE">UNIDADE</MenuItem>
+                      <MenuItem value="KG">KG</MenuItem>
+                      <MenuItem value="LITRO">LITRO</MenuItem>
+                      <MenuItem value="METRO">METRO</MenuItem>
+                      <MenuItem value="CAIXA">CAIXA</MenuItem>
+                      <MenuItem value="PACOTE">PACOTE</MenuItem>
+                      <MenuItem value="ROLO">ROLO</MenuItem>
+                      <MenuItem value="PAR">PAR</MenuItem>
+                      <MenuItem value="KIT">KIT</MenuItem>
+                      <MenuItem value="FRASCO">FRASCO</MenuItem>
+                      <MenuItem value="GALÃO">GALÃO</MenuItem>
+                      <MenuItem value="LATA">LATA</MenuItem>
+                    </Select>
+                  </FormControl>
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <TextField
@@ -1027,6 +1169,7 @@ const Almoxarifado = () => {
                     inputProps={{ min: 0 }}
                     value={formData.estoque_minimo ?? ''}
                     onChange={(e) => handleFormChange('estoque_minimo', e.target.value)}
+                    disabled={viewMode}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
@@ -1036,6 +1179,7 @@ const Almoxarifado = () => {
                     inputMode="numeric"
                     value={formatCurrencyInput(formData.valor_unitario)}
                     onChange={(e) => handleFormChange('valor_unitario', parseCurrencyInput(e.target.value))}
+                    disabled={viewMode}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
@@ -1046,6 +1190,7 @@ const Almoxarifado = () => {
                     inputProps={{ min: 0 }}
                     value={formData.estoque_inicial ?? ''}
                     onChange={(e) => handleFormChange('estoque_inicial', e.target.value)}
+                    disabled={viewMode}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
@@ -1054,6 +1199,7 @@ const Almoxarifado = () => {
                       <Switch
                         checked={Boolean(formData.ativo ?? true)}
                         onChange={(e) => handleFormChange('ativo', e.target.checked)}
+                        disabled={viewMode}
                       />
                     }
                     label="Ativo"
@@ -1167,13 +1313,35 @@ const Almoxarifado = () => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog}>Cancelar</Button>
-          <Button
-            onClick={handleSubmit}
-            variant="contained"
-            disabled={loading}
-          >
-            {loading ? <CircularProgress size={20} /> : 'Salvar'}
+          <Button onClick={handleCloseDialog}>{viewMode ? 'Fechar' : 'Cancelar'}</Button>
+          {!viewMode && (
+            <Button
+              onClick={handleSubmit}
+              variant="contained"
+              disabled={loading}
+            >
+              {loading ? <CircularProgress size={20} /> : 'Salvar'}
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog de confirmação de exclusão */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+      >
+        <DialogTitle>Confirmar Exclusão</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Tem certeza que deseja excluir o produto "{itemToDelete?.nome}"?
+            Esta ação não pode ser desfeita.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)}>Cancelar</Button>
+          <Button onClick={handleDeleteProduct} color="error" variant="contained">
+            Excluir
           </Button>
         </DialogActions>
       </Dialog>

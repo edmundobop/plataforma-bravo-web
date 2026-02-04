@@ -351,8 +351,14 @@ export const sanitizeUsuarioData = (formData) => {
     sanitized.ativo = !!sanitized.ativo;
   }
   
-  // Remove campos vazios ou nulos
+  // Remove campos vazios ou nulos, mas preserva foto se for string válida
   Object.keys(sanitized).forEach(key => {
+    // Exceção explícita para foto: se for string (mesmo que pareça vazia para algumas lógicas), mantém
+    // Mas se for string vazia "", remove.
+    if (key === 'foto' && typeof sanitized[key] === 'string' && sanitized[key].trim().length > 0) {
+      return; // Mantém foto
+    }
+
     if (sanitized[key] === '' || sanitized[key] === null || sanitized[key] === undefined) {
       delete sanitized[key];
     }

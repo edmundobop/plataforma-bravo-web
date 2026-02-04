@@ -71,6 +71,7 @@ import {
 } from '@mui/material';
 import {
   Add as AddIcon,
+  PhotoCamera as PhotoCameraIcon,
   Search as SearchIcon,
   FilterList as FilterIcon,
   MoreVert as MoreVertIcon,
@@ -98,7 +99,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
-import { usuariosService, userService } from '../services/api';
+import { usuariosService, userService, uploadService } from '../services/api';
 import usePendingAction from '../hooks/usePendingAction';
 import { militaresService } from '../services/militaresService';
 import { 
@@ -211,6 +212,7 @@ const CadastroUsuarios = () => {
   });
   const [formErrors, setFormErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
+  const [fotoPreview, setFotoPreview] = useState(null);
   
   // Estados para dados auxiliares
   const [perfis, setPerfis] = useState([]);
@@ -421,6 +423,7 @@ const CadastroUsuarios = () => {
   const handleOpenDialog = async (type, usuario = null) => {
     console.log('🔍 [DEBUG][CadastroUsuarios] handleOpenDialog:', { type, usuarioId: usuario?.id, unidadesDisponiveis: Array.isArray(unidades) ? unidades.length : 0 });
     setDialogType(type);
+    setFotoPreview(null);
     setSelectedUsuario(usuario);
     
     if ((type === 'edit' || type === 'view') && usuario) {
@@ -488,6 +491,7 @@ const CadastroUsuarios = () => {
       const postoResolvido = normalizePosto(userData.posto_graduacao || '');
 
       setFormData({
+        foto: userData.foto || '',
         nome_completo: userData.nome_completo || '',
         email: userData.email || '',
         cpf: userData.cpf || '',
@@ -511,6 +515,7 @@ const CadastroUsuarios = () => {
       });
     } else if (type === 'create') {
       setFormData({
+        foto: '',
         nome_completo: '',
         email: '',
         cpf: '',
@@ -539,8 +544,10 @@ const CadastroUsuarios = () => {
 
   const handleCloseDialog = () => {
     setDialogOpen(false);
+    setFotoPreview(null);
     setSelectedUsuario(null);
     setFormData({
+      foto: '',
       nome_completo: '',
       email: '',
       cpf: '',
@@ -587,6 +594,37 @@ const CadastroUsuarios = () => {
       setFormData(prev => ({ ...prev, cpf: formatCPF(value) }));
     } else if (field === 'telefone') {
       setFormData(prev => ({ ...prev, telefone: formatPhone(value) }));
+    }
+  };
+
+  const handleFileChange = async (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      // Bloquear formulário durante upload
+      setLoading(true);
+      try {
+        const previewUrl = URL.createObjectURL(file);
+        setFotoPreview(previewUrl);
+        
+        // Upload
+        const response = await uploadService.uploadFoto(file);
+        
+        if (response.data && response.data.url) {
+          console.log('✅ Foto enviada com sucesso:', response.data.url);
+          setFormData(prev => ({ ...prev, foto: response.data.url }));
+        }
+      } catch (error) {
+        console.error('Erro ao fazer upload da foto:', error);
+        setError('Erro ao fazer upload da foto. Tente novamente.');
+        // Reverter preview em caso de erro (opcional, mas bom para UX)
+        if (dialogType === 'edit' && selectedUsuario?.foto) {
+           setFotoPreview(selectedUsuario.foto);
+        } else {
+           setFotoPreview(null);
+        }
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -731,8 +769,12 @@ const CadastroUsuarios = () => {
         <CardContent>
           <Box display="flex" justifyContent="space-between" alignItems="flex-start">
             <Box display="flex" alignItems="center" gap={2}>
-              <Avatar sx={{ bgcolor: isMilitar ? theme.palette.primary.main : theme.palette.secondary.main }}>
-                {isMilitar ? <MilitaryIcon /> : <PersonIcon />}
+              <Avatar 
+                src={usuario.foto} 
+                alt={usuario.nome_completo}
+                sx={{ bgcolor: isMilitar ? theme.palette.primary.main : theme.palette.secondary.main }}
+              >
+                {!usuario.foto && (isMilitar ? <MilitaryIcon /> : <PersonIcon />)}
               </Avatar>
               <Box>
                 <Typography variant="h6" component="div">
@@ -891,6 +933,39 @@ const CadastroUsuarios = () => {
             {/* Campo disabled em modo Visualizar */}
             <fieldset disabled={isView} style={{ border: 0, padding: 0, margin: 0 }}>
             {/* Tipo de Usuário */}
+            <Box display="flex" flexDirection="column" alignItems="center" mb={3}>
+              <Box position="relative">
+                <Avatar
+                  src={fotoPreview || formData.foto}
+                  alt="Foto de Perfil"
+                  sx={{ width: 100, height: 100, mb: 1, border: '1px solid #ccc' }}
+                >
+                  {!fotoPreview && !formData.foto && <PersonIcon sx={{ fontSize: 60 }} />}
+                </Avatar>
+                {!isView && (
+                  <IconButton
+                    color="primary"
+                    aria-label="upload picture"
+                    component="label"
+                    sx={{
+                      position: 'absolute',
+                      bottom: 0,
+                      right: -10,
+                      bgcolor: 'background.paper',
+                      boxShadow: 1,
+                      '&:hover': { bgcolor: 'background.default' }
+                    }}
+                  >
+                    <input hidden accept="image/*" type="file" onChange={handleFileChange} />
+                    <PhotoCameraIcon />
+                  </IconButton>
+                )}
+              </Box>
+              <Typography variant="caption" color="textSecondary">
+                {isView ? '' : 'Clique na câmera para alterar a foto'}
+              </Typography>
+            </Box>
+
             <FormControl component="fieldset" sx={{ mb: 3 }}>
               <FormLabel component="legend">Tipo de Usuário</FormLabel>
               <RadioGroup
@@ -968,6 +1043,8 @@ const CadastroUsuarios = () => {
                   type="date"
                   value={formData.data_nascimento}
                   onChange={(e) => handleInputChange('data_nascimento', e.target.value)}
+                  error={!!formErrors.data_nascimento}
+                  helperText={formErrors.data_nascimento}
                   InputLabelProps={{ shrink: true }}
                   size={isMobile ? 'small' : 'medium'}
                 />

@@ -639,6 +639,8 @@ const Layout = () => {
               onClick={handleProfileMenuOpen}
             >
               <Avatar
+                src={user?.foto}
+                alt={user?.nome}
                 sx={{
                   width: 32,
                   height: 32,
