@@ -1,17 +1,7 @@
-const { query } = require('../config/database');
+exports.up = (pgm) => {
+  pgm.sql('ALTER TABLE emprestimos ADD COLUMN IF NOT EXISTS assinatura_solicitante TEXT');
+};
 
-async function up() {
-  await query(`
-    ALTER TABLE emprestimos 
-    ADD COLUMN IF NOT EXISTS assinatura_solicitante TEXT;
-  `);
-}
-
-async function down() {
-  await query(`
-    ALTER TABLE emprestimos 
-    DROP COLUMN IF EXISTS assinatura_solicitante;
-  `);
-}
-
-module.exports = { up, down };
+exports.down = (pgm) => {
+  pgm.sql('ALTER TABLE emprestimos DROP COLUMN IF EXISTS assinatura_solicitante');
+};
