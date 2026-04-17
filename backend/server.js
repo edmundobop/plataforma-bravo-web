@@ -208,10 +208,21 @@ async function processarAlertasEmprestimosVencidos() {
       WHERE e.status = 'ativo' AND e.data_prevista_devolucao < CURRENT_DATE
     `);
     for (const row of (res.rows || [])) {
+      const existing = await query(
+        `SELECT id
+         FROM notificacoes
+         WHERE usuario_id = $1
+           AND titulo = $2
+           AND modulo = $3
+           AND referencia_id = $4
+         LIMIT 1`,
+        [row.usuario_solicitante_id, 'Cautela Vencida', 'emprestimos', row.id]
+      );
+      if (existing.rows.length > 0) continue;
+
       await query(`
         INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id)
         VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT DO NOTHING
       `, [
         row.usuario_solicitante_id,
         'Cautela Vencida',
