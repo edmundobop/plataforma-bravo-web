@@ -548,6 +548,7 @@ router.get('/', authorizeRoles(['Administrador', 'Comandante', 'Chefe']), checkT
         u.matricula,
         u.antiguidade,
         u.ativo,
+        u.foto,
         u.ultimo_login,
         u.created_at,
         u.perfil_id,
@@ -947,6 +948,7 @@ router.get('/:id', async (req, res) => {
         u.data_nascimento,
         u.data_incorporacao,
         u.ativo,
+        u.foto,
         u.ultimo_login,
         u.created_at,
         u.updated_at,
@@ -1057,6 +1059,15 @@ router.put('/:id', async (req, res) => {
     // Comentário: a tabela pode ter `unidade_id`, `unidade_lotacao_id` ou `unidades_id`.
     const lotacaoCol = await getUsuariosUnidadeColumn() || 'unidade_id';
 
+    console.log('📝 [Usuarios] PUT /:id - Payload received:', {
+      id,
+      bodyKeys: Object.keys(req.body),
+      foto: req.body.foto ? 'PRESENT (length ' + req.body.foto.length + ')' : 'MISSING/EMPTY',
+      userPerfil,
+      isAdmin,
+      isSelf
+    });
+
     // Campos permitidos (base), substituindo a coluna de lotação detectada
     const allowedFields = isAdmin
       ? [
@@ -1076,9 +1087,10 @@ router.put('/:id', async (req, res) => {
         'setor_id',
         'setor',
         'perfil_id',
-        'ativo'
+        'ativo',
+        'foto'
       ]
-      : ['nome_completo', 'email', 'telefone', 'data_nascimento', 'posto_graduacao', 'nome_guerra', 'matricula'];
+      : ['nome_completo', 'email', 'telefone', 'data_nascimento', 'posto_graduacao', 'nome_guerra', 'matricula', 'foto'];
 
     // Normalizações leves no corpo (tipos e datas) para evitar erros de tipo
     // Comentário: conversões defensivas antes de montar o SQL.
@@ -1131,6 +1143,11 @@ router.put('/:id', async (req, res) => {
         // Verifica se a coluna existe antes de tentar atualizar
         // eslint-disable-next-line no-await-in-loop
         const hasColumn = await columnExists('usuarios', field);
+        
+        if (field === 'foto') {
+          console.log(`📸 [Usuarios] Processing 'foto' field. Value: ${req.body[field] ? 'PRESENT' : 'EMPTY'}. Column exists: ${hasColumn}`);
+        }
+
         if (hasColumn) {
           updates.push(`${field} = $${idx}`);
           params.push(req.body[field]);
@@ -1373,6 +1390,7 @@ router.post('/',
       const hasSenhaHash = await columnExists('usuarios', 'senha_hash');
       const hasSenhaCol = await columnExists('usuarios', 'senha');
       const hasCategoriaCnh = await columnExists('usuarios', 'categoria_cnh');
+      const hasFoto = await columnExists('usuarios', 'foto');
 
       let fields = [];
       let placeholders = [];
@@ -1399,6 +1417,9 @@ router.post('/',
       add('matricula', matricula);
       add('data_nascimento', data_nascimento);
       add('data_incorporacao', data_incorporacao);
+      if (hasFoto && req.body.foto) {
+        add('foto', req.body.foto);
+      }
       // Persistir ANTIGUIDADE (inteiro opcional) se a coluna existir
       const hasAntiguidade = await columnExists('usuarios', 'antiguidade');
       if (hasAntiguidade) {

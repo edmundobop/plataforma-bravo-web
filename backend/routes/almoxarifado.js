@@ -10,7 +10,7 @@ const router = express.Router();
 router.use(authenticateToken);
 
 // Aplicar verificação de tenant em rotas que precisam de filtro por unidade
-router.use(['/produtos', '/movimentacoes'], optionalTenant);
+router.use(['/produtos', '/movimentacoes', '/config'], optionalTenant);
 
 // CATEGORIAS
 
@@ -67,7 +67,7 @@ router.post('/categorias', authorizeRoles('Administrador', 'Chefe'), [
 // Listar produtos
 router.get('/produtos', async (req, res) => {
   try {
-    const { categoria_id, baixo_estoque, busca, page = 1, limit = 20 } = req.query;
+    const { categoria_id, baixo_estoque, busca, ativo, page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;
     const unidadeId = req.unidade?.id;
 
@@ -94,13 +94,19 @@ router.get('/produtos', async (req, res) => {
       params.push(categoria_id);
     }
 
+    if (ativo !== undefined && ativo !== '') {
+      paramCount++;
+      queryText += ` AND p.ativo = $${paramCount}`;
+      params.push(ativo === 'true');
+    }
+
     if (baixo_estoque === 'true') {
       queryText += ' AND p.estoque_atual <= p.estoque_minimo';
     }
 
     if (busca) {
       paramCount++;
-      queryText += ` AND (p.nome ILIKE $${paramCount} OR p.codigo ILIKE $${paramCount})`;
+      queryText += ` AND (p.nome ILIKE $${paramCount} OR p.codigo ILIKE $${paramCount} OR p.barcode ILIKE $${paramCount})`;
       params.push(`%${busca}%`);
     }
 
@@ -128,6 +134,12 @@ router.get('/produtos', async (req, res) => {
       countParamCount++;
       countQuery += ` AND p.categoria_id = $${countParamCount}`;
       countParams.push(categoria_id);
+    }
+
+    if (ativo !== undefined && ativo !== '') {
+      countParamCount++;
+      countQuery += ` AND p.ativo = $${countParamCount}`;
+      countParams.push(ativo === 'true');
     }
 
     if (baixo_estoque === 'true') {
@@ -212,14 +224,15 @@ router.post('/produtos', authorizeRoles('Administrador', 'Chefe'), [
 
     const {
       codigo, nome, descricao, categoria_id, unidade_medida,
-      estoque_minimo, valor_unitario
+      estoque_minimo, valor_unitario, barcode
     } = req.body;
+    const unidadeId = req.unidade?.id || null;
 
     const result = await query(
-      `INSERT INTO produtos (codigo, nome, descricao, categoria_id, unidade_medida, estoque_minimo, valor_unitario)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO produtos (codigo, nome, descricao, categoria_id, unidade_medida, estoque_minimo, valor_unitario, unidade_id, barcode)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
-      [codigo, nome, descricao, categoria_id, unidade_medida, estoque_minimo || 0, valor_unitario]
+      [codigo, nome, descricao, categoria_id, unidade_medida, estoque_minimo || 0, valor_unitario, unidadeId, barcode || null]
     );
 
     res.status(201).json({
@@ -228,9 +241,64 @@ router.post('/produtos', authorizeRoles('Administrador', 'Chefe'), [
     });
   } catch (error) {
     if (error.code === '23505') {
-      return res.status(400).json({ error: 'Código do produto já existe' });
+      const msg = (error.detail || '').includes('barcode') ? 'Código de barras já existe' : 'Código do produto já existe';
+      return res.status(400).json({ error: msg });
     }
     console.error('Erro ao criar produto:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+router.put('/produtos/:id', authorizeRoles('Administrador', 'Chefe'), [
+  body('nome').optional().notEmpty(),
+  body('categoria_id').optional().isInt(),
+  body('unidade_medida').optional().notEmpty()
+], async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      codigo, nome, descricao, categoria_id, unidade_medida,
+      estoque_minimo, valor_unitario, ativo
+    } = req.body;
+    const fields = [];
+    const params = [];
+    let i = 1;
+    if (codigo !== undefined) { fields.push(`codigo = $${i++}`); params.push(codigo); }
+    if (nome !== undefined) { fields.push(`nome = $${i++}`); params.push(nome); }
+    if (descricao !== undefined) { fields.push(`descricao = $${i++}`); params.push(descricao); }
+    if (categoria_id !== undefined) { fields.push(`categoria_id = $${i++}`); params.push(categoria_id); }
+    if (unidade_medida !== undefined) { fields.push(`unidade_medida = $${i++}`); params.push(unidade_medida); }
+    if (estoque_minimo !== undefined) { fields.push(`estoque_minimo = $${i++}`); params.push(estoque_minimo); }
+    if (valor_unitario !== undefined) { fields.push(`valor_unitario = $${i++}`); params.push(valor_unitario); }
+    if (ativo !== undefined) { fields.push(`ativo = $${i++}`); params.push(ativo); }
+    if (fields.length === 0) return res.status(400).json({ error: 'Nenhum campo para atualizar' });
+    params.push(id);
+    const result = await query(
+      `UPDATE produtos SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${i} RETURNING *`,
+      params
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Produto não encontrado' });
+    res.json({ message: 'Produto atualizado com sucesso', produto: result.rows[0] });
+  } catch (error) {
+    console.error('Erro ao atualizar produto:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+router.delete('/produtos/:id', authorizeRoles('Administrador', 'Chefe'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await query(
+      'DELETE FROM produtos WHERE id = $1 RETURNING *',
+      [id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Produto não encontrado' });
+    res.json({ message: 'Produto excluído permanentemente' });
+  } catch (error) {
+    if (error.code === '23503') {
+      return res.status(400).json({ error: 'Não é possível excluir este produto pois existem movimentações associadas. Tente desativá-lo.' });
+    }
+    console.error('Erro ao remover produto:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
@@ -242,6 +310,7 @@ router.get('/movimentacoes', async (req, res) => {
   try {
     const { produto_id, tipo, data_inicio, data_fim, page = 1, limit = 10 } = req.query;
     const offset = (page - 1) * limit;
+    const unidadeId = req.unidade?.id || req.user?.unidade_id || null;
 
     let queryText = `
       SELECT m.*, p.nome as produto_nome, p.codigo as produto_codigo, u.nome as usuario_nome
@@ -252,6 +321,12 @@ router.get('/movimentacoes', async (req, res) => {
     `;
     const params = [];
     let paramCount = 0;
+
+    if (unidadeId) {
+      paramCount++;
+      queryText += ` AND p.unidade_id = $${paramCount}`;
+      params.push(unidadeId);
+    }
 
     if (produto_id) {
       paramCount++;
@@ -308,6 +383,10 @@ router.post('/movimentacoes', [
       produto_id, tipo, quantidade, valor_unitario,
       motivo, documento, fornecedor
     } = req.body;
+    const isOperador = (req.user?.perfil_nome === 'Operador') || (req.user?.papel === 'Operador');
+    if (isOperador && tipo === 'entrada') {
+      return res.status(403).json({ error: 'Operador não pode registrar entradas' });
+    }
 
     await transaction(async (client) => {
       // Buscar produto atual
@@ -432,12 +511,93 @@ router.get('/relatorio/estoque', async (req, res) => {
       valor_total: 0
     });
 
+    // Calcular por categoria
+    const porCategoria = result.rows.reduce((acc, produto) => {
+      const catNome = produto.categoria_nome || 'Sem Categoria';
+      if (!acc[catNome]) {
+        acc[catNome] = {
+          categoria: catNome,
+          total_itens: 0,
+          valor_total: 0,
+          baixo_estoque: 0
+        };
+      }
+      acc[catNome].total_itens++;
+      acc[catNome].valor_total += parseFloat(produto.valor_total_estoque || 0);
+      if (produto.baixo_estoque) {
+        acc[catNome].baixo_estoque++;
+      }
+      return acc;
+    }, {});
+
     res.json({
       produtos: result.rows,
-      resumo: totais
+      resumo: totais,
+      por_categoria: Object.values(porCategoria).sort((a, b) => b.valor_total - a.valor_total)
     });
   } catch (error) {
     console.error('Erro ao gerar relatório:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Configurações do Almoxarifado (por unidade)
+router.get('/config', authorizeRoles('Administrador', 'Chefe'), async (req, res) => {
+  try {
+    const unidadeId = req.unidade?.id || req.user?.unidade_id || null;
+    if (!unidadeId) return res.status(400).json({ error: 'Unidade não identificada' });
+    const defaults = {
+      cautelas_notificacao_intervals: [7, 2, 1],
+      cautelas_autorizacao_roles: ['Administrador', 'Chefe', 'Comandante']
+    };
+    const r = await query('SELECT cautelas_notificacao_intervals, cautelas_autorizacao_roles FROM almox_config WHERE unidade_id = $1 LIMIT 1', [unidadeId]);
+    if (r.rows.length === 0) return res.json(defaults);
+    const cfg = r.rows[0];
+    res.json({
+      cautelas_notificacao_intervals: cfg.cautelas_notificacao_intervals || defaults.cautelas_notificacao_intervals,
+      cautelas_autorizacao_roles: cfg.cautelas_autorizacao_roles || defaults.cautelas_autorizacao_roles
+    });
+  } catch (error) {
+    if (error.code === '42P01') {
+      return res.json({
+        cautelas_notificacao_intervals: [7, 2, 1],
+        cautelas_autorizacao_roles: ['Administrador', 'Chefe', 'Comandante']
+      });
+    }
+    console.error('Erro ao obter config do almoxarifado:', error);
+    res.status(500).json({ error: 'Erro interno do servidor', details: error.message, code: error.code });
+  }
+});
+router.put('/config', authorizeRoles('Administrador', 'Chefe'), async (req, res) => {
+  try {
+    const unidadeId = req.unidade?.id || req.user?.unidade_id || null;
+    if (!unidadeId) return res.status(400).json({ error: 'Unidade não identificada' });
+    const { cautelas_notificacao_intervals, cautelas_autorizacao_roles } = req.body || {};
+    const intervals = Array.isArray(cautelas_notificacao_intervals) ? cautelas_notificacao_intervals : [7, 2, 1];
+    const roles = Array.isArray(cautelas_autorizacao_roles) ? cautelas_autorizacao_roles : ['Administrador', 'Chefe', 'Comandante'];
+    await query(`
+      CREATE TABLE IF NOT EXISTS almox_config (
+        id SERIAL PRIMARY KEY,
+        unidade_id INTEGER,
+        cautelas_notificacao_intervals JSONB DEFAULT '[]'::jsonb,
+        cautelas_autorizacao_roles JSONB DEFAULT '[]'::jsonb
+      )
+    `);
+    const existing = await query('SELECT id FROM almox_config WHERE unidade_id = $1 LIMIT 1', [unidadeId]);
+    if (existing.rows.length === 0) {
+      await query(
+        'INSERT INTO almox_config (unidade_id, cautelas_notificacao_intervals, cautelas_autorizacao_roles) VALUES ($1, $2, $3)',
+        [unidadeId, JSON.stringify(intervals), JSON.stringify(roles)]
+      );
+    } else {
+      await query(
+        'UPDATE almox_config SET cautelas_notificacao_intervals = $1, cautelas_autorizacao_roles = $2 WHERE unidade_id = $3',
+        [JSON.stringify(intervals), JSON.stringify(roles), unidadeId]
+      );
+    }
+    res.json({ message: 'Configurações atualizadas' });
+  } catch (error) {
+    console.error('Erro ao atualizar config do almoxarifado:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });

@@ -49,25 +49,30 @@ import {
   TrendingUp as TrendingUpIcon,
   TrendingDown as TrendingDownIcon,
   Assessment as ReportIcon,
+  Delete as DeleteIcon,
+  Block as BlockIcon,
+  CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
+import { FormControlLabel, Switch } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 import { almoxarifadoService } from '../services/api';
 
 const Almoxarifado = () => {
   const theme = useTheme();
-  const { user } = useAuth();
+  const { user, isOperador } = useAuth();
   const { currentUnit } = useTenant();
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [relatorio, setRelatorio] = useState(null);
   
   // Estados para produtos
   const [produtos, setProdutos] = useState([]);
   const [produtosLoading, setProdutosLoading] = useState(false);
   const [produtosFilters, setProdutosFilters] = useState({
     categoria_id: '',
-    ativo: '',
+    ativo: 'true',
     baixo_estoque: false,
     search: '',
     page: 1,
@@ -100,6 +105,10 @@ const Almoxarifado = () => {
     current_page: 1,
   });
   
+  // Estado para exclusão
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
+  
   // Estados para diálogos
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogType, setDialogType] = useState(''); // 'produto', 'categoria', 'movimentacao'
@@ -108,12 +117,27 @@ const Almoxarifado = () => {
   
   // Estados para formulários
   const [formData, setFormData] = useState({});
+  const [barcodeInput, setBarcodeInput] = useState('');
+  const [retiradaQtd, setRetiradaQtd] = useState(1);
+  const [retiradaLoading, setRetiradaLoading] = useState(false);
 
   useEffect(() => {
     loadCategorias();
     loadData();
   }, [activeTab]);
 
+  useEffect(() => {
+    const h = setTimeout(() => {
+      loadProdutos();
+    }, 300);
+    return () => clearTimeout(h);
+  }, [produtosFilters.search]);
+  useEffect(() => {
+    const h = setTimeout(() => {
+      loadProdutos();
+    }, 150);
+    return () => clearTimeout(h);
+  }, [produtosFilters.categoria_id, produtosFilters.ativo, produtosFilters.baixo_estoque]);
   // Recarregar dados quando a unidade atual mudar
   useEffect(() => {
     if (currentUnit) {
@@ -150,11 +174,39 @@ const Almoxarifado = () => {
     }
   };
 
+  const handleRetiradaRapida = async () => {
+    try {
+      if (!barcodeInput || retiradaQtd <= 0) return;
+      setRetiradaLoading(true);
+      const res = await almoxarifadoService.getProdutos({ search: barcodeInput, page: 1, limit: 1 });
+      const list = res.data.produtos || [];
+      if (!list.length) {
+        setError('Produto não encontrado pelo código de barras');
+        return;
+      }
+      const produto = list[0];
+      await almoxarifadoService.createMovimentacao({
+        produto_id: produto.id,
+        tipo: 'saida',
+        quantidade: parseInt(retiradaQtd, 10),
+        motivo: 'Retirada rápida',
+      });
+      setBarcodeInput('');
+      setRetiradaQtd(1);
+      loadMovimentacoes();
+      loadProdutos();
+    } catch (err) {
+      setError('Erro na retirada rápida');
+    } finally {
+      setRetiradaLoading(false);
+    }
+  };
+
   const loadCategorias = async () => {
     try {
       setCategoriasLoading(true);
       const response = await almoxarifadoService.getCategorias();
-      setCategorias(response.data.categorias || []);
+      setCategorias(Array.isArray(response.data) ? response.data : (response.data.categorias || []));
     } catch (err) {
       console.error('Erro ao carregar categorias:', err);
       setError('Erro ao carregar categorias');
@@ -167,8 +219,9 @@ const Almoxarifado = () => {
     try {
       setMovimentacoesLoading(true);
       const response = await almoxarifadoService.getMovimentacoes(movimentacoesFilters);
-      setMovimentacoes(response.data.movimentacoes || []);
-      setMovimentacoesPagination(response.data.pagination || {});
+      const data = response.data;
+      setMovimentacoes(Array.isArray(data) ? data : (data.movimentacoes || []));
+      setMovimentacoesPagination(Array.isArray(data) ? { total: data.length, pages: 1, current_page: 1 } : (data.pagination || {}));
     } catch (err) {
       console.error('Erro ao carregar movimentações:', err);
       setError('Erro ao carregar movimentações');
@@ -182,10 +235,114 @@ const Almoxarifado = () => {
     setError('');
   };
 
-  const handleOpenDialog = (type, item = null) => {
+  const renderRelatoriosTab = () => (
+    <Box>
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <Typography variant="h6">Relatório de Estoque</Typography>
+            <Button
+              variant="outlined"
+              startIcon={<ReportIcon />}
+              onClick={async () => {
+                try {
+                  const params = {};
+                  if (produtosFilters.categoria_id) params.categoria_id = produtosFilters.categoria_id;
+                  if (produtosFilters.baixo_estoque) params.baixo_estoque = 'true';
+                  const resp = await almoxarifadoService.getRelatorioEstoque(params);
+                  setRelatorio(resp.data);
+                } catch (err) {
+                  setError('Erro ao carregar relatório');
+                }
+              }}
+            >
+              Atualizar Relatório
+            </Button>
+          </Box>
+          {relatorio && (
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={4}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle2">Total de Produtos</Typography>
+                  <Typography variant="h5">{relatorio.resumo?.total_produtos ?? '-'}</Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle2">Produtos em Baixo Estoque</Typography>
+                  <Typography variant="h5">{relatorio.resumo?.produtos_baixo_estoque ?? '-'}</Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle2">Valor Total</Typography>
+                  <Typography variant="h5">
+                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(relatorio.resumo?.valor_total || 0)}
+                  </Typography>
+                </Paper>
+              </Grid>
+            </Grid>
+          )}
+
+          {relatorio?.por_categoria && relatorio.por_categoria.length > 0 && (
+            <Box mt={4}>
+              <Typography variant="h6" gutterBottom>
+                Detalhamento por Categoria
+              </Typography>
+              <TableContainer component={Paper} variant="outlined">
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Categoria</TableCell>
+                      <TableCell align="right">Total de Itens</TableCell>
+                      <TableCell align="right">Baixo Estoque</TableCell>
+                      <TableCell align="right">Valor Total</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {relatorio.por_categoria.map((cat, index) => (
+                      <TableRow key={index}>
+                        <TableCell component="th" scope="row">
+                          {cat.categoria}
+                        </TableCell>
+                        <TableCell align="right">{cat.total_itens}</TableCell>
+                        <TableCell align="right">
+                          <Typography color={cat.baixo_estoque > 0 ? 'error' : 'inherit'} variant="body2">
+                            {cat.baixo_estoque}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cat.valor_total)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+          )}
+        </CardContent>
+      </Card>
+    </Box>
+  );
+  const [viewMode, setViewMode] = useState(false);
+
+  const handleOpenDialog = (type, item = null, mode = 'edit') => {
     setDialogType(type);
     setSelectedItem(item);
-    setFormData(item || {});
+    setViewMode(mode === 'view');
+    
+    if (item && type === 'produto') {
+      setFormData({ 
+        ...item,
+        // Garantir que valor_unitario venha formatado se for número
+        valor_unitario: item.valor_unitario ? Number(item.valor_unitario).toFixed(2) : ''
+      });
+    } else {
+      setFormData(item || {});
+    }
+    
+    setAnchorEl(null);
     setDialogOpen(true);
   };
 
@@ -202,23 +359,74 @@ const Almoxarifado = () => {
       [field]: value,
     }));
   };
+  const formatCurrencyInput = (value) => {
+    const digits = String(value || '').replace(/\D/g, '');
+    const num = Number(digits) / 100;
+    return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  };
+  const parseCurrencyInput = (value) => {
+    const digits = String(value || '').replace(/\D/g, '');
+    return (Number(digits) / 100).toFixed(2);
+  };
 
   const handleSubmit = async () => {
     try {
       setLoading(true);
       
       if (dialogType === 'produto') {
+        const payload = { ...formData };
+        // Conversões
+        if (payload.categoria_id !== undefined) payload.categoria_id = parseInt(payload.categoria_id || '0', 10);
+        if (payload.estoque_minimo !== undefined) payload.estoque_minimo = parseInt(payload.estoque_minimo || '0', 10);
+        if (payload.valor_unitario !== undefined && typeof payload.valor_unitario === 'string') {
+          // Se for string, tentar converter. Se já for número (do parseCurrencyInput), mantém.
+          // parseCurrencyInput já retorna string com ponto ("50.00"), que parseFloat aceita direto.
+          // Mas se o usuário editou manualmente ou colou, pode ter vírgula.
+          // Se tiver vírgula e ponto, assume formato BR ("1.000,00") -> remove ponto, troca vírgula por ponto.
+          // Se tiver só vírgula, troca por ponto.
+          // Se tiver só ponto, mantém.
+          let v = payload.valor_unitario;
+          if (v.includes(',') && v.includes('.')) {
+             v = v.replace(/\./g, '').replace(',', '.');
+          } else if (v.includes(',')) {
+             v = v.replace(',', '.');
+          }
+          payload.valor_unitario = parseFloat(v || '0');
+        }
+        // Envio
         if (selectedItem) {
-          // Atualizar produto (implementar quando necessário)
+          // Atualização futura
         } else {
-          await almoxarifadoService.createProduto(formData);
+          const res = await almoxarifadoService.createProduto(payload);
+          const novo = res.data?.produto;
+          const estoqueInicial = parseInt(formData.estoque_inicial || '0', 10);
+          if (novo?.id && estoqueInicial > 0) {
+            await almoxarifadoService.createMovimentacao({
+              produto_id: novo.id,
+              tipo: 'entrada',
+              quantidade: estoqueInicial,
+              motivo: 'Estoque inicial',
+            });
+          }
         }
         loadProdutos();
       } else if (dialogType === 'categoria') {
         await almoxarifadoService.createCategoria(formData);
         loadCategorias();
       } else if (dialogType === 'movimentacao') {
-        await almoxarifadoService.createMovimentacao(formData);
+        const payload = { ...formData };
+        payload.produto_id = parseInt(payload.produto_id || '0', 10);
+        payload.quantidade = parseInt(payload.quantidade || '0', 10);
+        if (payload.valor_unitario !== undefined) {
+          const v = String(payload.valor_unitario).replace('.', '').replace(',', '.');
+          payload.valor_unitario = parseFloat(v || '0');
+        }
+        if (isOperador() && payload.tipo === 'entrada') {
+          setError('Operador não pode registrar entradas');
+          setLoading(false);
+          return;
+        }
+        await almoxarifadoService.createMovimentacao(payload);
         loadMovimentacoes();
         loadProdutos(); // Atualizar estoque
       }
@@ -254,6 +462,36 @@ const Almoxarifado = () => {
     }).format(value);
   };
 
+  const handleToggleStatus = async (produto) => {
+    try {
+      setLoading(true);
+      await almoxarifadoService.updateProduto(produto.id, { ativo: !produto.ativo });
+      loadProdutos();
+      setAnchorEl(null);
+    } catch (err) {
+      console.error('Erro ao alterar status do produto:', err);
+      setError('Erro ao alterar status do produto.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteProduct = async () => {
+    if (!itemToDelete) return;
+    try {
+      setLoading(true);
+      await almoxarifadoService.deleteProduto(itemToDelete.id);
+      loadProdutos();
+      setDeleteDialogOpen(false);
+      setItemToDelete(null);
+    } catch (err) {
+      console.error('Erro ao excluir produto:', err);
+      setError(err.response?.data?.error || 'Erro ao excluir produto. Verifique se existem movimentações associadas.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const renderProdutosTab = () => (
     <Box>
       {/* Filtros */}
@@ -270,6 +508,35 @@ const Almoxarifado = () => {
                   startAdornment: <SearchIcon sx={{ mr: 1, color: 'action.active' }} />,
                 }}
               />
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                fullWidth
+                label="Leitor de Código de Barras"
+                placeholder="Aponte o leitor aqui"
+                value={barcodeInput}
+                onChange={(e) => setBarcodeInput(e.target.value)}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={2}>
+              <TextField
+                fullWidth
+                label="Quantidade"
+                type="number"
+                value={retiradaQtd}
+                onChange={(e) => setRetiradaQtd(parseInt(e.target.value || '1', 10))}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={2}>
+              <Button
+                fullWidth
+                variant="contained"
+                color="primary"
+                onClick={handleRetiradaRapida}
+                disabled={retiradaLoading}
+              >
+                {retiradaLoading ? <CircularProgress size={20} /> : 'Retirar'}
+              </Button>
             </Grid>
             <Grid item xs={12} sm={6} md={2}>
               <FormControl fullWidth>
@@ -323,6 +590,54 @@ const Almoxarifado = () => {
                 Filtrar
               </Button>
             </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Button
+                fullWidth
+                variant="outlined"
+                onClick={() => {
+                  const headers = ['codigo', 'barcode', 'nome', 'categoria_nome', 'estoque_atual', 'estoque_minimo', 'valor_unitario', 'ativo'];
+                  const rows = produtos.map(p => [
+                    p.codigo,
+                    p.barcode || '',
+                    p.nome,
+                    p.categoria_nome || '',
+                    p.estoque_atual,
+                    p.estoque_minimo,
+                    p.valor_unitario,
+                    p.ativo ? 'Ativo' : 'Inativo'
+                  ]);
+                  const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${String(v).replace(/"/g,'\\"')}"`).join(','))].join('\n');
+                  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'produtos.csv';
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+              >
+                Exportar CSV
+              </Button>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Button
+                fullWidth
+                variant="text"
+                onClick={() => {
+                  setProdutosFilters({
+                    categoria_id: '',
+                    ativo: 'true',
+                    baixo_estoque: false,
+                    search: '',
+                    page: 1,
+                    limit: 10,
+                  });
+                  loadProdutos();
+                }}
+              >
+                Limpar Filtros
+              </Button>
+            </Grid>
           </Grid>
         </CardContent>
       </Card>
@@ -333,6 +648,7 @@ const Almoxarifado = () => {
           <TableHead>
             <TableRow>
               <TableCell>Código</TableCell>
+              <TableCell>Barcode</TableCell>
               <TableCell>Nome</TableCell>
               <TableCell>Categoria</TableCell>
               <TableCell>Estoque Atual</TableCell>
@@ -357,8 +673,13 @@ const Almoxarifado = () => {
               </TableRow>
             ) : (
               produtos.map((produto) => (
-                <TableRow key={produto.id}>
+                <TableRow 
+                  key={produto.id}
+                  onClick={() => handleOpenDialog('produto', produto, 'view')}
+                  sx={{ cursor: 'pointer', '&:hover': { backgroundColor: 'action.hover' } }}
+                >
                   <TableCell>{produto.codigo}</TableCell>
+                  <TableCell>{produto.barcode || '-'}</TableCell>
                   <TableCell>{produto.nome}</TableCell>
                   <TableCell>{produto.categoria_nome}</TableCell>
                   <TableCell>
@@ -384,14 +705,17 @@ const Almoxarifado = () => {
                     />
                   </TableCell>
                   <TableCell>
-                    <IconButton
-                      onClick={(e) => {
-                        setAnchorEl(e.currentTarget);
-                        setSelectedItem(produto);
-                      }}
-                    >
-                      <MoreVertIcon />
-                    </IconButton>
+                    {!isOperador() && (
+                      <IconButton
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAnchorEl(e.currentTarget);
+                          setSelectedItem(produto);
+                        }}
+                      >
+                        <MoreVertIcon />
+                      </IconButton>
+                    )}
                   </TableCell>
                 </TableRow>
               ))
@@ -664,6 +988,7 @@ const Almoxarifado = () => {
           />
           <Tab icon={<CategoryIcon />} label="Categorias" />
           <Tab icon={<MovimentacaoIcon />} label="Movimentações" />
+          <Tab icon={<ReportIcon />} label="Relatórios" />
         </Tabs>
       </Box>
 
@@ -671,19 +996,22 @@ const Almoxarifado = () => {
       {activeTab === 0 && renderProdutosTab()}
       {activeTab === 1 && renderCategoriasTab()}
       {activeTab === 2 && renderMovimentacoesTab()}
+      {activeTab === 3 && renderRelatoriosTab()}
 
       {/* FAB para adicionar */}
-      <Fab
-        color="primary"
-        sx={{ position: 'fixed', bottom: 16, right: 16 }}
-        onClick={() => {
-          if (activeTab === 0) handleOpenDialog('produto');
-          else if (activeTab === 1) handleOpenDialog('categoria');
-          else if (activeTab === 2) handleOpenDialog('movimentacao');
-        }}
-      >
-        <AddIcon />
-      </Fab>
+      {((activeTab === 2) || !isOperador()) && (
+        <Fab
+          color="primary"
+          sx={{ position: 'fixed', bottom: 16, right: 16 }}
+          onClick={() => {
+            if (activeTab === 0) handleOpenDialog('produto');
+            else if (activeTab === 1) handleOpenDialog('categoria');
+            else if (activeTab === 2) handleOpenDialog('movimentacao');
+          }}
+        >
+          <AddIcon />
+        </Fab>
+      )}
 
       {/* Menu de ações */}
       <Menu
@@ -699,7 +1027,7 @@ const Almoxarifado = () => {
           <ViewIcon sx={{ mr: 1 }} />
           Visualizar
         </MenuItem>
-        {activeTab !== 2 && (
+        {activeTab !== 2 && !isOperador() && (
           <MenuItem key="edit-almoxarifado" onClick={() => {
             const type = activeTab === 0 ? 'produto' : 'categoria';
             handleOpenDialog(type, selectedItem);
@@ -718,6 +1046,22 @@ const Almoxarifado = () => {
             Nova Movimentação
           </MenuItem>
         )}
+        {activeTab === 0 && !isOperador() && (
+          <MenuItem key="toggle-status-almoxarifado" onClick={() => handleToggleStatus(selectedItem)}>
+            {selectedItem?.ativo ? <BlockIcon sx={{ mr: 1 }} /> : <CheckCircleIcon sx={{ mr: 1 }} />}
+            {selectedItem?.ativo ? 'Desativar' : 'Ativar'}
+          </MenuItem>
+        )}
+        {activeTab === 0 && !isOperador() && (
+          <MenuItem key="delete-almoxarifado" onClick={() => {
+            setItemToDelete(selectedItem);
+            setDeleteDialogOpen(true);
+            setAnchorEl(null);
+          }}>
+            <DeleteIcon sx={{ mr: 1 }} />
+            Excluir
+          </MenuItem>
+        )}
       </Menu>
 
       {/* Dialog para formulários */}
@@ -728,24 +1072,276 @@ const Almoxarifado = () => {
         fullWidth
       >
         <DialogTitle>
-          {dialogType === 'produto' && (selectedItem ? 'Editar Produto' : 'Novo Produto')}
+          {dialogType === 'produto' && (selectedItem ? (viewMode ? 'Visualizar Produto' : 'Editar Produto') : 'Novo Produto')}
           {dialogType === 'categoria' && (selectedItem ? 'Editar Categoria' : 'Nova Categoria')}
           {dialogType === 'movimentacao' && 'Nova Movimentação'}
         </DialogTitle>
         <DialogContent>
-          {/* Formulários específicos serão implementados conforme necessário */}
-          <Typography variant="body2" color="textSecondary">
-            Formulário em desenvolvimento...
+          {dialogType === 'produto' && (
+            <Box mt={1}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Código do Produto"
+                    value={formData.codigo || ''}
+                    onChange={(e) => handleFormChange('codigo', e.target.value)}
+                    disabled={viewMode}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Nome"
+                    value={formData.nome || ''}
+                    onChange={(e) => handleFormChange('nome', e.target.value)}
+                    disabled={viewMode}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    multiline
+                    minRows={2}
+                    label="Descrição"
+                    value={formData.descricao || ''}
+                    onChange={(e) => handleFormChange('descricao', e.target.value)}
+                    disabled={viewMode}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Categoria</InputLabel>
+                    <Select
+                      value={formData.categoria_id || ''}
+                      label="Categoria"
+                      onChange={(e) => handleFormChange('categoria_id', e.target.value)}
+                      disabled={viewMode}
+                    >
+                      <MenuItem key="cat-none" value="">Selecione</MenuItem>
+                      {categorias.map((categoria) => (
+                        <MenuItem key={`cat-${categoria.id}`} value={categoria.id}>
+                          {categoria.nome}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Código de Barras"
+                    placeholder="Aponte o leitor aqui"
+                    value={formData.barcode || ''}
+                    onChange={(e) => handleFormChange('barcode', e.target.value)}
+                    disabled={viewMode}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Unidade de Medida</InputLabel>
+                    <Select
+                      value={formData.unidade_medida || ''}
+                      label="Unidade de Medida"
+                      onChange={(e) => handleFormChange('unidade_medida', e.target.value)}
+                      disabled={viewMode}
+                    >
+                      <MenuItem value="UNIDADE">UNIDADE</MenuItem>
+                      <MenuItem value="KG">KG</MenuItem>
+                      <MenuItem value="LITRO">LITRO</MenuItem>
+                      <MenuItem value="METRO">METRO</MenuItem>
+                      <MenuItem value="CAIXA">CAIXA</MenuItem>
+                      <MenuItem value="PACOTE">PACOTE</MenuItem>
+                      <MenuItem value="ROLO">ROLO</MenuItem>
+                      <MenuItem value="PAR">PAR</MenuItem>
+                      <MenuItem value="KIT">KIT</MenuItem>
+                      <MenuItem value="FRASCO">FRASCO</MenuItem>
+                      <MenuItem value="GALÃO">GALÃO</MenuItem>
+                      <MenuItem value="LATA">LATA</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Estoque Mínimo"
+                    type="number"
+                    inputProps={{ min: 0 }}
+                    value={formData.estoque_minimo ?? ''}
+                    onChange={(e) => handleFormChange('estoque_minimo', e.target.value)}
+                    disabled={viewMode}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Valor Unitário (R$)"
+                    inputMode="numeric"
+                    value={formatCurrencyInput(formData.valor_unitario)}
+                    onChange={(e) => handleFormChange('valor_unitario', parseCurrencyInput(e.target.value))}
+                    disabled={viewMode}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Estoque Inicial"
+                    type="number"
+                    inputProps={{ min: 0 }}
+                    value={formData.estoque_inicial ?? ''}
+                    onChange={(e) => handleFormChange('estoque_inicial', e.target.value)}
+                    disabled={viewMode}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={Boolean(formData.ativo ?? true)}
+                        onChange={(e) => handleFormChange('ativo', e.target.checked)}
+                        disabled={viewMode}
+                      />
+                    }
+                    label="Ativo"
+                  />
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+          {dialogType === 'categoria' && (
+            <Box mt={1}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Nome da Categoria"
+                    value={formData.nome || ''}
+                    onChange={(e) => handleFormChange('nome', e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Descrição"
+                    value={formData.descricao || ''}
+                    onChange={(e) => handleFormChange('descricao', e.target.value)}
+                  />
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+          {dialogType === 'movimentacao' && (
+            <Box mt={1}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Produto</InputLabel>
+                    <Select
+                      value={formData.produto_id || ''}
+                      label="Produto"
+                      onChange={(e) => handleFormChange('produto_id', e.target.value)}
+                    >
+                      <MenuItem key="mov-todos-produtos" value="">Selecione</MenuItem>
+                      {produtos.map((produto) => (
+                        <MenuItem key={`mov-prod-${produto.id}`} value={produto.id}>
+                          {produto.codigo} - {produto.nome}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Tipo</InputLabel>
+                    <Select
+                      value={formData.tipo || ''}
+                      label="Tipo"
+                      onChange={(e) => handleFormChange('tipo', e.target.value)}
+                    >
+                      <MenuItem key="mov-tipo-none" value="">Selecione</MenuItem>
+                      {!isOperador() && (
+                        <MenuItem key="mov-tipo-entrada" value="entrada">Entrada</MenuItem>
+                      )}
+                      <MenuItem key="mov-tipo-saida" value="saida">Saída</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Quantidade"
+                    type="number"
+                    value={formData.quantidade || ''}
+                    onChange={(e) => handleFormChange('quantidade', e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Motivo"
+                    value={formData.motivo || ''}
+                    onChange={(e) => handleFormChange('motivo', e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Valor Unitário (R$)"
+                    inputMode="numeric"
+                    value={formatCurrencyInput(formData.valor_unitario)}
+                    onChange={(e) => handleFormChange('valor_unitario', parseCurrencyInput(e.target.value))}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Documento (NF/OS)"
+                    value={formData.documento || ''}
+                    onChange={(e) => handleFormChange('documento', e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Fornecedor"
+                    value={formData.fornecedor || ''}
+                    onChange={(e) => handleFormChange('fornecedor', e.target.value)}
+                  />
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDialog}>{viewMode ? 'Fechar' : 'Cancelar'}</Button>
+          {!viewMode && (
+            <Button
+              onClick={handleSubmit}
+              variant="contained"
+              disabled={loading}
+            >
+              {loading ? <CircularProgress size={20} /> : 'Salvar'}
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog de confirmação de exclusão */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+      >
+        <DialogTitle>Confirmar Exclusão</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Tem certeza que deseja excluir o produto "{itemToDelete?.nome}"?
+            Esta ação não pode ser desfeita.
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog}>Cancelar</Button>
-          <Button
-            onClick={handleSubmit}
-            variant="contained"
-            disabled={loading}
-          >
-            {loading ? <CircularProgress size={20} /> : 'Salvar'}
+          <Button onClick={() => setDeleteDialogOpen(false)}>Cancelar</Button>
+          <Button onClick={handleDeleteProduct} color="error" variant="contained">
+            Excluir
           </Button>
         </DialogActions>
       </Dialog>

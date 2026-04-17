@@ -22,6 +22,7 @@ import SolicitarCadastro from './pages/SolicitarCadastro';
 import AprovacaoCadastros from './pages/AprovacaoCadastros';
 import Perfil from './pages/Perfil';
 import Notificacoes from './pages/Notificacoes';
+import Configuracoes from './pages/Configuracoes';
 import DashboardFrota from './pages/DashboardFrota';
 import HistoricoFuncionalManutencao from './pages/HistoricoFuncionalManutencao';
 
@@ -175,6 +176,13 @@ function App() {
                   
                   {/* Perfil do usuário */}
                   <Route path="perfil" element={<Perfil />} />
+                  
+                  {/* Configurações */}
+                  <Route path="configuracoes/*" element={
+                    <ProtectedRoute roles={['Administrador', 'Chefe']}>
+                      <Configuracoes />
+                    </ProtectedRoute>
+                  } />
                   
                   {/* Notificações */}
                   <Route path="notificacoes" element={<Notificacoes />} />

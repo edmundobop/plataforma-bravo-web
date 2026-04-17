@@ -924,7 +924,17 @@ const Notificacoes = () => {
                   <Box sx={{ mb: 2 }}>
                     <Button
                       variant="contained"
-                      onClick={() => navigate(route)}
+                      onClick={() => {
+                        if (modulo === 'emprestimos' && (
+                          selectedNotification.titulo?.toLowerCase().includes('pendente') || 
+                          selectedNotification.mensagem?.toLowerCase().includes('pendente') || 
+                          selectedNotification.tipo === 'warning'
+                        )) {
+                          navigate('/emprestimos?tab=cautelas&status=pendente');
+                        } else {
+                          navigate(route);
+                        }
+                      }}
                     >
                       {modulo === 'usuarios' || fallbackToUsuarios
                         ? 'Ir para aprovação de cadastros'

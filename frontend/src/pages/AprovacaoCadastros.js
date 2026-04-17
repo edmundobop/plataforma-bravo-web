@@ -609,7 +609,11 @@ const AprovacaoCadastros = () => {
                         <Paper variant="outlined" sx={{ p: 2 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                              <Avatar sx={{ bgcolor: theme.palette.primary.main }}>
+                              <Avatar 
+                                src={solicitacao.foto} 
+                                alt={solicitacao.nome_completo}
+                                sx={{ bgcolor: theme.palette.primary.main }}
+                              >
                                 <PersonIcon />
                               </Avatar>
                               <Box>
@@ -657,7 +661,11 @@ const AprovacaoCadastros = () => {
                                 tabIndex={0}
                                 onKeyDown={(e) => { if (e.key === 'Enter') handleViewDetails(solicitacao); }}
                               >
-                                <Avatar sx={{ bgcolor: theme.palette.primary.main }}>
+                                <Avatar 
+                                  src={solicitacao.foto} 
+                                  alt={solicitacao.nome_completo}
+                                  sx={{ bgcolor: theme.palette.primary.main }}
+                                >
                                   <PersonIcon />
                                 </Avatar>
                                 <Box>

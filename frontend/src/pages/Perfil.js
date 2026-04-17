@@ -57,9 +57,10 @@ import {
   Build as BuildIcon,
   Assignment as AssignmentIcon,
   Notifications as NotificationsIcon,
+  PhotoCamera as PhotoCameraIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
-import { usuariosService } from '../services/api';
+import { usuariosService, uploadService } from '../services/api';
 import { militaresService } from '../services/militaresService';
 
 const Perfil = () => {
@@ -73,6 +74,7 @@ const Perfil = () => {
   // Estados para edição do perfil
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState({
+    foto: '',
     nome: '',
     email: '',
     telefone: '',
@@ -99,6 +101,7 @@ const Perfil = () => {
   const [perfilData, setPerfilData] = useState(null);
   const [setores, setSetores] = useState([]);
   const [postosGraduacoes, setPostosGraduacoes] = useState([]);
+  const [fotoPreview, setFotoPreview] = useState(null);
 
   useEffect(() => {
     loadPerfilData();
@@ -109,6 +112,7 @@ const Perfil = () => {
   useEffect(() => {
     if (user) {
       setFormData({
+        foto: user.foto || '',
         nome: user.nome_completo || user.nome || '',
         email: user.email || '',
         telefone: user.telefone || '',
@@ -180,6 +184,7 @@ const Perfil = () => {
     if (editMode) {
       // Cancelar edição
       setFormData({
+        foto: user.foto || '',
         nome: user.nome || '',
         email: user.email || '',
         telefone: user.telefone || '',
@@ -195,6 +200,27 @@ const Perfil = () => {
       ...prev,
       [field]: value,
     }));
+  };
+
+  const handleFileChange = async (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      try {
+        const previewUrl = URL.createObjectURL(file);
+        setFotoPreview(previewUrl);
+        
+        const uploadData = new FormData();
+        uploadData.append('foto', file);
+        const response = await uploadService.uploadFoto(file);
+        
+        if (response.data && response.data.url) {
+          setFormData(prev => ({ ...prev, foto: response.data.url }));
+        }
+      } catch (error) {
+        console.error('Erro ao fazer upload da foto:', error);
+        setError('Erro ao fazer upload da foto');
+      }
+    }
   };
 
   const handleSavePerfil = async () => {
@@ -340,17 +366,45 @@ const Perfil = () => {
               </Button>
             </Box>
             
-            <Box display="flex" justifyContent="center" mb={3}>
-              <Avatar
-                sx={{
-                  width: 100,
-                  height: 100,
-                  bgcolor: theme.palette.primary.main,
-                  fontSize: '2rem',
-                }}
-              >
-                {user?.nome?.charAt(0)?.toUpperCase()}
-              </Avatar>
+            <Box display="flex" justifyContent="center" mb={3} flexDirection="column" alignItems="center">
+              <Box position="relative">
+                <Avatar
+                  src={fotoPreview || formData.foto || user?.foto}
+                  alt={user?.nome}
+                  sx={{
+                    width: 100,
+                    height: 100,
+                    bgcolor: theme.palette.primary.main,
+                    fontSize: '2rem',
+                    mb: 1
+                  }}
+                >
+                  {!fotoPreview && !formData.foto && !user?.foto && user?.nome?.charAt(0)?.toUpperCase()}
+                </Avatar>
+                {editMode && (
+                  <IconButton
+                    color="primary"
+                    aria-label="upload picture"
+                    component="label"
+                    sx={{
+                      position: 'absolute',
+                      bottom: 0,
+                      right: -10,
+                      bgcolor: 'background.paper',
+                      boxShadow: 1,
+                      '&:hover': { bgcolor: 'background.default' }
+                    }}
+                  >
+                    <input hidden accept="image/*" type="file" onChange={handleFileChange} />
+                    <PhotoCameraIcon />
+                  </IconButton>
+                )}
+              </Box>
+              {editMode && (
+                <Typography variant="caption" color="textSecondary">
+                  Clique na câmera para alterar a foto
+                </Typography>
+              )}
             </Box>
             
             {editMode ? (

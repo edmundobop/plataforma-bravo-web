@@ -180,16 +180,26 @@ export const almoxarifadoService = {
   createCategoria: (categoriaData) => api.post('/almoxarifado/categorias', categoriaData),
   
   // Produtos
-  getProdutos: (params) => api.get('/almoxarifado/produtos', { params }),
+  getProdutos: (params = {}) => {
+    const { search, ...rest } = params || {};
+    const finalParams = { ...rest, ...(search ? { busca: search } : {}) };
+    return api.get('/almoxarifado/produtos', { params: finalParams });
+  },
   getProdutoById: (id) => api.get(`/almoxarifado/produtos/${id}`),
   createProduto: (produtoData) => api.post('/almoxarifado/produtos', produtoData),
+  updateProduto: (id, produtoData) => api.put(`/almoxarifado/produtos/${id}`, produtoData),
+  deleteProduto: (id) => api.delete(`/almoxarifado/produtos/${id}`),
   
   // Movimentações
   getMovimentacoes: (params) => api.get('/almoxarifado/movimentacoes', { params }),
   createMovimentacao: (movimentacaoData) => api.post('/almoxarifado/movimentacoes', movimentacaoData),
   
   // Relatórios
-  getRelatorioEstoque: (params) => api.get('/almoxarifado/relatorio', { params }),
+  getRelatorioEstoque: (params) => api.get('/almoxarifado/relatorio/estoque', { params }),
+  
+  // Configurações
+  getConfig: () => api.get('/almoxarifado/config'),
+  updateConfig: (payload) => api.put('/almoxarifado/config', payload),
 };
 
 // Serviços de cautelas
@@ -198,16 +208,23 @@ export const emprestimosService = {
   getEquipamentos: (params) => api.get('/emprestimos/equipamentos', { params }),
   getEquipamentoById: (id) => api.get(`/emprestimos/equipamentos/${id}`),
   createEquipamento: (equipamentoData) => api.post('/emprestimos/equipamentos', equipamentoData),
+  updateEquipamento: (id, equipamentoData) => api.put(`/emprestimos/equipamentos/${id}`, equipamentoData),
   
   // Cautelas
   getEmprestimos: (params) => api.get('/emprestimos', { params }),
   getEmprestimoById: (id) => api.get(`/emprestimos/${id}`),
   createEmprestimo: (emprestimoData) => api.post('/emprestimos', emprestimoData),
-  devolverEmprestimo: (id, observacoes) => 
-    api.put(`/emprestimos/${id}/devolver`, { observacoes }),
+  autorizarEmprestimo: (id, observacoes) => api.put(`/emprestimos/${id}/autorizar`, { observacoes }),
+  deleteEmprestimo: (id, observacoes) => api.delete(`/emprestimos/${id}`, { data: { observacoes } }),
+  devolverEmprestimo: (id, condicao_devolucao, observacoes_devolucao) => 
+    api.put(`/emprestimos/${id}/devolver`, { condicao_devolucao, observacoes_devolucao }),
   
   // Relatórios
-  getRelatorioEmprestimos: () => api.get('/emprestimos/relatorio'),
+  getRelatorioEmprestimos: () => api.get('/emprestimos/relatorio/geral'),
+  createEmprestimosLote: (payload) => api.post('/emprestimos/lote', payload),
+  gerarTermoPdf: (id, payload) => api.post(`/emprestimos/${id}/termo`, payload, { responseType: 'arraybuffer' }),
+  getRelatorioTopEquipamentos: () => api.get('/emprestimos/relatorio/top-equipamentos'),
+  getTermosCautela: (params) => api.get('/emprestimos/termos', { params }),
 };
 
 // Serviços operacionais
@@ -217,6 +234,7 @@ export const operacionalService = {
   getEscalaById: (id) => api.get(`/operacional/escalas/${id}`),
   createEscala: (escalaData) => api.post('/operacional/escalas', escalaData),
   addUsuarioEscala: (id, usuarioData) => api.post(`/operacional/escalas/${id}/usuarios`, usuarioData),
+  exportEscalaPdf: (payload) => api.post('/operacional/escalas/pdf', payload, { responseType: 'arraybuffer' }),
   
   // Trocas de serviço
   getTrocas: (params) => api.get('/operacional/trocas', { params }),

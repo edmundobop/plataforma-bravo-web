@@ -149,6 +149,12 @@ const Layout = () => {
           path: '/emprestimos',
           roles: ['Administrador', 'Chefe', 'Operador'],
         },
+        {
+          text: 'Configurações',
+          icon: <SettingsIcon />,
+          path: '/configuracoes',
+          roles: ['Administrador', 'Chefe'],
+        },
       ],
     },
     {
@@ -633,6 +639,8 @@ const Layout = () => {
               onClick={handleProfileMenuOpen}
             >
               <Avatar
+                src={user?.foto}
+                alt={user?.nome}
                 sx={{
                   width: 32,
                   height: 32,

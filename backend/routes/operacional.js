@@ -3,6 +3,7 @@ const { body, validationResult } = require('express-validator');
 const { query, transaction } = require('../config/database');
 const { authenticateToken, authorizeRoles } = require('../middleware/auth');
 const { optionalTenant } = require('../middleware/tenant');
+const PDFDocument = require('pdfkit');
 
 const VALID_ALAS = ['Alfa', 'Bravo', 'Charlie', 'Delta'];
 const SHIFT_SEQUENCE = [...VALID_ALAS];
@@ -174,6 +175,23 @@ const loadCurrentAlaAssignments = async (unidadeId = null) => {
 };
 
 const determineUnidadeId = (req) => req.unidade?.id || req.user?.unidade_lotacao_id || req.user?.unidade_id || null;
+
+const formatDatePtBR = (value) => {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleDateString('pt-BR');
+};
+
+const parseAlaFromName = (name) => {
+  if (!name) return null;
+  const match = name.match(/Ala\s+([A-Za-z]+)/i) || name.match(/-\s*([A-Za-z]+)\s*-/i);
+  if (!match) return null;
+  const candidate = match[1].charAt(0).toUpperCase() + match[1].slice(1).toLowerCase();
+  return VALID_ALAS.includes(candidate) ? candidate : null;
+};
 
 const applyTenantFilter = (queryText, params, unidadeId, column = 'unidade_id') => {
   if (!unidadeId) return queryText;
@@ -621,6 +639,162 @@ router.post('/escalas', authorizeRoles('Administrador', 'Chefe'), [
   }
 });
 
+router.post('/escalas/pdf', async (req, res) => {
+  try {
+    const { data_servico } = req.body;
+    if (!data_servico) {
+      return res.status(400).json({ error: 'Data do serviço é obrigatória' });
+    }
+
+    const unidadeId = determineUnidadeId(req);
+    const params = [data_servico];
+    let queryText = `
+      SELECT e.id as escala_id, e.nome as escala_nome,
+             eu.id as escala_usuario_id, eu.funcao as funcao_escala,
+             u.posto_graduacao, u.matricula, u.nome as nome_completo,
+             t.id as troca_id,
+             us.nome as solicitante_nome,
+             usub.nome as substituto_nome
+      FROM escala_usuarios eu
+      JOIN escalas e ON eu.escala_id = e.id
+      JOIN usuarios u ON eu.usuario_id = u.id
+      LEFT JOIN trocas_servico t ON eu.troca_id = t.id
+      LEFT JOIN usuarios us ON t.usuario_solicitante_id = us.id
+      LEFT JOIN usuarios usub ON t.usuario_substituto_id = usub.id
+      WHERE eu.data_servico = $1
+    `;
+
+    if (unidadeId) {
+      params.push(unidadeId);
+      queryText += ` AND e.unidade_id = $${params.length}`;
+    }
+
+    queryText += ' ORDER BY e.id, eu.id';
+
+    const result = await query(queryText, params);
+    const sectionsMap = new Map();
+    result.rows.forEach((row) => {
+      const key = row.escala_id;
+      if (!sectionsMap.has(key)) {
+        const alaNome = parseAlaFromName(row.escala_nome) || 'Operacional';
+        sectionsMap.set(key, {
+          ala: alaNome,
+          rows: [],
+        });
+      }
+      const group = sectionsMap.get(key);
+      const trocaText = row.troca_id
+        ? `${row.solicitante_nome || '---'} para ${row.substituto_nome || '---'}`
+        : '';
+      group.rows.push({
+        ord: group.rows.length + 1,
+        militar: `${row.posto_graduacao || '---'} ${row.matricula || '---'} ${row.nome_completo || '---'}`,
+        funcao: row.funcao_escala || '---',
+        troca: trocaText,
+      });
+    });
+
+    const sections = Array.from(sectionsMap.values()).map((group) => ({
+      ala: group.ala,
+      rows: group.rows,
+    }));
+
+    const extrasColumnResult = await query(
+      `
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'servicos_extra'
+          AND column_name = 'unidade_id'
+        LIMIT 1
+      `
+    );
+    const hasExtraUnidadeColumn = extrasColumnResult.rows.length > 0;
+
+    const extrasParams = [data_servico];
+    let extrasQuery = `
+      SELECT se.*, u.nome as militar_nome, u.matricula
+      FROM servicos_extra se
+      JOIN usuarios u ON se.usuario_id = u.id
+      WHERE se.data_servico = $1
+    `;
+
+    if (unidadeId) {
+      extrasParams.push(unidadeId);
+      if (hasExtraUnidadeColumn) {
+        extrasQuery += ` AND se.unidade_id = $${extrasParams.length}`;
+      } else {
+        // Fallback: filtrar pelo usuário se a tabela servicos_extra não tiver unidade_id
+        const userUnidadeCol = await getUsuariosUnidadeColumn() || 'unidade_id';
+        extrasQuery += ` AND u.${userUnidadeCol} = $${extrasParams.length}`;
+      }
+    }
+
+    extrasQuery += ' ORDER BY se.turno, u.nome';
+    const extrasResult = await query(extrasQuery, extrasParams);
+    const extras = extrasResult.rows.map((row) => ({
+      militar: `${row.militar_nome || '---'} (${row.matricula || '---'})`,
+      turno: row.turno || '---',
+      tipo: row.tipo || '---',
+      horas: row.horas ?? '---',
+      descricao: row.descricao || row.tipo || '---',
+      status: row.status || '---',
+    }));
+
+    const doc = new PDFDocument({ size: 'A4', margin: 40 });
+    const filename = `escala-${data_servico}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    doc.pipe(res);
+
+    doc.font('Helvetica-Bold').fontSize(16).text(`Escalas · ${formatDatePtBR(data_servico)}`, {
+      align: 'center',
+    });
+    doc.moveDown(1.5);
+
+    if (sections.length === 0) {
+      doc.font('Helvetica').fontSize(12).text('Nenhuma escala encontrada para esta data.', {
+        align: 'center',
+      });
+    } else {
+      sections.forEach((section) => {
+        doc.font('Helvetica-Bold').fontSize(12).text(`Ala ${section.ala}`);
+        doc.moveDown(0.3);
+        section.rows.forEach((row) => {
+          doc.font('Helvetica').fontSize(10).text(`${row.ord}. ${row.militar}`);
+          doc.font('Helvetica-Oblique').fontSize(9).text(`Função: ${row.funcao}`);
+          if (row.troca) {
+            doc.font('Helvetica').fontSize(9).text(`Troca: ${row.troca}`);
+          }
+          doc.moveDown(0.2);
+        });
+        doc.moveDown(0.8);
+      });
+    }
+
+    if (extras.length) {
+      doc.addPage();
+      doc.font('Helvetica-Bold').fontSize(13).text('Serviços Extras', { underline: true });
+      doc.moveDown(0.5);
+      extras.forEach((extra, index) => {
+        doc.font('Helvetica').fontSize(10).text(`${index + 1}. ${extra.militar}`);
+        doc.font('Helvetica-Oblique').fontSize(9).text(
+          `Turno: ${extra.turno} | Tipo: ${extra.tipo} | Horas: ${extra.horas} | Status: ${extra.status}`
+        );
+        if (extra.descricao) {
+          doc.font('Helvetica').fontSize(9).text(`Descrição: ${extra.descricao}`);
+        }
+        doc.moveDown(0.4);
+      });
+    }
+
+    doc.end();
+  } catch (error) {
+    console.error('Erro ao gerar PDF da escala:', error);
+    res.status(500).json({ error: 'Erro interno ao gerar o PDF da escala' });
+  }
+});
+
 // Adicionar usuário à escala
 router.post('/escalas/:id/usuarios', authorizeRoles('Administrador', 'Chefe'), [
   body('usuario_id').isInt().withMessage('ID do usuário é obrigatório'),
@@ -1021,6 +1195,8 @@ router.get('/extras', async (req, res) => {
     const { status, usuario_id, data_inicio, data_fim, page = 1, limit = 10 } = req.query;
     const offset = (page - 1) * limit;
     const unidadeId = determineUnidadeId(req);
+    const hasUnidadeId = await columnExists('servicos_extra', 'unidade_id');
+    const userUnidadeCol = await getUsuariosUnidadeColumn() || 'unidade_id';
 
     let queryText = `
       SELECT se.*, u.nome as usuario_nome, u.matricula,
@@ -1057,7 +1233,16 @@ router.get('/extras', async (req, res) => {
       params.push(data_fim);
     }
 
-    queryText = applyTenantFilter(queryText, params, unidadeId, 'se.unidade_id');
+    if (unidadeId) {
+      paramCount++;
+      if (hasUnidadeId) {
+        queryText += ` AND se.unidade_id = $${paramCount}`;
+      } else {
+        queryText += ` AND u.${userUnidadeCol} = $${paramCount}`;
+      }
+      params.push(unidadeId);
+    }
+
     const baseParamCount = params.length;
     queryText += `
       ORDER BY se.data_servico DESC
@@ -1095,13 +1280,24 @@ router.post('/extras', [
     }
 
     const usuarioServicoId = usuario_id || req.user.id;
+    const hasUnidadeId = await columnExists('servicos_extra', 'unidade_id');
 
-    const result = await query(
-      `INSERT INTO servicos_extra (usuario_id, data_servico, turno, horas, tipo, descricao, valor, unidade_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING *`,
-      [usuarioServicoId, data_servico, turno, horas, tipo, descricao, valor, unidadeId]
-    );
+    let result;
+    if (hasUnidadeId) {
+      result = await query(
+        `INSERT INTO servicos_extra (usuario_id, data_servico, turno, horas, tipo, descricao, valor, unidade_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING *`,
+        [usuarioServicoId, data_servico, turno, horas, tipo, descricao, valor, unidadeId]
+      );
+    } else {
+      result = await query(
+        `INSERT INTO servicos_extra (usuario_id, data_servico, turno, horas, tipo, descricao, valor)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING *`,
+        [usuarioServicoId, data_servico, turno, horas, tipo, descricao, valor]
+      );
+    }
 
     res.status(201).json({
       message: 'Serviço extra registrado com sucesso',
@@ -1126,15 +1322,34 @@ router.put('/extras/:id/status', authorizeRoles('Administrador', 'Chefe'), [
     const { id } = req.params;
     const { status } = req.body;
     const unidadeId = determineUnidadeId(req);
+    const hasUnidadeId = await columnExists('servicos_extra', 'unidade_id');
+    const userUnidadeCol = await getUsuariosUnidadeColumn() || 'unidade_id';
 
-    const queryText = unidadeId
-      ? 'UPDATE servicos_extra SET status = $1, aprovado_por = $2 WHERE id = $3 AND unidade_id = $4 RETURNING *'
-      : 'UPDATE servicos_extra SET status = $1, aprovado_por = $2 WHERE id = $3 RETURNING *';
-    const queryParams = unidadeId
-      ? [status, req.user.id, id, unidadeId]
-      : [status, req.user.id, id];
+    if (unidadeId) {
+      // Verificar se o serviço pertence à unidade
+      let checkQuery;
+      let checkParams = [id, unidadeId];
+      
+      if (hasUnidadeId) {
+        checkQuery = `SELECT 1 FROM servicos_extra WHERE id = $1 AND unidade_id = $2`;
+      } else {
+        checkQuery = `
+          SELECT 1 FROM servicos_extra se
+          JOIN usuarios u ON se.usuario_id = u.id
+          WHERE se.id = $1 AND u.${userUnidadeCol} = $2
+        `;
+      }
+      
+      const checkResult = await query(checkQuery, checkParams);
+      if (checkResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Serviço extra não encontrado ou não pertence à sua unidade' });
+      }
+    }
 
-    const result = await query(queryText, queryParams);
+    const result = await query(
+      'UPDATE servicos_extra SET status = $1, aprovado_por = $2 WHERE id = $3 RETURNING *',
+      [status, req.user.id, id]
+    );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Serviço extra não encontrado' });
@@ -1170,15 +1385,26 @@ router.put('/extras/:id/status', authorizeRoles('Administrador', 'Chefe'), [
 router.get('/relatorio', async (req, res) => {
   try {
     const { data_inicio, data_fim } = req.query;
+    const unidadeId = determineUnidadeId(req);
+    const hasUnidadeId = await columnExists('servicos_extra', 'unidade_id');
+    const userUnidadeCol = await getUsuariosUnidadeColumn() || 'unidade_id';
 
     // Estatísticas gerais
-    const estatisticas = await query(`
+    let extrasQueryPart;
+    if (hasUnidadeId) {
+      extrasQueryPart = `(SELECT COUNT(*) FROM servicos_extra WHERE status = 'pendente' ${unidadeId ? 'AND unidade_id = $1' : ''})`;
+    } else {
+      extrasQueryPart = `(SELECT COUNT(*) FROM servicos_extra se JOIN usuarios u ON se.usuario_id = u.id WHERE se.status = 'pendente' ${unidadeId ? `AND u.${userUnidadeCol} = $1` : ''})`;
+    }
+
+    const estatisticasQuery = `
       SELECT 
-        (SELECT COUNT(*) FROM escalas WHERE ativa = true) as escalas_ativas,
-        (SELECT COUNT(*) FROM trocas_servico WHERE status = 'pendente') as trocas_pendentes,
-        (SELECT COUNT(*) FROM servicos_extra WHERE status = 'pendente') as extras_pendentes,
-        (SELECT COUNT(*) FROM escala_usuarios WHERE data_servico = CURRENT_DATE) as servicos_hoje
-    `);
+        (SELECT COUNT(*) FROM escalas WHERE ativa = true ${unidadeId ? 'AND unidade_id = $1' : ''}) as escalas_ativas,
+        (SELECT COUNT(*) FROM trocas_servico WHERE status = 'pendente' ${unidadeId ? 'AND unidade_id = $1' : ''}) as trocas_pendentes,
+        ${extrasQueryPart} as extras_pendentes,
+        (SELECT COUNT(*) FROM escala_usuarios eu JOIN escalas e ON eu.escala_id = e.id WHERE eu.data_servico = CURRENT_DATE ${unidadeId ? 'AND e.unidade_id = $1' : ''}) as servicos_hoje
+    `;
+    const estatisticas = await query(estatisticasQuery, unidadeId ? [unidadeId] : []);
 
     // Serviços por usuário
     let servicosQuery = `
@@ -1189,9 +1415,15 @@ router.get('/relatorio', async (req, res) => {
       LEFT JOIN escala_usuarios eu ON u.id = eu.usuario_id
       LEFT JOIN servicos_extra se ON u.id = se.usuario_id AND se.status = 'aprovado'
       WHERE u.ativo = true
+      ${unidadeId ? `AND u.${userUnidadeCol} = $1` : ''}
     `;
     const params = [];
     let paramCount = 0;
+
+    if (unidadeId) {
+        paramCount++;
+        params.push(unidadeId);
+    }
 
     if (data_inicio) {
       paramCount++;

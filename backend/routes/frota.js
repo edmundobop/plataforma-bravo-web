@@ -335,9 +335,10 @@ router.get('/manutencoes', async (req, res) => {
   try {
     const { viatura_id, status, page = 1, limit = 10 } = req.query;
     const offset = (page - 1) * limit;
+    const unidadeId = req.unidade?.id;
 
     let queryText = `
-      SELECT m.*, v.prefixo, v.modelo, v.marca, u.nome as usuario_nome
+      SELECT m.*, v.prefixo as viatura_prefixo, v.modelo, v.marca, u.nome as usuario_nome
       FROM manutencoes m
       JOIN viaturas v ON m.viatura_id = v.id
       LEFT JOIN usuarios u ON m.usuario_id = u.id
@@ -345,6 +346,12 @@ router.get('/manutencoes', async (req, res) => {
     `;
     const params = [];
     let paramCount = 0;
+
+    if (unidadeId) {
+      paramCount++;
+      queryText += ` AND v.unidade_id = $${paramCount}`;
+      params.push(unidadeId);
+    }
 
     if (viatura_id) {
       paramCount++;
@@ -379,9 +386,11 @@ router.post('/manutencoes', [
   body('descricao').notEmpty().withMessage('Descrição é obrigatória'),
   body('data_manutencao').isISO8601().withMessage('Data de manutenção inválida'),
   body('data_proxima_manutencao').optional({ nullable: true, checkFalsy: true }).isISO8601().withMessage('Data da próxima manutenção inválida'),
+  body('data_fim').optional({ nullable: true, checkFalsy: true }).isISO8601().withMessage('Data fim inválida'),
   body('valor').optional({ nullable: true, checkFalsy: true }).isFloat({ min: 0 }).withMessage('Valor deve ser um número positivo')
 ], async (req, res) => {
   try {
+    console.log('DEBUG - POST /manutencoes - Body:', req.body);
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
@@ -389,25 +398,29 @@ router.post('/manutencoes', [
 
     const {
       viatura_id, tipo, descricao, km_manutencao,
-      data_manutencao, data_proxima_manutencao,
-      valor, oficina, status = 'agendada'
+      data_manutencao, data_proxima_manutencao, data_fim,
+      valor, oficina, status = 'agendada', unidade_id
     } = req.body;
 
     // Tratar valores vazios como null
     const valorFormatado = valor && valor !== '' ? parseFloat(valor) : null;
     const dataProximaManutencao = data_proxima_manutencao && data_proxima_manutencao !== '' ? data_proxima_manutencao : null;
+    const dataFim = data_fim && data_fim !== '' ? data_fim : null;
     const kmManutencao = km_manutencao && km_manutencao !== '' ? parseInt(km_manutencao) : null;
     const oficinaFormatada = oficina && oficina !== '' ? oficina : null;
+    
+    // Definir unidade_id: prioridade para o corpo da requisição, depois para o usuário logado (via middleware)
+    const unidadeIdFinal = unidade_id || req.unidade?.id || null;
 
     const result = await query(
       `INSERT INTO manutencoes 
        (viatura_id, usuario_id, tipo, descricao, km_manutencao, data_manutencao, 
-        data_proxima_manutencao, valor, oficina, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        data_proxima_manutencao, data_fim, valor, oficina, status, unidade_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING *`,
       [
         viatura_id, req.user.id, tipo, descricao, kmManutencao,
-        data_manutencao, dataProximaManutencao, valorFormatado, oficinaFormatada, status
+        data_manutencao, dataProximaManutencao, dataFim, valorFormatado, oficinaFormatada, status, unidadeIdFinal
       ]
     );
 
@@ -441,9 +454,11 @@ router.put('/manutencoes/:id', [
   body('descricao').notEmpty().withMessage('Descrição é obrigatória'),
   body('data_manutencao').isISO8601().withMessage('Data de manutenção inválida'),
   body('data_proxima_manutencao').optional({ nullable: true, checkFalsy: true }).isISO8601().withMessage('Data da próxima manutenção inválida'),
+  body('data_fim').optional({ nullable: true, checkFalsy: true }).isISO8601().withMessage('Data fim inválida'),
   body('valor').optional({ nullable: true, checkFalsy: true }).isFloat({ min: 0 }).withMessage('Valor deve ser um número positivo')
 ], async (req, res) => {
   try {
+    console.log('DEBUG - PUT /manutencoes/:id - Body:', req.body);
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
@@ -452,23 +467,24 @@ router.put('/manutencoes/:id', [
     const { id } = req.params;
     const {
       tipo, descricao, km_manutencao,
-      data_manutencao, data_proxima_manutencao,
+      data_manutencao, data_proxima_manutencao, data_fim,
       valor, oficina, status
     } = req.body;
 
     // Tratar valores vazios como null
     const valorFormatado = valor && valor !== '' ? parseFloat(valor) : null;
     const dataProximaManutencao = data_proxima_manutencao && data_proxima_manutencao !== '' ? data_proxima_manutencao : null;
+    const dataFim = data_fim && data_fim !== '' ? data_fim : null;
     const kmManutencao = km_manutencao && km_manutencao !== '' ? parseInt(km_manutencao) : null;
     const oficinaFormatada = oficina && oficina !== '' ? oficina : null;
 
     const result = await query(
       `UPDATE manutencoes SET 
        tipo = $1, descricao = $2, km_manutencao = $3, data_manutencao = $4, 
-       data_proxima_manutencao = $5, valor = $6, oficina = $7, status = $8, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $9
+       data_proxima_manutencao = $5, data_fim = $6, valor = $7, oficina = $8, status = $9, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $10
        RETURNING *`,
-      [tipo, descricao, kmManutencao, data_manutencao, dataProximaManutencao, valorFormatado, oficinaFormatada, status, id]
+      [tipo, descricao, kmManutencao, data_manutencao, dataProximaManutencao, dataFim, valorFormatado, oficinaFormatada, status, id]
     );
 
     if (result.rows.length === 0) {
