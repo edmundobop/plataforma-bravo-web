@@ -174,9 +174,6 @@ const createTables = async () => {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='precisa_trocar_senha') THEN
           ALTER TABLE usuarios ADD COLUMN precisa_trocar_senha BOOLEAN DEFAULT false;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='foto') THEN
-          ALTER TABLE usuarios ADD COLUMN foto TEXT;
-        END IF;
       END $$;
     `);
 
@@ -650,43 +647,6 @@ const createTables = async () => {
     await query('CREATE INDEX IF NOT EXISTS idx_membros_usuario_unidade ON membros_unidade(usuario_id, unidade_id)');
     await query('CREATE INDEX IF NOT EXISTS idx_produtos_codigo ON produtos(codigo)');
     await query('CREATE INDEX IF NOT EXISTS idx_equipamentos_codigo ON equipamentos(codigo)');
-    await query('ALTER TABLE produtos ADD COLUMN IF NOT EXISTS barcode VARCHAR(64)');
-    await query('ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS barcode VARCHAR(64)');
-    await query('CREATE UNIQUE INDEX IF NOT EXISTS idx_produtos_barcode ON produtos(barcode) WHERE barcode IS NOT NULL');
-    await query('CREATE UNIQUE INDEX IF NOT EXISTS idx_equipamentos_barcode ON equipamentos(barcode) WHERE barcode IS NOT NULL');
-    await query(`
-      CREATE TABLE IF NOT EXISTS termos_cautela (
-        id SERIAL PRIMARY KEY,
-        emprestimo_id INTEGER REFERENCES emprestimos(id),
-        url_pdf VARCHAR(255),
-        assinatura_solicitante VARCHAR(255),
-        assinatura_autorizador VARCHAR(255),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    await query(`ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS fotos JSONB`);
-    await query(`ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS tipo VARCHAR(30)`);
-    await query(`ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS localizacao VARCHAR(80)`);
-    await query(`ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS exige_autorizacao BOOLEAN DEFAULT TRUE`);
-    await query(`ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS exige_data_devolucao BOOLEAN DEFAULT FALSE`);
-    await query(`
-      CREATE TABLE IF NOT EXISTS almox_config (
-        id SERIAL PRIMARY KEY,
-        unidade_id INTEGER,
-        cautelas_notificacao_intervals JSONB DEFAULT '[]'::jsonb,
-        cautelas_autorizacao_roles JSONB DEFAULT '[]'::jsonb
-      )
-    `);
-    // Garantir que colunas novas existam (caso a tabela já existisse)
-    await query(`ALTER TABLE almox_config ADD COLUMN IF NOT EXISTS cautelas_autorizacao_roles JSONB DEFAULT '[]'::jsonb`);
-    await query(`
-      CREATE TABLE IF NOT EXISTS emprestimo_reminders (
-        id SERIAL PRIMARY KEY,
-        emprestimo_id INTEGER,
-        interval_days INTEGER,
-        sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
     await query('CREATE INDEX IF NOT EXISTS idx_notificacoes_usuario ON notificacoes(usuario_id)');
     await query('CREATE INDEX IF NOT EXISTS idx_emprestimos_status ON emprestimos(status)');
     await query('CREATE INDEX IF NOT EXISTS idx_escalas_data ON escalas(data_inicio, data_fim)');
