@@ -178,7 +178,11 @@ function App() {
                   <Route path="perfil" element={<Perfil />} />
                   
                   {/* Configurações */}
-                  <Route path="configuracoes/*" element={<Configuracoes />} />
+                  <Route path="configuracoes/*" element={
+                    <ProtectedRoute roles={['Administrador', 'Chefe']}>
+                      <Configuracoes />
+                    </ProtectedRoute>
+                  } />
                   
                   {/* Notificações */}
                   <Route path="notificacoes" element={<Notificacoes />} />

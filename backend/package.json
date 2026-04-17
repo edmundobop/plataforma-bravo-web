@@ -7,7 +7,7 @@
     "start": "node --max-http-header-size=16384 server.js",
     "dev": "nodemon --exec \"node --max-http-header-size=16384\" server.js",
     "migrate": "node database/migrate.js",
-    "db:migrate": "node-pg-migrate -m ./database/migrations",
+    "db:migrate": "node-pg-migrate up -m ./database/migrations",
     "db:migrate:down": "node-pg-migrate down -m ./database/migrations",
     "seed": "node database/seed.js",
     "test": "jest",
