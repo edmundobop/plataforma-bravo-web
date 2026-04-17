@@ -542,7 +542,7 @@ router.get('/relatorio/estoque', async (req, res) => {
 });
 
 // Configurações do Almoxarifado (por unidade)
-router.get('/config', async (req, res) => {
+router.get('/config', authorizeRoles('Administrador', 'Chefe'), async (req, res) => {
   try {
     const unidadeId = req.unidade?.id || req.user?.unidade_id || null;
     if (!unidadeId) return res.status(400).json({ error: 'Unidade não identificada' });
@@ -568,7 +568,7 @@ router.get('/config', async (req, res) => {
     res.status(500).json({ error: 'Erro interno do servidor', details: error.message, code: error.code });
   }
 });
-router.put('/config', async (req, res) => {
+router.put('/config', authorizeRoles('Administrador', 'Chefe'), async (req, res) => {
   try {
     const unidadeId = req.unidade?.id || req.user?.unidade_id || null;
     if (!unidadeId) return res.status(400).json({ error: 'Unidade não identificada' });
