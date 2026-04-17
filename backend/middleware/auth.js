@@ -84,6 +84,7 @@ const authenticateToken = async (req, res, next) => {
         u.nome_guerra,
         u.matricula,
         u.ativo,
+        u.foto,
         u.ultimo_login,
         ${unidadeSelect},
         ${hasSetorIdCol ? 'u.setor_id' : 'NULL'} as setor_id,

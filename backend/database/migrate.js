@@ -174,6 +174,9 @@ const createTables = async () => {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='precisa_trocar_senha') THEN
           ALTER TABLE usuarios ADD COLUMN precisa_trocar_senha BOOLEAN DEFAULT false;
         END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='usuarios' AND column_name='foto') THEN
+          ALTER TABLE usuarios ADD COLUMN foto TEXT;
+        END IF;
       END $$;
     `);
 
@@ -376,27 +379,8 @@ const createTables = async () => {
         turno VARCHAR(20),
         funcao VARCHAR(100),
         status VARCHAR(50) DEFAULT 'agendado',
-        observacoes TEXT,
-        troca_id INTEGER REFERENCES trocas_servico(id)
+        observacoes TEXT
       )
-    `);
-
-    await query(`
-      DO $$
-      BEGIN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='escala_usuarios' AND column_name='troca_id') THEN
-          ALTER TABLE escala_usuarios ADD COLUMN troca_id INTEGER REFERENCES trocas_servico(id);
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trocas_servico' AND column_name='escala_substituta_id') THEN
-          ALTER TABLE trocas_servico ADD COLUMN escala_substituta_id INTEGER REFERENCES escala_usuarios(id);
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trocas_servico' AND column_name='data_servico_compensacao') THEN
-          ALTER TABLE trocas_servico ADD COLUMN data_servico_compensacao DATE;
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trocas_servico' AND column_name='unidade_id') THEN
-          ALTER TABLE trocas_servico ADD COLUMN unidade_id INTEGER REFERENCES unidades(id);
-        END IF;
-      END $$;
     `);
 
     await query(`
@@ -416,6 +400,24 @@ const createTables = async () => {
         data_aprovacao TIMESTAMP,
         unidade_id INTEGER REFERENCES unidades(id)
       )
+    `);
+
+    await query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='escala_usuarios' AND column_name='troca_id') THEN
+          ALTER TABLE escala_usuarios ADD COLUMN troca_id INTEGER REFERENCES trocas_servico(id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trocas_servico' AND column_name='escala_substituta_id') THEN
+          ALTER TABLE trocas_servico ADD COLUMN escala_substituta_id INTEGER REFERENCES escala_usuarios(id);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trocas_servico' AND column_name='data_servico_compensacao') THEN
+          ALTER TABLE trocas_servico ADD COLUMN data_servico_compensacao DATE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trocas_servico' AND column_name='unidade_id') THEN
+          ALTER TABLE trocas_servico ADD COLUMN unidade_id INTEGER REFERENCES unidades(id);
+        END IF;
+      END $$;
     `);
 
     await query(`
@@ -510,9 +512,6 @@ const createTables = async () => {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='template_itens' AND column_name='imagem_url') THEN
           ALTER TABLE template_itens ADD COLUMN imagem_url VARCHAR(500);
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='checklist_viaturas' AND column_name='template_id') THEN
-          ALTER TABLE checklist_viaturas ADD COLUMN template_id INTEGER REFERENCES checklist_templates(id);
-        END IF;
       END $$;
     `);
 
@@ -543,6 +542,9 @@ const createTables = async () => {
     await query(`
       DO $$
       BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='checklist_viaturas' AND column_name='template_id') THEN
+          ALTER TABLE checklist_viaturas ADD COLUMN template_id INTEGER REFERENCES checklist_templates(id);
+        END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='checklist_viaturas' AND column_name='situacao') THEN
           ALTER TABLE checklist_viaturas ADD COLUMN situacao VARCHAR(20) NOT NULL DEFAULT 'Sem Alteração' CHECK (situacao IN ('Sem Alteração', 'Com Alteração'));
         END IF;
@@ -676,7 +678,16 @@ const createTables = async () => {
         cautelas_autorizacao_roles JSONB DEFAULT '[]'::jsonb
       )
     `);
+    // Garantir que colunas novas existam (caso a tabela já existisse)
     await query(`ALTER TABLE almox_config ADD COLUMN IF NOT EXISTS cautelas_autorizacao_roles JSONB DEFAULT '[]'::jsonb`);
+    await query(`
+      CREATE TABLE IF NOT EXISTS emprestimo_reminders (
+        id SERIAL PRIMARY KEY,
+        emprestimo_id INTEGER,
+        interval_days INTEGER,
+        sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
     await query('CREATE INDEX IF NOT EXISTS idx_notificacoes_usuario ON notificacoes(usuario_id)');
     await query('CREATE INDEX IF NOT EXISTS idx_emprestimos_status ON emprestimos(status)');
     await query('CREATE INDEX IF NOT EXISTS idx_escalas_data ON escalas(data_inicio, data_fim)');
