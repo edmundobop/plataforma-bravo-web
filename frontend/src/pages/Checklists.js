@@ -68,6 +68,7 @@ import ChecklistViatura from '../components/ChecklistViatura';
 import { useTenant } from '../contexts/TenantContext';
 import { useAuth } from '../contexts/AuthContext';
 import TemplateBuilder from '../components/TemplateBuilder';
+import { toAbsoluteBackendUrl } from '../utils/backendUrl';
 
 const Checklists = () => {
   const { currentUnit } = useTenant();
@@ -92,6 +93,7 @@ const Checklists = () => {
   const [checklistsFilters, setChecklistsFilters] = useState({
     viatura_id: '',
     status: '',
+    situacao: '',
     data_inicio: '',
     data_fim: '',
     tipo_checklist: '',
@@ -102,9 +104,13 @@ const Checklists = () => {
     try {
       const params = new URLSearchParams(location.search);
       const qp = Number(params.get('page') || '1');
-      if (!Number.isNaN(qp) && qp > 0 && qp !== checklistsPage) {
+      if (!Number.isNaN(qp) && qp > 0) {
         setChecklistsPage(qp);
       }
+      const situacaoParam = params.get('situacao') || '';
+      setChecklistsFilters(prev => (
+        prev.situacao === situacaoParam ? prev : { ...prev, situacao: situacaoParam }
+      ));
     } catch (e) {}
   }, [location.search]);
 
@@ -121,6 +127,33 @@ const Checklists = () => {
   const handleChecklistsPageChange = (page) => {
     setChecklistsPage(page);
     setQueryParam('page', page);
+  };
+
+  const handleSituacaoFilterChange = (value) => {
+    setChecklistsFilters(prev => ({ ...prev, situacao: value }));
+    setChecklistsPage(1);
+    const params = new URLSearchParams(location.search);
+    params.set('page', '1');
+    if (value) {
+      params.set('situacao', value);
+    } else {
+      params.delete('situacao');
+    }
+    navigate({ pathname: location.pathname, search: `?${params.toString()}` }, { replace: true });
+  };
+
+  const clearChecklistsFilters = () => {
+    setChecklistsFilters({
+      viatura_id: '',
+      status: '',
+      situacao: '',
+      data_inicio: '',
+      data_fim: '',
+      tipo_checklist: '',
+      ala_servico: '',
+    });
+    setChecklistsPage(1);
+    navigate({ pathname: location.pathname, search: '?page=1' }, { replace: true });
   };
   const [checklistDialogOpen, setChecklistDialogOpen] = useState(false);
   // Prefill para iniciar a partir de uma solicitação
@@ -686,23 +719,8 @@ const Checklists = () => {
   };
 
   const openPhotoViewer = (images, index, title) => {
-    const origin = (() => {
-      const env = process.env.REACT_APP_API_ORIGIN || (process.env.REACT_APP_API_BASE_URL ? process.env.REACT_APP_API_BASE_URL.replace(/\/api$/, '') : '');
-      if (env) return env;
-      const h = window.location.hostname;
-      if (h.includes('vercel.app')) return 'https://plataforma-bravo-web.onrender.com';
-      return window.location.origin.replace(':3003', ':5000');
-    })();
-    const toAbs = (u) => {
-      const s = String(u || '');
-      if (!s) return s;
-      if (s.startsWith('http://localhost:5000') || s.startsWith('https://localhost:5000') || s.startsWith('http://127.0.0.1:5000')) {
-        return s.replace(/^https?:\/\/(localhost|127\.0\.0\.1):5000/, origin);
-      }
-      return s.startsWith('http') ? s : `${origin}${s}`;
-    };
     const normalized = (images || []).map((f) => ({
-      url: toAbs(f?.url || f),
+      url: toAbsoluteBackendUrl(f?.url || f),
       name: f?.originalName || f?.name || undefined,
     }));
     setPhotoViewerImages(normalized);
@@ -941,6 +959,20 @@ const Checklists = () => {
             </FormControl>
           </Grid>
           <Grid item xs={12} sm={6} md={2}>
+            <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
+              <InputLabel>Situação</InputLabel>
+              <Select
+                value={checklistsFilters.situacao || ''}
+                onChange={(e) => handleSituacaoFilterChange(e.target.value)}
+                label="Situação"
+              >
+                <MenuItem key="todas-situacoes-checklist" value="">Todas</MenuItem>
+                <MenuItem key="sem-alteracao-checklist" value="Sem Alteração">Sem Alteração</MenuItem>
+                <MenuItem key="com-alteracao-checklist" value="Com Alteração">Com Alteração</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={6} md={2}>
             <TextField
               fullWidth
               label="Data Início"
@@ -1003,14 +1035,7 @@ const Checklists = () => {
         <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
           <Button
             variant="outlined"
-            onClick={() => setChecklistsFilters({
-              viatura_id: '',
-              status: '',
-              data_inicio: '',
-              data_fim: '',
-              tipo_checklist: '',
-              ala_servico: '',
-            })}
+            onClick={clearChecklistsFilters}
             startIcon={<FilterIcon />}
           >
             Limpar Filtros
@@ -1057,6 +1082,20 @@ const Checklists = () => {
             </FormControl>
           </Grid>
           <Grid item xs={12} sm={6} md={2}>
+            <FormControl fullWidth size={isMobile ? 'small' : 'medium'}>
+              <InputLabel>Situação</InputLabel>
+              <Select
+                value={checklistsFilters.situacao || ''}
+                onChange={(e) => handleSituacaoFilterChange(e.target.value)}
+                label="Situação"
+              >
+                <MenuItem key="todas-situacoes-checklist-desktop" value="">Todas</MenuItem>
+                <MenuItem key="sem-alteracao-checklist-desktop" value="Sem Alteração">Sem Alteração</MenuItem>
+                <MenuItem key="com-alteracao-checklist-desktop" value="Com Alteração">Com Alteração</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={6} md={2}>
             <TextField
               fullWidth
               label="Data Início"
@@ -1119,14 +1158,7 @@ const Checklists = () => {
         <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
           <Button
             variant="outlined"
-            onClick={() => setChecklistsFilters({
-              viatura_id: '',
-              status: '',
-              data_inicio: '',
-              data_fim: '',
-              tipo_checklist: '',
-              ala_servico: '',
-            })}
+            onClick={clearChecklistsFilters}
             startIcon={<FilterIcon />}
           >
             Limpar Filtros
@@ -1653,21 +1685,6 @@ const Checklists = () => {
           {selectedItem ? (
             <Box sx={{ mt: 2 }}>
               {(() => {
-                const origin = (() => {
-                  const env = process.env.REACT_APP_API_ORIGIN || (process.env.REACT_APP_API_BASE_URL ? process.env.REACT_APP_API_BASE_URL.replace(/\/api$/, '') : '');
-                  if (env) return env;
-                  const h = window.location.hostname;
-                  if (h.includes('vercel.app')) return 'https://plataforma-bravo-web.onrender.com';
-                  return window.location.origin.replace(':3003', ':5000');
-                })();
-                const toAbs = (u) => {
-                  if (!u) return '';
-                  const s = String(u);
-                  if (s.startsWith('http://localhost:5000') || s.startsWith('https://localhost:5000') || s.startsWith('http://127.0.0.1:5000')) {
-                    return s.replace(/^https?:\/\/(localhost|127\.0\.0\.1):5000/, origin);
-                  }
-                  return s.startsWith('http') ? s : `${origin}${s}`;
-                };
                 const parseFotos = (f) => {
                   if (!f) return [];
                   if (Array.isArray(f)) return f;
@@ -1777,21 +1794,6 @@ const Checklists = () => {
                       try { const arr = JSON.parse(f); if (Array.isArray(arr)) fotos = arr; } catch {}
                     }
                     if (!fotos || fotos.length === 0) return null;
-                    const origin = (() => {
-                      const env = process.env.REACT_APP_API_ORIGIN || (process.env.REACT_APP_API_BASE_URL ? process.env.REACT_APP_API_BASE_URL.replace(/\/api$/, '') : '');
-                      if (env) return env;
-                      const h = window.location.hostname;
-                      if (h.includes('vercel.app')) return 'https://plataforma-bravo-web.onrender.com';
-                      return window.location.origin.replace(':3003', ':5000');
-                    })();
-                    const toAbs = (u) => {
-                      const s = String(u || '');
-                      if (!s) return s;
-                      if (s.startsWith('http://localhost:5000') || s.startsWith('https://localhost:5000') || s.startsWith('http://127.0.0.1:5000')) {
-                        return s.replace(/^https?:\/\/(localhost|127\.0\.0\.1):5000/, origin);
-                      }
-                      return s.startsWith('http') ? s : `${origin}${s}`;
-                    };
                     return (
                       <Box key={idx} sx={{ mb: 2, p: 1, bgcolor: '#fff', borderRadius: 1, border: '1px solid #f0f0f0' }}>
                         <Typography variant="body2" sx={{ fontWeight: 'medium', color: '#495057', mb: 1 }}>
@@ -1799,7 +1801,7 @@ const Checklists = () => {
                         </Typography>
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
                           {fotos.map((foto, fi) => {
-                            const url = toAbs(foto?.url || foto);
+                            const url = toAbsoluteBackendUrl(foto?.url || foto);
                             const name = foto?.originalName || foto?.name || undefined;
                             return (
                               <Box key={fi} sx={{ width: 96, height: 72, borderRadius: 1, overflow: 'hidden', border: '1px solid #e0e0e0', cursor: 'pointer' }} onClick={() => openPhotoViewer(fotos, fi, item.nome_item)}>

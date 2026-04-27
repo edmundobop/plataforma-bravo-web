@@ -158,11 +158,54 @@ router.get('/geral', optionalTenant, async (req, res) => {
       });
     }
 
+    const checklistsAlteracaoQuery = `
+      SELECT
+        c.id,
+        c.data_checklist,
+        c.tipo_checklist,
+        c.situacao,
+        v.prefixo as viatura_prefixo,
+        v.modelo as viatura_modelo,
+        u.nome as usuario_nome,
+        COUNT(ci.id) FILTER (WHERE ci.status = 'com_alteracao') as itens_alterados
+      FROM checklist_viaturas c
+      JOIN viaturas v ON c.viatura_id = v.id
+      JOIN usuarios u ON c.usuario_id = u.id
+      LEFT JOIN checklist_itens ci ON ci.checklist_id = c.id
+      WHERE c.situacao = 'Com Alteração'
+      ${unidadeId ? 'AND c.unidade_id = $1' : ''}
+      GROUP BY c.id, v.prefixo, v.modelo, u.nome
+      ORDER BY c.data_checklist DESC
+      LIMIT 5
+    `;
+    const checklistsAlteracaoResult = await query(checklistsAlteracaoQuery, unidadeId ? [unidadeId] : []);
+
+    let checklistsAlteracaoTotalQuery = `
+      SELECT COUNT(*) as total
+      FROM checklist_viaturas c
+      WHERE c.situacao = 'Com Alteração'
+      ${unidadeId ? 'AND c.unidade_id = $1' : ''}
+    `;
+    const checklistsAlteracaoTotal = await query(checklistsAlteracaoTotalQuery, unidadeId ? [unidadeId] : []);
+
+    if (parseInt(checklistsAlteracaoTotal.rows[0].total) > 0) {
+      alertas.push({
+        tipo: 'warning',
+        titulo: 'Checklists com Alteração',
+        mensagem: `${checklistsAlteracaoTotal.rows[0].total} checklist(s) com alteração registrados`,
+        modulo: 'frota'
+      });
+    }
+
     console.log('Preparando resposta do dashboard geral...');
     const response = {
       estatisticas: statsResult.rows[0],
       atividades_recentes: atividadesResult.rows || [],
-      alertas: alertas
+      alertas: alertas,
+      checklists_com_alteracao: {
+        total: parseInt(checklistsAlteracaoTotal.rows[0].total),
+        recentes: checklistsAlteracaoResult.rows || []
+      }
     };
     res.json(response);
   } catch (error) {

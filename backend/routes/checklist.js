@@ -33,6 +33,83 @@ const normalizeAlaServico = (val) => {
   return map[cleaned] || 'Alpha';
 };
 
+const getItensComAlteracaoSemObservacao = (itens = []) => (
+  itens.filter(item =>
+    item.status === 'com_alteracao' &&
+    (item.observacoes || '').trim().length < 3
+  )
+);
+
+const getObservacaoAlteracaoError = (itens = []) => {
+  const invalidItems = getItensComAlteracaoSemObservacao(itens);
+  if (invalidItems.length === 0) return null;
+
+  const firstItem = invalidItems[0]?.nome_item || 'selecionado';
+  return `Informe pelo menos 3 caracteres nas observações do item "${firstItem}" marcado como Com Alteração.`;
+};
+
+const ensureNotificationPreferencesTable = async () => {
+  await query(`
+    CREATE TABLE IF NOT EXISTS notificacoes_configuracoes (
+      usuario_id INTEGER PRIMARY KEY REFERENCES usuarios(id) ON DELETE CASCADE,
+      preferencias JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+};
+
+const notificarChecklistComAlteracao = async ({ checklist, viatura, itens, io }) => {
+  const itensAlterados = (itens || []).filter(item => item.status === 'com_alteracao');
+  if (!checklist?.id || !viatura?.unidade_id || itensAlterados.length === 0) return;
+
+  await ensureNotificationPreferencesTable();
+
+  const destinatariosResult = await query(`
+    SELECT DISTINCT u.id
+    FROM usuarios u
+    LEFT JOIN membros_unidade mu ON mu.usuario_id = u.id AND mu.ativo = true
+    LEFT JOIN notificacoes_configuracoes nc ON nc.usuario_id = u.id
+    WHERE u.ativo = true
+      AND u.perfil_id IN (1, 2, 3, 4)
+      AND COALESCE((nc.preferencias->>'checklist_alteracao')::boolean, true) = true
+      AND (
+        u.unidade_id = $1
+        OR u.unidade_lotacao_id = $1
+        OR mu.unidade_id = $1
+      )
+  `, [viatura.unidade_id]);
+
+  const prefixo = viatura.prefixo || viatura.placa || `#${viatura.id}`;
+  const titulo = 'Checklist com alteração';
+  const mensagem = `A viatura ${prefixo} teve ${itensAlterados.length} item(ns) com alteração no checklist ${checklist.tipo_checklist || ''}.`.trim();
+
+  for (const destinatario of destinatariosResult.rows) {
+    const existente = await query(
+      `SELECT id
+       FROM notificacoes
+       WHERE usuario_id = $1
+         AND titulo = $2
+         AND modulo = $3
+         AND referencia_id = $4
+       LIMIT 1`,
+      [destinatario.id, titulo, 'frota', checklist.id]
+    );
+    if (existente.rows.length > 0) continue;
+
+    const notifResult = await query(
+      `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [destinatario.id, titulo, mensagem, 'warning', 'frota', checklist.id]
+    );
+
+    if (io) {
+      io.to(`user_${destinatario.id}`).emit('nova_notificacao', notifResult.rows[0]);
+    }
+  }
+};
+
 // Rota de validação de credenciais (sem autenticação)
 router.post('/validar-credenciais', [
   body('usuario_autenticacao').notEmpty().withMessage('Nome do usuário é obrigatório'),
@@ -524,7 +601,7 @@ router.get('/viaturas', async (req, res) => {
     console.log('🔍 Headers:', req.headers);
     console.log('🔍 Query params:', req.query);
     
-    const { page = 1, limit = 10, viatura_id, status, data_inicio, data_fim, tipo_checklist, ala_servico } = req.query;
+    const { page = 1, limit = 10, viatura_id, status, data_inicio, data_fim, tipo_checklist, ala_servico, situacao } = req.query;
     const offset = (page - 1) * limit;
 
     const hasUsuarioAutenticado = await columnExists('checklist_viaturas', 'usuario_autenticado');
@@ -583,6 +660,12 @@ router.get('/viaturas', async (req, res) => {
       paramCount++;
       queryText += ` AND c.status = $${paramCount}`;
       params.push(status);
+    }
+
+    if (situacao) {
+      paramCount++;
+      queryText += ` AND c.situacao = $${paramCount}`;
+      params.push(situacao);
     }
 
     if (tipo_checklist) {
@@ -647,6 +730,12 @@ router.get('/viaturas', async (req, res) => {
     if (status) {
       countQuery += ` AND c.status = $${countParamIndex}`;
       countParams.push(status);
+      countParamIndex++;
+    }
+
+    if (situacao) {
+      countQuery += ` AND c.situacao = $${countParamIndex}`;
+      countParams.push(situacao);
       countParamIndex++;
     }
 
@@ -792,6 +881,11 @@ router.post('/viaturas', idempotency(), [
     } = req.body);
 
     // Normalizar ala_servico usando a função global robusta (redundância defensiva)
+    const observacaoAlteracaoError = getObservacaoAlteracaoError(itens);
+    if (observacaoAlteracaoError) {
+      return res.status(400).json({ error: observacaoAlteracaoError });
+    }
+
     ala_servico = normalizeAlaServico(ala_servico);
 
     const usuario_id = req.user.id;
@@ -887,6 +981,15 @@ router.post('/viaturas', idempotency(), [
         viatura_id,
         km_inicial,
         error: e?.message
+      });
+    }
+
+    if (temAlteracao) {
+      await notificarChecklistComAlteracao({
+        checklist: checklistResult.rows[0],
+        viatura,
+        itens,
+        io: req.io
       });
     }
 
@@ -1041,6 +1144,11 @@ router.put('/viaturas/:id', [
 
     // Atualizar itens se fornecidos
     if (itens && itens.length > 0) {
+      const observacaoAlteracaoError = getObservacaoAlteracaoError(itens);
+      if (observacaoAlteracaoError) {
+        return res.status(400).json({ error: observacaoAlteracaoError });
+      }
+
       // Remover itens existentes
       await query('DELETE FROM checklist_itens WHERE checklist_id = $1', [id]);
 
@@ -1070,6 +1178,16 @@ router.put('/viaturas/:id', [
       await query(`
         UPDATE checklist_viaturas SET situacao = $1 WHERE id = $2
       `, [situacao, id]);
+
+      if (temAlteracao) {
+        const viaturaResult = await query('SELECT * FROM viaturas WHERE id = $1', [checklistResult.rows[0].viatura_id]);
+        await notificarChecklistComAlteracao({
+          checklist: { ...checklistResult.rows[0], id: parseInt(id, 10) },
+          viatura: viaturaResult.rows[0],
+          itens,
+          io: req.io
+        });
+      }
     }
 
     res.json({

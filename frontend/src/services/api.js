@@ -271,6 +271,8 @@ export const notificacoesService = {
   deleteReadNotificacoes: () => api.delete('/notificacoes/lidas'),
   createNotificacao: (notificacaoData) => api.post('/notificacoes', notificacaoData),
   getEstatisticas: () => api.get('/notificacoes/estatisticas'),
+  getConfiguracoes: () => api.get('/notificacoes/configuracoes'),
+  updateConfiguracoes: (preferencias) => api.put('/notificacoes/configuracoes', { preferencias }),
 };
 
 // Serviços de dashboard

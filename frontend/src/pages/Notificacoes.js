@@ -61,6 +61,7 @@ import {
   Person as PersonIcon,
   Dashboard as DashboardIcon,
   Send as SendIcon,
+  Settings as SettingsIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
@@ -95,6 +96,9 @@ const Notificacoes = () => {
   
   // Estados para estatísticas
   const [estatisticas, setEstatisticas] = useState(null);
+  const [notificationPreferences, setNotificationPreferences] = useState({});
+  const [preferencesLoading, setPreferencesLoading] = useState(false);
+  const [preferencesSaving, setPreferencesSaving] = useState(false);
   
   // Estados para diálogos
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -115,6 +119,53 @@ const Notificacoes = () => {
   // Estados para usuários (para broadcast)
   const [usuarios, setUsuarios] = useState([]);
 
+  const notificationPreferenceOptions = [
+    {
+      key: 'checklist_alteracao',
+      title: 'Alteração de Checklists',
+      description: 'Avisos quando uma viatura tiver checklist registrado com alteração.',
+      module: 'Frota'
+    }
+  ];
+
+  const notificationSuggestionOptions = [
+    {
+      title: 'Cautelas pendentes',
+      description: 'Solicitações de cautela aguardando autorização.',
+      module: 'Cautelas'
+    },
+    {
+      title: 'Cautelas vencidas',
+      description: 'Alertas de cautelas com prazo de devolução vencido.',
+      module: 'Cautelas'
+    },
+    {
+      title: 'Resultado de cautelas',
+      description: 'Avisos quando uma cautela for autorizada ou rejeitada.',
+      module: 'Cautelas'
+    },
+    {
+      title: 'Manutenções de frota',
+      description: 'Agendamentos e alertas relacionados a manutenções de viaturas.',
+      module: 'Frota'
+    },
+    {
+      title: 'Estoque baixo',
+      description: 'Alertas quando produtos atingirem o estoque mínimo.',
+      module: 'Almoxarifado'
+    },
+    {
+      title: 'Cadastros de usuários',
+      description: 'Solicitações e aprovações de cadastro no sistema.',
+      module: 'Usuários'
+    },
+    {
+      title: 'Trocas e serviço operacional',
+      description: 'Solicitações, respostas e eventos do módulo operacional.',
+      module: 'Operacional'
+    }
+  ];
+
   useEffect(() => {
     loadNotificacoes();
     if (hasRole(['Administrador', 'Chefe'])) {
@@ -126,6 +177,9 @@ const Notificacoes = () => {
   useEffect(() => {
     if (activeTab === 1) {
       loadEstatisticas();
+    }
+    if (activeTab === 2) {
+      loadConfiguracoes();
     }
   }, [activeTab]);
 
@@ -166,6 +220,19 @@ const Notificacoes = () => {
       setEstatisticas(response.data);
     } catch (err) {
       console.error('Erro ao carregar estatísticas:', err);
+    }
+  };
+
+  const loadConfiguracoes = async () => {
+    try {
+      setPreferencesLoading(true);
+      const response = await notificacoesService.getConfiguracoes();
+      setNotificationPreferences(response.data?.preferencias || {});
+    } catch (err) {
+      console.error('Erro ao carregar configurações de notificações:', err);
+      setError('Erro ao carregar configurações de notificações');
+    } finally {
+      setPreferencesLoading(false);
     }
   };
 
@@ -337,6 +404,28 @@ const Notificacoes = () => {
     } catch (err) {
       console.error('Erro ao excluir notificações lidas:', err);
       setError('Erro ao excluir notificações lidas');
+    }
+  };
+
+  const handlePreferenceChange = (key, value) => {
+    setNotificationPreferences(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
+  const handleSavePreferences = async () => {
+    try {
+      setPreferencesSaving(true);
+      setError('');
+      const response = await notificacoesService.updateConfiguracoes(notificationPreferences);
+      setNotificationPreferences(response.data?.preferencias || notificationPreferences);
+      setSuccess('Configurações de notificação salvas com sucesso');
+    } catch (err) {
+      console.error('Erro ao salvar configurações de notificações:', err);
+      setError('Erro ao salvar configurações de notificações');
+    } finally {
+      setPreferencesSaving(false);
     }
   };
 
@@ -764,6 +853,107 @@ const Notificacoes = () => {
     );
   };
 
+  const renderConfiguracoesTab = () => (
+    <Grid container spacing={3}>
+      <Grid item xs={12}>
+        <Card>
+          <CardContent>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 2,
+                mb: 2,
+                flexWrap: 'wrap'
+              }}
+            >
+              <Box>
+                <Typography variant="h6" fontWeight="bold">
+                  Preferências de recebimento
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  Escolha quais notificações deseja receber na sua central.
+                </Typography>
+              </Box>
+              <Button
+                variant="contained"
+                onClick={handleSavePreferences}
+                disabled={preferencesSaving || preferencesLoading}
+              >
+                {preferencesSaving ? 'Salvando...' : 'Salvar'}
+              </Button>
+            </Box>
+
+            {preferencesLoading ? (
+              <Box display="flex" justifyContent="center" py={4}>
+                <CircularProgress />
+              </Box>
+            ) : (
+              <List>
+                {notificationPreferenceOptions.map((option, index) => (
+                  <React.Fragment key={option.key}>
+                    <ListItem
+                      sx={{ px: 0 }}
+                      secondaryAction={
+                        <Switch
+                          edge="end"
+                          checked={notificationPreferences[option.key] !== false}
+                          onChange={(e) => handlePreferenceChange(option.key, e.target.checked)}
+                        />
+                      }
+                    >
+                      <ListItemText
+                        primary={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                            <Typography variant="subtitle1">{option.title}</Typography>
+                            <Chip label={option.module} size="small" variant="outlined" />
+                          </Box>
+                        }
+                        secondary={option.description}
+                      />
+                    </ListItem>
+                    {index < notificationPreferenceOptions.length - 1 && <Divider />}
+                  </React.Fragment>
+                ))}
+              </List>
+            )}
+          </CardContent>
+        </Card>
+      </Grid>
+      <Grid item xs={12}>
+        <Card variant="outlined">
+          <CardContent>
+            <Typography variant="h6" fontWeight="bold" gutterBottom>
+              Sugestões para novas preferências
+            </Typography>
+            <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+              Estes eventos já existem no sistema e podem entrar como preferências individuais em uma próxima etapa.
+            </Typography>
+            <List dense>
+              {notificationSuggestionOptions.map((option, index) => (
+                <React.Fragment key={`${option.module}-${option.title}`}>
+                  <ListItem sx={{ px: 0 }}>
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                          <Typography variant="subtitle2">{option.title}</Typography>
+                          <Chip label={option.module} size="small" variant="outlined" />
+                        </Box>
+                      }
+                      secondary={option.description}
+                    />
+                  </ListItem>
+                  {index < notificationSuggestionOptions.length - 1 && <Divider />}
+                </React.Fragment>
+              ))}
+            </List>
+          </CardContent>
+        </Card>
+      </Grid>
+    </Grid>
+  );
+
   return (
     <Box>
       {/* Header */}
@@ -806,12 +996,17 @@ const Notificacoes = () => {
             icon={<InfoIcon />} 
             label="Estatísticas" 
           />
+          <Tab
+            icon={<SettingsIcon />}
+            label="Configurações"
+          />
         </Tabs>
       </Box>
 
       {/* Conteúdo das tabs */}
       {activeTab === 0 && renderNotificacoesTab()}
       {activeTab === 1 && renderEstatisticasTab()}
+      {activeTab === 2 && renderConfiguracoesTab()}
 
       {/* FAB para criar notificação */}
       {hasRole(['Administrador', 'Chefe']) && (
@@ -912,6 +1107,12 @@ const Notificacoes = () => {
                 const modulo = ['usuarios','usuario','gestao-pessoas'].find(m => m === moduloRaw) ? 'usuarios' : moduloRaw;
                 const titulo = (selectedNotification.titulo || '').toLowerCase();
                 const mensagem = (selectedNotification.mensagem || '').toLowerCase();
+                const isChecklistAlteracao = modulo === 'frota' && titulo.includes('checklist') && (
+                  titulo.includes('alteração') ||
+                  titulo.includes('alteracao') ||
+                  mensagem.includes('alteração') ||
+                  mensagem.includes('alteracao')
+                );
                 const fallbackToUsuarios = [titulo, mensagem].some(t => (
                   t.includes('solicitação de cadastro') ||
                   t.includes('solicitacao de cadastro') ||
@@ -925,7 +1126,9 @@ const Notificacoes = () => {
                     <Button
                       variant="contained"
                       onClick={() => {
-                        if (modulo === 'emprestimos' && (
+                        if (isChecklistAlteracao) {
+                          navigate('/frota/checklists?page=1&situacao=Com%20Altera%C3%A7%C3%A3o');
+                        } else if (modulo === 'emprestimos' && (
                           selectedNotification.titulo?.toLowerCase().includes('pendente') || 
                           selectedNotification.mensagem?.toLowerCase().includes('pendente') || 
                           selectedNotification.tipo === 'warning'
@@ -936,7 +1139,9 @@ const Notificacoes = () => {
                         }
                       }}
                     >
-                      {modulo === 'usuarios' || fallbackToUsuarios
+                      {isChecklistAlteracao
+                        ? 'Ir para checklists com alteração'
+                        : modulo === 'usuarios' || fallbackToUsuarios
                         ? 'Ir para aprovação de cadastros'
                         : `Ir para módulo ${modulo}`}
                     </Button>

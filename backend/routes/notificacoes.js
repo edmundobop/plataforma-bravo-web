@@ -8,6 +8,72 @@ const router = express.Router();
 // Aplicar autenticação em todas as rotas
 router.use(authenticateToken);
 
+const DEFAULT_NOTIFICATION_PREFERENCES = {
+  checklist_alteracao: true,
+  cautela_pendente: true,
+  cautela_vencida: true,
+  cautela_resultado: true,
+  manutencao_frota: true,
+  estoque_baixo: true,
+  cadastro_usuario: true,
+  operacional_trocas: true
+};
+
+const ensureNotificationPreferencesTable = async () => {
+  await query(`
+    CREATE TABLE IF NOT EXISTS notificacoes_configuracoes (
+      usuario_id INTEGER PRIMARY KEY REFERENCES usuarios(id) ON DELETE CASCADE,
+      preferencias JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+};
+
+const normalizePreferences = (preferences = {}) => ({
+  ...DEFAULT_NOTIFICATION_PREFERENCES,
+  ...(preferences || {})
+});
+
+router.get('/configuracoes', async (req, res) => {
+  try {
+    await ensureNotificationPreferencesTable();
+
+    const result = await query(
+      'SELECT preferencias FROM notificacoes_configuracoes WHERE usuario_id = $1',
+      [req.user.id]
+    );
+
+    res.json({ preferencias: normalizePreferences(result.rows[0]?.preferencias) });
+  } catch (error) {
+    console.error('Erro ao buscar configurações de notificação:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+router.put('/configuracoes', async (req, res) => {
+  try {
+    await ensureNotificationPreferencesTable();
+
+    const preferencias = normalizePreferences(req.body?.preferencias);
+    await query(
+      `INSERT INTO notificacoes_configuracoes (usuario_id, preferencias, updated_at)
+       VALUES ($1, $2, CURRENT_TIMESTAMP)
+       ON CONFLICT (usuario_id)
+       DO UPDATE SET preferencias = EXCLUDED.preferencias, updated_at = CURRENT_TIMESTAMP`,
+      [req.user.id, JSON.stringify(preferencias)]
+    );
+
+    res.json({
+      message: 'Configurações de notificação salvas com sucesso',
+      preferencias
+    });
+  } catch (error) {
+    console.error('Erro ao salvar configurações de notificação:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 // Listar notificações do usuário
 router.get('/', async (req, res) => {
   try {

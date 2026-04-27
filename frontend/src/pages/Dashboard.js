@@ -159,13 +159,17 @@ const Dashboard = () => {
     );
   }
 
-  const { estatisticas, atividades_recentes, alertas } = dashboardData || {};
+  const { estatisticas, atividades_recentes, alertas, checklists_com_alteracao } = dashboardData || {};
 
   const role = user?.perfil_nome || '';
   const isAdminLike = ['Administrador', 'Chefe', 'Comandante'].includes(role);
+  const canSeeChecklistAlteracaoCard = ['Administrador', 'Comandante', 'Chefe', 'Auxiliares', 'Auxiliar'].includes(role);
   const isOperacional = !isAdminLike;
   const maxAlertas = isMobile ? 3 : 8;
   const maxAtividades = isMobile ? 5 : 8;
+  const checklistsAlteracaoRecentes = checklists_com_alteracao?.recentes || [];
+  const checklistsAlteracaoTotal = Number(checklists_com_alteracao?.total || 0);
+  const goToChecklistsComAlteracao = () => navigate('/frota/checklists?page=1&situacao=Com%20Altera%C3%A7%C3%A3o');
 
   return (
     <Box>
@@ -538,6 +542,57 @@ const Dashboard = () => {
           </Grid>
         </Grid>
       </Box>
+
+      {canSeeChecklistAlteracaoCard && checklistsAlteracaoTotal > 0 && (
+        <Box sx={{ mt: 4 }}>
+          <Card>
+            <CardContent>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 2,
+                  mb: 2,
+                  flexWrap: 'wrap'
+                }}
+              >
+                <Box>
+                  <Typography variant="h6" fontWeight="bold">
+                    Checklists com Alteração
+                  </Typography>
+                  <Typography variant="body2" color="textSecondary">
+                    {checklistsAlteracaoTotal} checklist(s) exigem conferência
+                  </Typography>
+                </Box>
+                <Button variant="contained" color="warning" onClick={goToChecklistsComAlteracao}>
+                  Ver mais
+                </Button>
+              </Box>
+
+              {checklistsAlteracaoRecentes.length === 0 ? (
+                <Typography variant="body2" color="textSecondary">
+                  Nenhum checklist recente para listar.
+                </Typography>
+              ) : (
+                <List dense>
+                  {checklistsAlteracaoRecentes.map((checklist) => (
+                    <ListItem key={checklist.id} sx={{ px: 0 }} button onClick={goToChecklistsComAlteracao}>
+                      <ListItemIcon>
+                        <WarningIcon color="warning" />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={`${checklist.viatura_prefixo || 'Viatura'} - ${checklist.tipo_checklist || 'Checklist'}`}
+                        secondary={`${checklist.itens_alterados || 0} item(ns) com alteração • ${formatDate(checklist.data_checklist)}`}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              )}
+            </CardContent>
+          </Card>
+        </Box>
+      )}
 
       {isOperacional && (
         <Box sx={{ mt: 4 }}>

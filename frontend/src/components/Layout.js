@@ -63,6 +63,7 @@ const Layout = () => {
   const location = useLocation();
   const { user, logout, canManageUsers } = useAuth();
   const { unreadCount } = useNotifications();
+  const unreadNotificationsCount = Number(unreadCount || 0);
   
   const [mobileOpen, setMobileOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
@@ -626,7 +627,7 @@ const Layout = () => {
               onClick={() => navigate('/notificacoes')}
               sx={{ mr: 1, ml: 2 }}
             >
-              <Badge badgeContent={unreadCount} color="error">
+              <Badge badgeContent={unreadNotificationsCount} color="error" max={99} showZero>
                 <NotificationsIcon />
               </Badge>
             </IconButton>
@@ -697,7 +698,7 @@ const Layout = () => {
           Meu Perfil
         </MenuItem>
         <MenuItem key="notificacoes" onClick={() => navigate('/notificacoes')}>
-          <Badge badgeContent={unreadCount} color="error">
+          <Badge badgeContent={unreadNotificationsCount} color="error" max={99} showZero>
             <NotificationsIcon sx={{ mr: 1 }} />
           </Badge>
           Notificações

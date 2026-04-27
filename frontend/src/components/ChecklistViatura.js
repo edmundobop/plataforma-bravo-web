@@ -37,15 +37,9 @@ import { frotaService, checklistService, uploadService, templateService } from '
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../contexts/TenantContext';
 import usePendingAction from '../hooks/usePendingAction';
+import { toAbsoluteBackendUrl } from '../utils/backendUrl';
 
 const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, selectedViatura: selectedViaturaProps, prefill }) => {
-  const BACKEND_ORIGIN = (() => {
-    const env = process.env.REACT_APP_API_ORIGIN || (process.env.REACT_APP_API_BASE_URL ? process.env.REACT_APP_API_BASE_URL.replace(/\/api$/, '') : '');
-    if (env) return env;
-    const h = window.location.hostname;
-    if (h.includes('vercel.app')) return 'https://plataforma-bravo-web.onrender.com';
-    return window.location.origin.replace(':3003', ':5000');
-  })();
   const { user } = useAuth(); // Obter usuário logado
   const { currentUnit } = useTenant(); // Obter unidade atual
   const theme = useTheme();
@@ -276,6 +270,21 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
     setItensChecklist(newItens);
   };
 
+  const getItensComAlteracaoSemObservacao = (items) => (
+    (items || []).filter(item =>
+      item.status === 'com_alteracao' &&
+      (item.observacoes || '').trim().length < 3
+    )
+  );
+
+  const getObservacaoObrigatoriaMessage = (items) => {
+    const invalidItems = getItensComAlteracaoSemObservacao(items);
+    if (invalidItems.length === 0) return '';
+
+    const firstItem = invalidItems[0]?.nome_item || 'selecionado';
+    return `Informe pelo menos 3 caracteres nas observações do item "${firstItem}" marcado como Com Alteração.`;
+  };
+
   const handlePhotoUpload = async (index, event) => {
     const files = Array.from(event.target.files);
     if (files.length === 0) return;
@@ -293,9 +302,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
       response.data.fotos.forEach((foto) => {
         const u = foto.url || '';
         const s = String(u);
-        const absoluteUrl = s.startsWith('http://localhost:5000') || s.startsWith('https://localhost:5000') || s.startsWith('http://127.0.0.1:5000')
-          ? s.replace(/^https?:\/\/(localhost|127\.0\.0\.1):5000/, BACKEND_ORIGIN)
-          : (s.startsWith('http') ? s : `${BACKEND_ORIGIN}${s}`);
+        const absoluteUrl = toAbsoluteBackendUrl(s);
         newItens[index].fotos.push({
           url: absoluteUrl,
           name: foto.originalName,
@@ -384,11 +391,13 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
     if (step === 2) {
       if (Array.isArray(categories) && categories.length > 0) {
         const grouped = groupItemsByCategory(itensChecklist);
-        const currentCategory = categories[currentCategoryIndex];
+        const currentCategory = categories[currentCategoryIndex]?.nome || categories[currentCategoryIndex];
         const items = grouped[currentCategory] || [];
-
-        // Observações deixam de ser obrigatórias; nenhuma validação aqui
-
+        const observacaoError = getObservacaoObrigatoriaMessage(items);
+        if (observacaoError) {
+          setError(observacaoError);
+          return;
+        }
         // Avançar para próxima categoria ou seguir para autenticação
         if (currentCategoryIndex < categories.length - 1) {
           setError('');
@@ -398,6 +407,14 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
       }
     }
     
+    if (step === 2) {
+      const observacaoError = getObservacaoObrigatoriaMessage(itensChecklist);
+      if (observacaoError) {
+        setError(observacaoError);
+        return;
+      }
+    }
+
     setError('');
     setStep(step + 1);
   };
@@ -461,6 +478,14 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
 
       // SEGUNDO: Criar ou atualizar checklist (só se as credenciais forem válidas)
       // Normalizar valores sensíveis a restrições do banco (versão robusta, igual ao backend)
+      const observacaoError = getObservacaoObrigatoriaMessage(itensChecklist);
+      if (observacaoError) {
+        setError(observacaoError);
+        setStep(2);
+        setLoading(false);
+        return;
+      }
+
       const normalizeAlaServico = (val) => {
         const raw = (val || '').toString().trim();
         const cleaned = raw.replace(/[^a-zA-Z]/g, '').toLowerCase();
@@ -769,9 +794,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
                     size={isMobile ? 'small' : 'medium'}
                     onClick={() => {
                       const s = String(currentCategoryObj.imagem_url || '');
-                      const normalized = s.startsWith('http://localhost:5000') || s.startsWith('https://localhost:5000') || s.startsWith('http://127.0.0.1:5000')
-                        ? s.replace(/^https?:\/\/(localhost|127\.0\.0\.1):5000/, BACKEND_ORIGIN)
-                        : (s.startsWith('http') ? s : `${BACKEND_ORIGIN}${s}`);
+                      const normalized = toAbsoluteBackendUrl(s);
                       setHelpTitle(currentCategoryName);
                       setHelpImageUrl(normalized);
                       setHelpOpen(true);
@@ -801,9 +824,7 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
                           size={isMobile ? 'small' : 'medium'}
                           onClick={() => {
                             const s = String(item.imagem_url || '');
-                            const normalized = s.startsWith('http://localhost:5000') || s.startsWith('https://localhost:5000') || s.startsWith('http://127.0.0.1:5000')
-                              ? s.replace(/^https?:\/\/(localhost|127\.0\.0\.1):5000/, BACKEND_ORIGIN)
-                              : (s.startsWith('http') ? s : `${BACKEND_ORIGIN}${s}`);
+                            const normalized = toAbsoluteBackendUrl(s);
                             setHelpTitle(item.nome_item);
                             setHelpImageUrl(normalized);
                             setHelpOpen(true);
@@ -866,6 +887,13 @@ const ChecklistViatura = ({ open, onClose, onSuccess, viaturas: viaturasProps, s
                     sx={{ mt: 2 }}
                     placeholder="Descreva o problema encontrado..."
                     size="medium"
+                    required={item.status === 'com_alteracao'}
+                    error={item.status === 'com_alteracao' && (item.observacoes || '').trim().length < 3}
+                    helperText={
+                      item.status === 'com_alteracao' && (item.observacoes || '').trim().length < 3
+                        ? 'Obrigatório informar pelo menos 3 caracteres.'
+                        : ''
+                    }
                   />
 
                   <Box mt={2}>
