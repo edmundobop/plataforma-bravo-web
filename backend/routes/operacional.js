@@ -8,6 +8,8 @@ const PDFDocument = require('pdfkit');
 
 const VALID_ALAS = ['Alfa', 'Bravo', 'Charlie', 'Delta'];
 const SHIFT_SEQUENCE = [...VALID_ALAS];
+const AUTO_SCALE_REFERENCE_DATE = '2026-01-01';
+const AUTO_SCALE_REFERENCE_ALA = 'Delta';
 const SHIFT_START_TIME = '08:00:00';
 const SHIFT_END_TIME = '07:59:00';
 const SHIFT_TURNO_LABEL = '24h (08h às 07h59)';
@@ -66,6 +68,24 @@ const addDaysUtc = (dateStr, days) => {
 };
 
 const formatTimestamp = (dateStr, timeStr) => `${dateStr} ${timeStr}`;
+
+const diffDaysUtc = (fromDate, toDate) => {
+  const from = new Date(`${fromDate}T00:00:00Z`);
+  const to = new Date(`${toDate}T00:00:00Z`);
+  return Math.round((to - from) / 86400000);
+};
+
+const getAutoAlaForDate = (dateStr) => {
+  const referenceIndex = SHIFT_SEQUENCE.indexOf(AUTO_SCALE_REFERENCE_ALA);
+  const offset = diffDaysUtc(AUTO_SCALE_REFERENCE_DATE, dateStr);
+  const index = ((referenceIndex + offset) % SHIFT_SEQUENCE.length + SHIFT_SEQUENCE.length) % SHIFT_SEQUENCE.length;
+  return SHIFT_SEQUENCE[index];
+};
+
+const getYearBounds = (year) => ({
+  start: `${year}-01-01`,
+  end: `${year}-12-31`,
+});
 
 const extractDateOnly = (value) => {
   if (typeof value === 'string') {
@@ -221,6 +241,201 @@ const ensureTrocasColumns = async (clientOrQuery = null) => {
       END IF;
     END $$;
   `);
+};
+
+const ensureEscalasAutomationColumns = async (clientOrQuery = null) => {
+  const runner = clientOrQuery || { query };
+  await runner.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='escalas' AND column_name='automatica') THEN
+        ALTER TABLE escalas ADD COLUMN automatica BOOLEAN DEFAULT false;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='escalas' AND column_name='origem_automacao') THEN
+        ALTER TABLE escalas ADD COLUMN origem_automacao VARCHAR(100);
+      END IF;
+    END $$;
+  `);
+};
+
+const findEscalaByDateForSync = async (client, unidadeId, dataServico) => {
+  const params = [dataServico];
+  let unidadeFilter = '';
+  if (unidadeId) {
+    params.push(unidadeId);
+    unidadeFilter = ` AND unidade_id = $${params.length}`;
+  }
+
+  const result = await client.query(
+    `SELECT *
+       FROM escalas
+      WHERE tipo = 'operacional_24x72'
+        AND setor = $${params.length + 1}
+        AND data_inicio::date = $1::date
+        ${unidadeFilter}
+      ORDER BY COALESCE(automatica, false) DESC, id ASC
+      LIMIT 1`,
+    [...params, OPERACIONAL_SETOR]
+  );
+
+  return result.rows[0] || null;
+};
+
+const escalaHasTroca = async (client, escalaId) => {
+  const result = await client.query(
+    `SELECT 1
+       FROM escala_usuarios eu
+       LEFT JOIN trocas_servico t ON eu.troca_id = t.id
+      WHERE eu.escala_id = $1
+        AND (eu.troca_id IS NOT NULL OR t.status IN ('pendente', 'aguardando_aprovacao', 'aprovada'))
+      LIMIT 1`,
+    [escalaId]
+  );
+  return result.rows.length > 0;
+};
+
+const hasParticipantConflictForDate = async (client, participantes, dataServico, escalaId = null) => {
+  if (!participantes.length) return false;
+  const params = [participantes, dataServico];
+  let ignoreCurrent = '';
+  if (escalaId) {
+    params.push(escalaId);
+    ignoreCurrent = ` AND escala_id <> $${params.length}`;
+  }
+
+  const result = await client.query(
+    `SELECT 1
+       FROM escala_usuarios
+      WHERE usuario_id = ANY($1::int[])
+        AND data_servico = $2
+        ${ignoreCurrent}
+      LIMIT 1`,
+    params
+  );
+  return result.rows.length > 0;
+};
+
+const replaceEscalaParticipants = async (client, escalaId, participantes, dataServico) => {
+  await client.query('DELETE FROM escala_usuarios WHERE escala_id = $1', [escalaId]);
+  for (const usuarioId of participantes) {
+    const conflict = await client.query(
+      `SELECT 1
+         FROM escala_usuarios
+        WHERE usuario_id = $1
+          AND data_servico = $2
+          AND escala_id <> $3
+        LIMIT 1`,
+      [usuarioId, dataServico, escalaId]
+    );
+    if (conflict.rows.length > 0) {
+      const error = new Error(`Usuário ${usuarioId} já possui escala registrada em ${formatDatePtBR(dataServico)}`);
+      error.statusCode = 409;
+      throw error;
+    }
+    await client.query(
+      `INSERT INTO escala_usuarios (escala_id, usuario_id, data_servico, turno, funcao, status)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [escalaId, usuarioId, dataServico, ESCALA_USUARIO_TURNO, ESCALA_USUARIO_FUNCAO, 'agendado']
+    );
+  }
+};
+
+const syncAutomaticEscalasForYear = async (client, {
+  alaMap,
+  unidadeId,
+  createdBy,
+  year = new Date().getFullYear(),
+}) => {
+  await ensureEscalasAutomationColumns(client);
+  const { start, end } = getYearBounds(year);
+  const today = todayDateOnly();
+  const resultados = {
+    year,
+    criadas: 0,
+    atualizadas: 0,
+    preservadas: 0,
+    conflitos: 0,
+    semParticipantes: 0,
+  };
+
+  for (let date = start; date <= end; date = addDaysUtc(date, 1)) {
+    const alaAtual = getAutoAlaForDate(date);
+    const participantes = alaMap[alaAtual] || [];
+    if (participantes.length === 0) {
+      resultados.semParticipantes += 1;
+      continue;
+    }
+
+    const existing = await findEscalaByDateForSync(client, unidadeId, date);
+    const dataFim = addDaysUtc(date, 1);
+    const escalaNome = `Escala Operacional - ${alaAtual} - ${date.split('-').reverse().join('/')}`;
+
+    if (!existing) {
+      const hasConflict = await hasParticipantConflictForDate(client, participantes, date);
+      if (hasConflict) {
+        resultados.conflitos += 1;
+        resultados.preservadas += 1;
+        continue;
+      }
+
+      const escalaResult = await client.query(
+        `INSERT INTO escalas
+          (nome, tipo, data_inicio, data_fim, turno, setor, observacoes, created_by, unidade_id, automatica, origem_automacao)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10)
+         RETURNING id`,
+        [
+          escalaNome,
+          'operacional_24x72',
+          formatTimestamp(date, SHIFT_START_TIME),
+          formatTimestamp(dataFim, SHIFT_END_TIME),
+          SHIFT_TURNO_LABEL,
+          OPERACIONAL_SETOR,
+          `Escala automática: referência ${formatDatePtBR(AUTO_SCALE_REFERENCE_DATE)} = Ala ${AUTO_SCALE_REFERENCE_ALA}`,
+          createdBy,
+          unidadeId,
+          'referencia_2026_delta'
+        ]
+      );
+      await replaceEscalaParticipants(client, escalaResult.rows[0].id, participantes, date);
+      resultados.criadas += 1;
+      continue;
+    }
+
+    const hasTroca = await escalaHasTroca(client, existing.id);
+    const hasConflict = await hasParticipantConflictForDate(client, participantes, date, existing.id);
+    if (date < today || hasTroca || hasConflict) {
+      if (hasConflict) {
+        resultados.conflitos += 1;
+      }
+      resultados.preservadas += 1;
+      continue;
+    }
+
+    await client.query(
+      `UPDATE escalas
+          SET nome = $1,
+              data_inicio = $2,
+              data_fim = $3,
+              turno = $4,
+              setor = $5,
+              automatica = true,
+              origem_automacao = $6
+        WHERE id = $7`,
+      [
+        escalaNome,
+        formatTimestamp(date, SHIFT_START_TIME),
+        formatTimestamp(dataFim, SHIFT_END_TIME),
+        SHIFT_TURNO_LABEL,
+        OPERACIONAL_SETOR,
+        'referencia_2026_delta',
+        existing.id
+      ]
+    );
+    await replaceEscalaParticipants(client, existing.id, participantes, date);
+    resultados.atualizadas += 1;
+  }
+
+  return resultados;
 };
 
 const findEscalaConflicts = async (usuarioIds, datasServico) => {
@@ -513,14 +728,26 @@ router.put('/alas/usuarios', authorizeRoles('Administrador'), [
       return res.status(400).json({ error: error.message });
     }
 
+    let syncResult = null;
     await transaction(async (client) => {
       await assignUsersToAlas(client, alaMap, eligibleIds);
+      syncResult = await syncAutomaticEscalasForYear(client, {
+        alaMap,
+        unidadeId,
+        createdBy: req.user.id,
+        year: new Date().getFullYear(),
+      });
     });
 
     res.json({
-      message: 'Alas atualizadas com sucesso',
+      message: 'Alas atualizadas e escalas automáticas sincronizadas com sucesso',
       alas: alaMap,
-      total: usuarios.length
+      total: usuarios.length,
+      automacao: {
+        referencia_data: AUTO_SCALE_REFERENCE_DATE,
+        referencia_ala: AUTO_SCALE_REFERENCE_ALA,
+        ...syncResult,
+      }
     });
   } catch (error) {
     console.error('Erro ao atualizar alas operacionais:', error);

@@ -48,6 +48,7 @@ import {
   Checkbox,
   Stack,
   Snackbar,
+  useMediaQuery,
 } from '@mui/material';
 import {
   Schedule as ScheduleIcon,
@@ -85,6 +86,7 @@ import {
   endOfWeek,
   eachDayOfInterval,
   isSameMonth,
+  addDays,
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -105,6 +107,13 @@ const INITIAL_ALA_BOARD = {
   Delta: [],
 };
 
+const buildAlaSignature = (board) => JSON.stringify(
+  VALID_ALAS.reduce((acc, ala) => {
+    acc[ala] = [...(board[ala] || [])].map(Number).sort((a, b) => a - b);
+    return acc;
+  }, {})
+);
+
 const hasDriverLicense = (categoria) => {
   if (!categoria) return false;
   return categoria
@@ -115,10 +124,12 @@ const hasDriverLicense = (categoria) => {
 
 const Operacional = () => {
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const location = useLocation();
   const { user } = useAuth();
   const { markAsRead, markAllAsRead } = useNotifications();
   const { currentUnit } = useTenant();
+  const isAdmin = user?.perfil_nome === 'Administrador';
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -188,18 +199,11 @@ const Operacional = () => {
   const [usuarios, setUsuarios] = useState([]);
   const [usuariosMap, setUsuariosMap] = useState({});
   const [alaBoard, setAlaBoard] = useState(() => ({ ...INITIAL_ALA_BOARD }));
+  const [savedAlaSignature, setSavedAlaSignature] = useState(() => buildAlaSignature(INITIAL_ALA_BOARD));
   const [alasLoading, setAlasLoading] = useState(false);
   const [alasSaving, setAlasSaving] = useState(false);
-  const [escalaGenerating, setEscalaGenerating] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [dragInfo, setDragInfo] = useState({ id: null, from: null });
-  const [alasForm, setAlasForm] = useState({
-    data_inicio: '',
-    ala_inicial: VALID_ALAS[0],
-    quantidade_servicos: 4,
-    nome_base: '',
-    observacoes: '',
-  });
   const [escalaViewMode, setEscalaViewMode] = useState('calendar');
   const [selectedAlas, setSelectedAlas] = useState([...VALID_ALAS]);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
@@ -216,6 +220,11 @@ const Operacional = () => {
     anchorEl: null,
     dateKey: '',
     escalas: [],
+  });
+  const [mobileCalendarDialog, setMobileCalendarDialog] = useState({
+    open: false,
+    dateKey: '',
+    touchStartX: null,
   });
   
   // Estados para formulários
@@ -240,6 +249,19 @@ const Operacional = () => {
       setActiveTab(tabMap[tab]);
     }
   }, [location.search]);
+
+  useEffect(() => {
+    const hasUnsavedAlas = isAdmin && buildAlaSignature(alaBoard) !== savedAlaSignature;
+    if (!hasUnsavedAlas) return undefined;
+
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [alaBoard, isAdmin, savedAlaSignature]);
 
   const loadData = () => {
     if (!currentUnit?.id) {
@@ -431,6 +453,7 @@ const Operacional = () => {
       setUsuarios(usuariosLista);
       setUsuariosMap(mapaUsuarios);
       setAlaBoard(novoBoard);
+      setSavedAlaSignature(buildAlaSignature(novoBoard));
     } catch (err) {
       console.error('Erro ao carregar alas operacionais:', err);
       const message = err.response?.data?.error || 'Erro ao carregar alas operacionais';
@@ -441,6 +464,14 @@ const Operacional = () => {
   };
 
   const handleTabChange = (event, newValue) => {
+    if (
+      activeTab === 0 &&
+      isAdmin &&
+      buildAlaSignature(alaBoard) !== savedAlaSignature &&
+      !window.confirm('Existem alterações não salvas na distribuição das alas. Deseja sair sem salvar?')
+    ) {
+      return;
+    }
     setActiveTab(newValue);
     setError('');
   };
@@ -590,6 +621,15 @@ const Operacional = () => {
   };
 
   const handleOpenCalendarActionMenu = (event, dateKey, dayEscalas) => {
+    if (isMobile) {
+      setMobileCalendarDialog({
+        open: true,
+        dateKey,
+        touchStartX: null,
+      });
+      return;
+    }
+
     setCalendarActionMenu({
       anchorEl: event.currentTarget,
       dateKey,
@@ -599,6 +639,10 @@ const Operacional = () => {
 
   const handleCloseCalendarActionMenu = () => {
     setCalendarActionMenu({ anchorEl: null, dateKey: '', escalas: [] });
+  };
+
+  const handleCloseMobileCalendarDialog = () => {
+    setMobileCalendarDialog({ open: false, dateKey: '', touchStartX: null });
   };
 
   const handleCalendarPdfAction = async () => {
@@ -789,7 +833,6 @@ const Operacional = () => {
     );
   };
 
-  const isAdmin = user?.perfil_nome === 'Administrador';
   const canAnalyzeTrocas = isAdmin || (
     String(user?.setor || user?.setor_nome || '').toLowerCase() !== 'operacional' &&
     Number(user?.perfil_id) >= 2 &&
@@ -822,16 +865,23 @@ const Operacional = () => {
     ))
   );
 
-  const canRequestSwapFromCalendarMenu = () => (
-    !isRetroactiveDate(calendarActionMenu.dateKey) &&
-    getEligibleSwapEntries(calendarActionMenu.escalas).length > 0
+  const canRequestSwapForDate = (dateKey, escalasDia = []) => (
+    !isRetroactiveDate(dateKey) &&
+    getEligibleSwapEntries(escalasDia).length > 0
   );
 
-  const getCalendarSwapActionLabel = () => {
-    if (isRetroactiveDate(calendarActionMenu.dateKey)) {
+  const canRequestSwapFromCalendarMenu = () => (
+    canRequestSwapForDate(calendarActionMenu.dateKey, calendarActionMenu.escalas)
+  );
+
+  const getCalendarSwapActionLabel = (
+    dateKey = calendarActionMenu.dateKey,
+    escalasDia = calendarActionMenu.escalas
+  ) => {
+    if (isRetroactiveDate(dateKey)) {
       return 'Solicitar troca (data retroativa bloqueada)';
     }
-    if (calendarActionMenu.escalas.length > 0 && getEligibleSwapEntries(calendarActionMenu.escalas).length === 0) {
+    if (escalasDia.length > 0 && getEligibleSwapEntries(escalasDia).length === 0) {
       return 'Solicitar troca (mesma ala bloqueada)';
     }
     return 'Solicitar troca';
@@ -922,8 +972,14 @@ const Operacional = () => {
       setAlasSaving(true);
       setError('');
       setSuccessMessage('');
-      await operacionalService.salvarAlas({ alas: buildAlaPayload() });
-      setSuccessMessage('Alas atualizadas com sucesso.');
+      const payload = buildAlaPayload();
+      const response = await operacionalService.salvarAlas({ alas: payload });
+      setSavedAlaSignature(buildAlaSignature({ ...payload, pool: alaBoard.pool || [] }));
+      const automacao = response.data?.automacao;
+      const resumo = automacao
+        ? ` Escalas ${automacao.year}: ${automacao.criadas} criadas, ${automacao.atualizadas} atualizadas, ${automacao.preservadas} preservadas e ${automacao.conflitos || 0} conflito(s).`
+        : '';
+      setSuccessMessage(`Alas atualizadas com sucesso.${resumo}`);
     } catch (err) {
       console.error('Erro ao salvar alas:', err);
       const message = err.response?.data?.error || 'Erro ao salvar as alas';
@@ -931,43 +987,6 @@ const Operacional = () => {
     } finally {
       setAlasSaving(false);
     }
-  };
-
-  const handleGenerateEscalas = async () => {
-    if (!isAdmin) return;
-    if (!alasForm.data_inicio) {
-      setError('Selecione a data de início da escala');
-      return;
-    }
-    if (!alasForm.quantidade_servicos || Number(alasForm.quantidade_servicos) < 1) {
-      setError('Informe o número de serviços a serem gerados');
-      return;
-    }
-    try {
-      setEscalaGenerating(true);
-      setError('');
-      setSuccessMessage('');
-      await operacionalService.gerarEscalasAutomaticas({
-        data_inicio: alasForm.data_inicio,
-        ala_inicial: alasForm.ala_inicial,
-        quantidade_servicos: Number(alasForm.quantidade_servicos),
-        nome_base: alasForm.nome_base || undefined,
-        observacoes: alasForm.observacoes || undefined,
-        alas: buildAlaPayload(),
-      });
-      setSuccessMessage('Escalas geradas com sucesso.');
-      loadEscalas();
-    } catch (err) {
-      console.error('Erro ao gerar escalas:', err);
-      const message = err.response?.data?.error || 'Erro ao gerar escalas';
-      setError(message);
-    } finally {
-      setEscalaGenerating(false);
-    }
-  };
-
-  const handleAlaFormChange = (field, value) => {
-    setAlasForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleColleagueChange = (participantId) => {
@@ -1048,6 +1067,24 @@ const Operacional = () => {
     }
 
     handleCloseCalendarActionMenu();
+    handleOpenSwapDialog(entry.participante, entry.escala);
+  };
+
+  const handleOpenSwapFromCalendarDay = (dateKey, escalasDia = []) => {
+    if (isRetroactiveDate(dateKey)) {
+      setError('Não é possível solicitar troca para uma data retroativa. Selecione uma escala de hoje ou futura. Apenas o pagamento pode ser retroativo.');
+      handleCloseMobileCalendarDialog();
+      return;
+    }
+
+    const [entry] = getEligibleSwapEntries(escalasDia);
+    if (!entry) {
+      setError('Não há militares de outra ala disponíveis nesse dia para solicitar uma troca.');
+      handleCloseMobileCalendarDialog();
+      return;
+    }
+
+    handleCloseMobileCalendarDialog();
     handleOpenSwapDialog(entry.participante, entry.escala);
   };
 
@@ -1216,6 +1253,184 @@ const Operacional = () => {
     return weeks;
   }, [calendarMonth]);
 
+  const handleMobileCalendarDayChange = (direction) => {
+    if (!mobileCalendarDialog.dateKey) return;
+    const nextDay = addDays(parseISO(mobileCalendarDialog.dateKey), direction);
+    const nextDateKey = format(nextDay, 'yyyy-MM-dd');
+
+    setMobileCalendarDialog((prev) => ({
+      ...prev,
+      dateKey: nextDateKey,
+      touchStartX: null,
+    }));
+
+    if (!isSameMonth(nextDay, calendarMonth)) {
+      setCalendarMonth(nextDay);
+    }
+  };
+
+  const handleMobileCalendarTouchStart = (event) => {
+    setMobileCalendarDialog((prev) => ({
+      ...prev,
+      touchStartX: event.touches?.[0]?.clientX ?? null,
+    }));
+  };
+
+  const handleMobileCalendarTouchEnd = (event) => {
+    if (mobileCalendarDialog.touchStartX == null) return;
+    const endX = event.changedTouches?.[0]?.clientX;
+    if (endX == null) return;
+    const delta = endX - mobileCalendarDialog.touchStartX;
+    if (Math.abs(delta) < 50) {
+      setMobileCalendarDialog((prev) => ({ ...prev, touchStartX: null }));
+      return;
+    }
+    handleMobileCalendarDayChange(delta > 0 ? -1 : 1);
+  };
+
+  const renderMobileCalendarDialog = () => {
+    const dateKey = mobileCalendarDialog.dateKey;
+    const dayEscalas = escalasByDate[dateKey] || [];
+    const parsedDate = dateKey ? parseISO(dateKey) : null;
+
+    return (
+      <Dialog
+        open={mobileCalendarDialog.open}
+        onClose={handleCloseMobileCalendarDialog}
+        fullScreen
+      >
+        <DialogTitle sx={{ p: 1.5, borderBottom: 1, borderColor: 'divider' }}>
+          <Box display="flex" alignItems="center" justifyContent="space-between" gap={1}>
+            <IconButton onClick={() => handleMobileCalendarDayChange(-1)} edge="start">
+              <ChevronLeftIcon />
+            </IconButton>
+            <Box textAlign="center" minWidth={0}>
+              <Typography variant="subtitle1" fontWeight="bold" noWrap>
+                {parsedDate ? format(parsedDate, "EEEE, dd 'de' MMMM", { locale: ptBR }) : 'Escala'}
+              </Typography>
+              <Typography variant="caption" color="textSecondary">
+                {parsedDate ? format(parsedDate, 'yyyy', { locale: ptBR }) : ''}
+              </Typography>
+            </Box>
+            <Box display="flex" alignItems="center">
+              <IconButton onClick={() => handleMobileCalendarDayChange(1)}>
+                <ChevronRightIcon />
+              </IconButton>
+              <IconButton onClick={handleCloseMobileCalendarDialog} edge="end">
+                <CloseIcon />
+              </IconButton>
+            </Box>
+          </Box>
+        </DialogTitle>
+        <DialogContent
+          dividers
+          onTouchStart={handleMobileCalendarTouchStart}
+          onTouchEnd={handleMobileCalendarTouchEnd}
+          sx={{ p: 2, bgcolor: 'background.default' }}
+        >
+          {escalasLoading ? (
+            <Box display="flex" justifyContent="center" py={4}>
+              <CircularProgress />
+            </Box>
+          ) : dayEscalas.length === 0 ? (
+            <Paper sx={{ p: 3, textAlign: 'center' }}>
+              <Typography variant="h6" color="textSecondary">
+                Sem escala
+              </Typography>
+              <Typography variant="body2" color="textSecondary">
+                Não há serviço registrado para este dia.
+              </Typography>
+            </Paper>
+          ) : (
+            <Stack spacing={2}>
+              {dayEscalas.map((escala) => {
+                const style = ALA_STYLES[escala.ala] || { border: theme.palette.primary.main, bg: 'transparent' };
+                const hasApprovedSwap = escala.participantes?.some((p) => p.troca_status === 'aprovada');
+                return (
+                  <Paper
+                    key={`mobile-dia-${escala.id}`}
+                    sx={{
+                      p: 2,
+                      border: '1px solid',
+                      borderColor: style.border,
+                      bgcolor: style.bg,
+                    }}
+                  >
+                    <Box display="flex" justifyContent="space-between" alignItems="center" gap={1} mb={1.5}>
+                      <Chip
+                        label={`Ala ${escala.ala}`}
+                        sx={{ bgcolor: style.border, color: '#fff', fontWeight: 700 }}
+                      />
+                      <Typography variant="body2" color="textSecondary">
+                        {(escala.participantes || []).length} militar(es)
+                      </Typography>
+                    </Box>
+
+                    {hasApprovedSwap && (
+                      <Alert severity="info" sx={{ mb: 1.5 }}>
+                        Troca confirmada
+                      </Alert>
+                    )}
+
+                    <Stack spacing={1}>
+                      {(escala.participantes || []).map((participante) => (
+                        <Button
+                          key={`${escala.id}-${participante.usuario_id}`}
+                          variant="outlined"
+                          fullWidth
+                          onClick={() => {
+                            handleCloseMobileCalendarDialog();
+                            handleOpenSwapDialog(participante, escala);
+                          }}
+                          disabled={
+                            isRetroactiveDate(escala.dataKey) ||
+                            !isEligibleSwapTarget(participante, escala)
+                          }
+                          sx={{
+                            justifyContent: 'flex-start',
+                            textAlign: 'left',
+                            textTransform: 'none',
+                            borderColor: style.border,
+                            color: style.border,
+                            bgcolor: 'background.paper',
+                          }}
+                        >
+                          {isSwappedParticipant(participante)
+                            ? getSwapParticipantLabel(participante)
+                            : participante.nome}
+                        </Button>
+                      ))}
+                    </Stack>
+                  </Paper>
+                );
+              })}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 1.5, gap: 1, justifyContent: 'space-between' }}>
+          <Button
+            fullWidth
+            variant="outlined"
+            startIcon={<PdfIcon />}
+            onClick={() => handleExportDayPdf(dateKey)}
+            disabled={!dateKey || pdfLoadingDate === dateKey}
+          >
+            Baixar PDF
+          </Button>
+          <Button
+            fullWidth
+            variant="contained"
+            startIcon={<SwapIcon />}
+            onClick={() => handleOpenSwapFromCalendarDay(dateKey, dayEscalas)}
+            disabled={!canRequestSwapForDate(dateKey, dayEscalas)}
+          >
+            Solicitar troca
+          </Button>
+        </DialogActions>
+      </Dialog>
+    );
+  };
+
   const renderCalendarView = () => {
     if (escalasLoading) {
       return (
@@ -1227,12 +1442,12 @@ const Operacional = () => {
 
     return (
       <Card>
-        <CardContent>
+        <CardContent sx={{ p: { xs: 1, sm: 2 }, '&:last-child': { pb: { xs: 1, sm: 2 } } }}>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
             <IconButton onClick={() => handleCalendarMonthChange(-1)}>
               <ChevronLeftIcon />
             </IconButton>
-            <Typography variant="h6" textTransform="capitalize">
+            <Typography variant={isMobile ? 'subtitle1' : 'h6'} textTransform="capitalize" fontWeight={isMobile ? 700 : 400}>
               {format(calendarMonth, 'MMMM yyyy', { locale: ptBR })}
             </Typography>
             <IconButton onClick={() => handleCalendarMonthChange(1)}>
@@ -1240,18 +1455,18 @@ const Operacional = () => {
             </IconButton>
           </Box>
 
-          <Grid container columns={7} spacing={1} sx={{ textTransform: 'uppercase', mb: 1 }}>
+          <Grid container columns={7} spacing={isMobile ? 0.5 : 1} sx={{ textTransform: 'uppercase', mb: 1 }}>
             {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day) => (
               <Grid item xs={1} key={day}>
-                <Typography variant="caption" color="textSecondary" textAlign="center">
-                  {day}
+                <Typography variant="caption" color="textSecondary" textAlign="center" display="block">
+                  {isMobile ? day.charAt(0) : day}
                 </Typography>
               </Grid>
             ))}
           </Grid>
 
           {calendarInterval.map((week, index) => (
-            <Grid container columns={7} spacing={1} key={`week-${index}`} sx={{ mb: 1 }}>
+            <Grid container columns={7} spacing={isMobile ? 0.5 : 1} key={`week-${index}`} sx={{ mb: isMobile ? 0.5 : 1 }}>
               {week.map((day) => {
                 const dateKey = format(day, 'yyyy-MM-dd');
                 const dayEscalas = escalasByDate[dateKey] || [];
@@ -1261,14 +1476,16 @@ const Operacional = () => {
                 const approvedSwap = dayEscalas.some((escala) =>
                   escala.participantes?.some((p) => p.troca_status === 'aprovada')
                 );
+                const alaLetter = ala ? ala.charAt(0) : '';
 
                 return (
                   <Grid item xs={1} key={dateKey}>
                     <Paper
                       onClick={(event) => handleOpenCalendarActionMenu(event, dateKey, dayEscalas)}
                       sx={{
-                        minHeight: 140,
-                        p: 1,
+                        minHeight: { xs: 48, sm: 140 },
+                        aspectRatio: { xs: '1 / 1', sm: 'auto' },
+                        p: { xs: 0.5, sm: 1 },
                         bgcolor: hasEscala ? style.bg : 'background.default',
                         border: '1px solid',
                         borderColor: hasEscala ? style.border : 'divider',
@@ -1299,7 +1516,26 @@ const Operacional = () => {
                       <Typography variant="subtitle2" fontWeight="bold">
                         {format(day, 'd')}
                       </Typography>
-                      {hasEscala ? (
+                      {isMobile ? (
+                        hasEscala ? (
+                          <Box
+                            sx={{
+                              flex: 1,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Typography
+                              variant="h6"
+                              fontWeight="bold"
+                              sx={{ color: style.border, lineHeight: 1 }}
+                            >
+                              {alaLetter}
+                            </Typography>
+                          </Box>
+                        ) : null
+                      ) : hasEscala ? (
                         dayEscalas.map((escala) => (
                           <Box key={escala.id}>
                             <Chip
@@ -2106,6 +2342,7 @@ const Operacional = () => {
     }
 
     const poolIds = alaBoard.pool || [];
+    const hasUnsavedAlaChanges = buildAlaSignature(alaBoard) !== savedAlaSignature;
 
     return (
       <Box>
@@ -2183,92 +2420,25 @@ const Operacional = () => {
 
         {isAdmin && (
           <>
-            <Box mt={3} display="flex" gap={2} flexWrap="wrap">
+            <Box mt={3} display="flex" gap={2} flexWrap="wrap" alignItems="center">
               <Button
-                variant="outlined"
+                variant="contained"
+                color="success"
+                size="large"
                 onClick={handleSaveAlas}
-                disabled={alasSaving || alasLoading}
+                disabled={alasSaving || alasLoading || !hasUnsavedAlaChanges}
                 startIcon={alasSaving ? <CircularProgress size={16} /> : <CheckIcon />}
+                sx={{ fontWeight: 700, px: 3, boxShadow: 2 }}
               >
                 Salvar Distribuição
               </Button>
+              <Typography variant="body2" color="textSecondary">
+                {hasUnsavedAlaChanges
+                  ? 'Ao salvar, as escalas automáticas de 2026 são sincronizadas pela referência 01/01/2026 = Ala Delta.'
+                  : 'Distribuição sem alterações para salvar.'}
+              </Typography>
             </Box>
 
-            <Card sx={{ mt: 3 }}>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Gerar Escalas Automáticas
-                </Typography>
-                <Typography variant="body2" color="textSecondary" mb={2}>
-                  Informe o dia de início, a ala que iniciará a escala e quantos serviços devem ser gerados.
-                </Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={4}>
-                    <TextField
-                      label="Dia de início"
-                      type="date"
-                      fullWidth
-                      value={alasForm.data_inicio}
-                      onChange={(e) => handleAlaFormChange('data_inicio', e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <FormControl fullWidth>
-                      <InputLabel>Ala inicial</InputLabel>
-                      <Select
-                        label="Ala inicial"
-                        value={alasForm.ala_inicial}
-                        onChange={(e) => handleAlaFormChange('ala_inicial', e.target.value)}
-                      >
-                        {VALID_ALAS.map((ala) => (
-                          <MenuItem key={`ala-${ala}`} value={ala}>{ala}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <TextField
-                      label="Quantidade de serviços"
-                      type="number"
-                      fullWidth
-                      inputProps={{ min: 1 }}
-                      value={alasForm.quantidade_servicos}
-                      onChange={(e) => handleAlaFormChange('quantidade_servicos', e.target.value)}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      label="Nome base (opcional)"
-                      fullWidth
-                      value={alasForm.nome_base}
-                      onChange={(e) => handleAlaFormChange('nome_base', e.target.value)}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      label="Observações"
-                      fullWidth
-                      multiline
-                      minRows={1}
-                      value={alasForm.observacoes}
-                      onChange={(e) => handleAlaFormChange('observacoes', e.target.value)}
-                    />
-                  </Grid>
-                </Grid>
-
-                <Box mt={3} display="flex" justifyContent="flex-end">
-                  <Button
-                    variant="contained"
-                    onClick={handleGenerateEscalas}
-                    disabled={escalaGenerating || alasLoading}
-                    startIcon={escalaGenerating ? <CircularProgress size={16} color="inherit" /> : <ScheduleIcon />}
-                  >
-                    Gerar Escalas
-                  </Button>
-                </Box>
-              </CardContent>
-            </Card>
           </>
         )}
       </Box>
@@ -2325,7 +2495,7 @@ const Operacional = () => {
 
       {/* Tabs */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-        <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
+        <Tabs value={activeTab} onChange={handleTabChange}>
           <Tab 
             icon={
               <Badge 
@@ -2378,6 +2548,8 @@ const Operacional = () => {
       {activeTab === 1 && renderEscalasTab()}
       {activeTab === 2 && renderTrocasTab()}
       {activeTab === 3 && renderExtrasTab()}
+
+      {renderMobileCalendarDialog()}
 
       {/* Menu de ações */}
       {activeTab > 0 && (

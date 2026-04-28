@@ -367,6 +367,12 @@ const createTables = async () => {
         ) THEN
           ALTER TABLE escalas ALTER COLUMN data_fim TYPE TIMESTAMP USING data_fim::timestamp;
         END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='escalas' AND column_name='automatica') THEN
+          ALTER TABLE escalas ADD COLUMN automatica BOOLEAN DEFAULT false;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='escalas' AND column_name='origem_automacao') THEN
+          ALTER TABLE escalas ADD COLUMN origem_automacao VARCHAR(100);
+        END IF;
       END $$;
     `);
 
