@@ -135,6 +135,20 @@ const Dashboard = () => {
     }
   };
 
+  const getAtividadePath = (atividade) => {
+    if (atividade?.modulo === 'operacional_trocas' || atividade?.tipo === 'troca_servico') {
+      return '/operacional?tab=trocas';
+    }
+    return null;
+  };
+
+  const getAlertPath = (alerta) => {
+    if (alerta?.titulo === 'Checklists com Alteração') {
+      return '/frota/checklists?page=1&situacao=Com%20Altera%C3%A7%C3%A3o';
+    }
+    return null;
+  };
+
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleString('pt-BR');
   };
@@ -159,17 +173,13 @@ const Dashboard = () => {
     );
   }
 
-  const { estatisticas, atividades_recentes, alertas, checklists_com_alteracao } = dashboardData || {};
+  const { estatisticas, atividades_recentes, alertas } = dashboardData || {};
 
   const role = user?.perfil_nome || '';
   const isAdminLike = ['Administrador', 'Chefe', 'Comandante'].includes(role);
-  const canSeeChecklistAlteracaoCard = ['Administrador', 'Comandante', 'Chefe', 'Auxiliares', 'Auxiliar'].includes(role);
   const isOperacional = !isAdminLike;
   const maxAlertas = isMobile ? 3 : 8;
   const maxAtividades = isMobile ? 5 : 8;
-  const checklistsAlteracaoRecentes = checklists_com_alteracao?.recentes || [];
-  const checklistsAlteracaoTotal = Number(checklists_com_alteracao?.total || 0);
-  const goToChecklistsComAlteracao = () => navigate('/frota/checklists?page=1&situacao=Com%20Altera%C3%A7%C3%A3o');
 
   return (
     <Box>
@@ -316,8 +326,18 @@ const Dashboard = () => {
                 <List>
                   {(showMoreAlertas ? alertas : alertas.slice(0, maxAlertas)).map((alerta, index) => {
                     const { Component: IconComponent, color } = getAlertIcon(alerta.tipo);
+                    const alertPath = getAlertPath(alerta);
                     return (
-                      <ListItem key={index} sx={{ px: 0 }}>
+                      <ListItem
+                        key={index}
+                        onClick={alertPath ? () => navigate(alertPath) : undefined}
+                        sx={{
+                          px: 0,
+                          cursor: alertPath ? 'pointer' : 'default',
+                          borderRadius: 1,
+                          '&:hover': alertPath ? { bgcolor: 'action.hover', px: 1 } : undefined,
+                        }}
+                      >
                         <ListItemIcon>
                           {IconComponent ? <IconComponent color={color} /> : null}
                         </ListItemIcon>
@@ -373,34 +393,47 @@ const Dashboard = () => {
               
               {atividades_recentes && atividades_recentes.length > 0 ? (
                 <List>
-                  {(showMoreAtividades ? atividades_recentes : atividades_recentes.slice(0, maxAtividades)).map((atividade, index) => (
-                    <ListItem key={index} sx={{ px: 0 }}>
-                      <ListItemText
-                        primary={
-                          <Typography component="div" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Typography component="span" sx={{ fontWeight: 600, fontSize: '0.875rem' }}>
-                              {atividade.descricao}
+                  {(showMoreAtividades ? atividades_recentes : atividades_recentes.slice(0, maxAtividades)).map((atividade, index) => {
+                    const atividadePath = getAtividadePath(atividade);
+                    return (
+                      <ListItem
+                        key={index}
+                        onClick={atividadePath ? () => navigate(atividadePath) : undefined}
+                        sx={{
+                          px: 0,
+                          cursor: atividadePath ? 'pointer' : 'default',
+                          borderRadius: 1,
+                          '&:hover': atividadePath ? { bgcolor: 'action.hover', px: 1 } : undefined,
+                        }}
+                      >
+                        <ListItemText
+                          primary={
+                            <Typography component="div" sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                              <Typography component="span" sx={{ fontWeight: 600, fontSize: '0.875rem' }}>
+                                {atividade.descricao}
+                              </Typography>
+                              <Chip
+                                label={atividade.tipo === 'troca_servico' ? 'troca de serviço' : atividade.tipo}
+                                size="small"
+                                variant="outlined"
+                                color={atividade.tipo === 'troca_servico' ? 'primary' : 'default'}
+                              />
                             </Typography>
-                            <Chip 
-                              label={atividade.tipo} 
-                              size="small" 
-                              variant="outlined"
-                            />
-                          </Typography>
-                        }
-                        secondary={
-                          <Typography component="div">
-                            <Typography component="span" variant="body2" color="textSecondary" display="block">
-                              Por: {atividade.usuario}
+                          }
+                          secondary={
+                            <Typography component="div">
+                              <Typography component="span" variant="body2" color="textSecondary" display="block">
+                                Por: {atividade.usuario}
+                              </Typography>
+                              <Typography component="span" variant="caption" color="textSecondary" display="block">
+                                {formatDate(atividade.data)}
+                              </Typography>
                             </Typography>
-                            <Typography component="span" variant="caption" color="textSecondary" display="block">
-                              {formatDate(atividade.data)}
-                            </Typography>
-                          </Typography>
-                        }
-                      />
-                    </ListItem>
-                  ))}
+                          }
+                        />
+                      </ListItem>
+                    );
+                  })}
                 </List>
               ) : (
                 <Box display="flex" alignItems="center" justifyContent="center" py={4}>
@@ -542,57 +575,6 @@ const Dashboard = () => {
           </Grid>
         </Grid>
       </Box>
-
-      {canSeeChecklistAlteracaoCard && checklistsAlteracaoTotal > 0 && (
-        <Box sx={{ mt: 4 }}>
-          <Card>
-            <CardContent>
-              <Box
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 2,
-                  mb: 2,
-                  flexWrap: 'wrap'
-                }}
-              >
-                <Box>
-                  <Typography variant="h6" fontWeight="bold">
-                    Checklists com Alteração
-                  </Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    {checklistsAlteracaoTotal} checklist(s) exigem conferência
-                  </Typography>
-                </Box>
-                <Button variant="contained" color="warning" onClick={goToChecklistsComAlteracao}>
-                  Ver mais
-                </Button>
-              </Box>
-
-              {checklistsAlteracaoRecentes.length === 0 ? (
-                <Typography variant="body2" color="textSecondary">
-                  Nenhum checklist recente para listar.
-                </Typography>
-              ) : (
-                <List dense>
-                  {checklistsAlteracaoRecentes.map((checklist) => (
-                    <ListItem key={checklist.id} sx={{ px: 0 }} button onClick={goToChecklistsComAlteracao}>
-                      <ListItemIcon>
-                        <WarningIcon color="warning" />
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={`${checklist.viatura_prefixo || 'Viatura'} - ${checklist.tipo_checklist || 'Checklist'}`}
-                        secondary={`${checklist.itens_alterados || 0} item(ns) com alteração • ${formatDate(checklist.data_checklist)}`}
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-              )}
-            </CardContent>
-          </Card>
-        </Box>
-      )}
 
       {isOperacional && (
         <Box sx={{ mt: 4 }}>

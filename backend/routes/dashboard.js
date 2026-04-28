@@ -70,6 +70,41 @@ router.get('/geral', optionalTenant, async (req, res) => {
     
     const atividadesResult = await query(atividadesQuery, unidadeId ? [unidadeId] : []);
 
+    const canViewAllTrocas = Number(req.user?.perfil_id) >= 1 && Number(req.user?.perfil_id) <= 4;
+    const trocasParams = [];
+    let trocasWhere = "WHERE t.data_solicitacao >= CURRENT_TIMESTAMP - INTERVAL '24 hours'";
+    if (unidadeId) {
+      trocasParams.push(unidadeId);
+      trocasWhere += ` AND t.unidade_id = $${trocasParams.length}`;
+    }
+    if (!canViewAllTrocas) {
+      trocasParams.push(req.user.id);
+      trocasWhere += ` AND (t.usuario_solicitante_id = $${trocasParams.length} OR t.usuario_substituto_id = $${trocasParams.length})`;
+    }
+
+    const trocasRecentesResult = await query(
+      `SELECT 'troca_servico' as tipo,
+              CONCAT(us.nome, ' trabalha para ', usub.nome) as descricao,
+              t.data_solicitacao as data,
+              us.nome as usuario,
+              'operacional_trocas' as modulo,
+              t.id as referencia_id
+       FROM trocas_servico t
+       JOIN usuarios us ON t.usuario_solicitante_id = us.id
+       JOIN usuarios usub ON t.usuario_substituto_id = usub.id
+       ${trocasWhere}
+       ORDER BY t.data_solicitacao DESC
+       LIMIT 10`,
+      trocasParams
+    );
+
+    const atividadesRecentes = [
+      ...(atividadesResult.rows || []).map((atividade) => ({ ...atividade, modulo: atividade.modulo || 'almoxarifado' })),
+      ...(trocasRecentesResult.rows || [])
+    ]
+      .sort((a, b) => new Date(b.data) - new Date(a.data))
+      .slice(0, 10);
+
     // Alertas importantes
     const alertas = [];
 
@@ -173,7 +208,7 @@ router.get('/geral', optionalTenant, async (req, res) => {
       JOIN usuarios u ON c.usuario_id = u.id
       LEFT JOIN checklist_itens ci ON ci.checklist_id = c.id
       WHERE c.situacao = 'Com Alteração'
-      ${unidadeId ? 'AND c.unidade_id = $1' : ''}
+      ${unidadeId ? 'AND COALESCE(c.unidade_id, v.unidade_id) = $1' : ''}
       GROUP BY c.id, v.prefixo, v.modelo, u.nome
       ORDER BY c.data_checklist DESC
       LIMIT 5
@@ -183,8 +218,9 @@ router.get('/geral', optionalTenant, async (req, res) => {
     let checklistsAlteracaoTotalQuery = `
       SELECT COUNT(*) as total
       FROM checklist_viaturas c
+      JOIN viaturas v ON c.viatura_id = v.id
       WHERE c.situacao = 'Com Alteração'
-      ${unidadeId ? 'AND c.unidade_id = $1' : ''}
+      ${unidadeId ? 'AND COALESCE(c.unidade_id, v.unidade_id) = $1' : ''}
     `;
     const checklistsAlteracaoTotal = await query(checklistsAlteracaoTotalQuery, unidadeId ? [unidadeId] : []);
 
@@ -200,7 +236,7 @@ router.get('/geral', optionalTenant, async (req, res) => {
     console.log('Preparando resposta do dashboard geral...');
     const response = {
       estatisticas: statsResult.rows[0],
-      atividades_recentes: atividadesResult.rows || [],
+      atividades_recentes: atividadesRecentes,
       alertas: alertas,
       checklists_com_alteracao: {
         total: parseInt(checklistsAlteracaoTotal.rows[0].total),

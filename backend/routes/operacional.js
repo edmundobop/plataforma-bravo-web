@@ -3,6 +3,7 @@ const { body, validationResult } = require('express-validator');
 const { query, transaction } = require('../config/database');
 const { authenticateToken, authorizeRoles } = require('../middleware/auth');
 const { optionalTenant } = require('../middleware/tenant');
+const { getUsuariosUnidadeColumn, columnExists } = require('../utils/schema');
 const PDFDocument = require('pdfkit');
 
 const VALID_ALAS = ['Alfa', 'Bravo', 'Charlie', 'Delta'];
@@ -78,6 +79,14 @@ const extractDateOnly = (value) => {
     throw new Error('Data inválida');
   }
   return parsed.toISOString().slice(0, 10);
+};
+
+const todayDateOnly = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 const rotateSequenceFrom = (startAla) => {
@@ -199,44 +208,205 @@ const applyTenantFilter = (queryText, params, unidadeId, column = 'unidade_id') 
   return `${queryText} AND ${column} = $${params.length}`;
 };
 
-const criarNotificacao = async (client, usuarioId, titulo, mensagem, tipo, modulo, referenciaId = null) => {
-  await client.query(
+const ensureTrocasColumns = async (clientOrQuery = null) => {
+  const runner = clientOrQuery || { query };
+  await runner.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trocas_servico' AND column_name='aceito_substituto_em') THEN
+        ALTER TABLE trocas_servico ADD COLUMN aceito_substituto_em TIMESTAMP;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trocas_servico' AND column_name='observacoes_decisao') THEN
+        ALTER TABLE trocas_servico ADD COLUMN observacoes_decisao TEXT;
+      END IF;
+    END $$;
+  `);
+};
+
+const findEscalaConflicts = async (usuarioIds, datasServico) => {
+  if (!usuarioIds.length || !datasServico.length) {
+    return [];
+  }
+
+  const result = await query(
+    `SELECT eu.usuario_id,
+            eu.data_servico,
+            u.nome,
+            u.nome_guerra,
+            e.nome AS escala_nome
+     FROM escala_usuarios eu
+     LEFT JOIN usuarios u ON u.id = eu.usuario_id
+     LEFT JOIN escalas e ON e.id = eu.escala_id
+     WHERE eu.usuario_id = ANY($1)
+       AND eu.data_servico = ANY($2::date[])
+     ORDER BY eu.data_servico, COALESCE(u.nome_guerra, u.nome, eu.usuario_id::text)`,
+    [usuarioIds, datasServico]
+  );
+
+  return result.rows;
+};
+
+const formatEscalaConflictMessage = (conflicts) => {
+  const preview = conflicts.slice(0, 5).map((conflict) => {
+    const nome = conflict.nome_guerra || conflict.nome || `Usuário ${conflict.usuario_id}`;
+    return `${nome} em ${formatDatePtBR(conflict.data_servico)}`;
+  }).join('; ');
+  const suffix = conflicts.length > 5 ? ` e mais ${conflicts.length - 5} conflito(s)` : '';
+  return `Já existe escala registrada para ${preview}${suffix}. Escolha outra data inicial ou ajuste as escalas existentes.`;
+};
+
+const criarNotificacao = async (client, usuarioId, titulo, mensagem, tipo, modulo, referenciaId = null, io = null) => {
+  const result = await client.query(
     `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING *`,
     [usuarioId, titulo, mensagem, tipo, modulo, referenciaId]
+  );
+  if (io) {
+    io.to(`user_${usuarioId}`).emit('nova_notificacao', result.rows[0]);
+  }
+  return result.rows[0];
+};
+
+const canAnalyzeTroca = (user) => {
+  if (!user) return false;
+  const perfilId = Number(user.perfil_id);
+  const setor = (user.setor || user.setor_nome || '').toString().trim().toLowerCase();
+  return user.perfil_nome === 'Administrador' || (setor !== 'operacional' && perfilId >= 2 && perfilId <= 5);
+};
+
+const canViewAllTrocas = (user) => {
+  const perfilId = Number(user?.perfil_id);
+  return perfilId >= 1 && perfilId <= 4;
+};
+
+const fetchAdministrativeApprovers = async (client, unidadeId = null) => {
+  const params = [OPERACIONAL_SETOR];
+  let unidadeFilter = '';
+  if (unidadeId) {
+    params.push(unidadeId);
+    unidadeFilter = `AND COALESCE(u.unidade_lotacao_id, u.unidade_id) = $${params.length}`;
+  }
+
+  const result = await client.query(
+    `SELECT DISTINCT u.id
+     FROM usuarios u
+     LEFT JOIN perfis p ON u.perfil_id = p.id
+     WHERE u.ativo = true
+       AND (
+         p.nome = 'Administrador'
+         OR (LOWER(COALESCE(u.setor, '')) <> LOWER($1) AND u.perfil_id BETWEEN 2 AND 5)
+       )
+       ${unidadeFilter}`,
+    params
+  );
+
+  return result.rows;
+};
+
+const aceitarTrocaPeloSubstitutoComTransacao = async (client, troca, usuarioId, io = null) => {
+  await client.query(
+    `UPDATE trocas_servico
+     SET status = $1, aceito_substituto_em = CURRENT_TIMESTAMP
+     WHERE id = $2`,
+    ['aguardando_aprovacao', troca.id]
+  );
+
+  await client.query(
+    `INSERT INTO trocas_historico (troca_id, escala_usuario_id, acao, criado_por)
+     VALUES ($1, $2, 'aceito_substituto', $3)`,
+    [troca.id, troca.escala_original_id, usuarioId]
+  );
+
+  const admins = await fetchAdministrativeApprovers(client, troca.unidade_id);
+  for (const admin of admins) {
+    await criarNotificacao(
+      client,
+      admin.id,
+      'Troca aguardando analise',
+      `A troca de servico #${troca.id} foi aceita pelo substituto e aguarda decisao administrativa.`,
+      'info',
+      'operacional',
+      troca.id,
+      io
+    );
+  }
+
+  await criarNotificacao(
+    client,
+    troca.usuario_solicitante_id,
+    'Troca aceita pelo colega',
+    'Sua solicitacao de troca foi aceita pelo substituto e enviada para analise administrativa.',
+    'info',
+    'operacional',
+    troca.id,
+    io
   );
 };
 
-const confirmarTrocaComTransacao = async (client, troca, aprovadorId, compensacao) => {
+const aprovarTrocaComTransacao = async (client, troca, aprovadorId, compensacao, observacoes = null, io = null) => {
   const escalaRow = await client.query(
     'SELECT * FROM escala_usuarios WHERE id = $1',
     [troca.escala_original_id]
   );
 
   if (escalaRow.rows.length === 0) {
-    throw new Error('Escala do solicitante não encontrada');
+    throw new Error('Escala original nao encontrada');
   }
 
-  const targetDate = troca.data_servico_troca || escalaRow.rows[0].data_servico;
+  const targetDate = troca.data_servico_original || escalaRow.rows[0].data_servico;
+  const conflitoSolicitante = await client.query(
+    `SELECT id FROM escala_usuarios
+     WHERE usuario_id = $1 AND data_servico = $2 AND id <> $3
+     LIMIT 1`,
+    [troca.usuario_solicitante_id, targetDate, troca.escala_original_id]
+  );
+  if (conflitoSolicitante.rows.length > 0) {
+    throw new Error('Solicitante ja possui servico nessa data');
+  }
+
   await client.query(
     'UPDATE escala_usuarios SET usuario_id = $1, data_servico = $2, troca_id = $3 WHERE id = $4',
-    [troca.usuario_substituto_id, targetDate, troca.id, troca.escala_original_id]
+    [troca.usuario_solicitante_id, targetDate, troca.id, troca.escala_original_id]
   );
+
+  if (compensacao) {
+    const conflitoPagamento = await client.query(
+      `SELECT id FROM escala_usuarios
+       WHERE usuario_id = $1 AND data_servico = $2 AND id <> $3
+       LIMIT 1`,
+      [troca.usuario_substituto_id, compensacao, troca.escala_original_id]
+    );
+    if (conflitoPagamento.rows.length > 0) {
+      throw new Error('Militar selecionado ja possui servico na data de pagamento');
+    }
+
+    const pagamentoResult = await client.query(
+      `UPDATE escala_usuarios
+       SET usuario_id = $1, troca_id = $2
+       WHERE id = (
+         SELECT id FROM escala_usuarios
+         WHERE usuario_id = $3 AND data_servico = $4 AND id <> $5
+         ORDER BY id
+         LIMIT 1
+       )`,
+      [troca.usuario_substituto_id, troca.id, troca.usuario_solicitante_id, compensacao, troca.escala_original_id]
+    );
+    if (pagamentoResult.rowCount === 0) {
+      throw new Error('Servico de pagamento do solicitante nao encontrado');
+    }
+  }
+
   await client.query(
     `UPDATE trocas_servico
-     SET status = $1, aprovado_por = $2, data_aprovacao = CURRENT_TIMESTAMP, data_servico_compensacao = $3
-     WHERE id = $4`,
-    ['aprovada', aprovadorId, compensacao, troca.id]
+     SET status = $1, aprovado_por = $2, data_aprovacao = CURRENT_TIMESTAMP, data_servico_compensacao = $3, observacoes_decisao = $4
+     WHERE id = $5`,
+    ['aprovada', aprovadorId, compensacao, observacoes, troca.id]
   );
 
-  const admins = await client.query(`
-    SELECT u.id
-    FROM usuarios u
-    JOIN perfis p ON u.perfil_id = p.id
-    WHERE p.nome = 'Administrador'
-  `);
+  const adminsAprovacaoLegado = { rows: [] };
 
-  for (const admin of admins.rows) {
+  for (const admin of adminsAprovacaoLegado.rows) {
     await criarNotificacao(
       client,
       admin.id,
@@ -247,12 +417,15 @@ const confirmarTrocaComTransacao = async (client, troca, aprovadorId, compensaca
       troca.id
     );
   }
+  const detalhe = observacoes ? ` Observacoes: ${observacoes}` : '';
+  await criarNotificacao(client, troca.usuario_solicitante_id, 'Troca aprovada', `Sua solicitacao de troca de servico foi aprovada.${detalhe}`, 'success', 'operacional', troca.id, io);
+  await criarNotificacao(client, troca.usuario_substituto_id, 'Troca aprovada', `A troca de servico foi aprovada.${detalhe}`, 'success', 'operacional', troca.id, io);
 };
 
-const rejeitarTrocaComTransacao = async (client, troca, rejeitadoPor) => {
+const rejeitarTrocaComTransacao = async (client, troca, rejeitadoPor, observacoes = null, io = null) => {
   await client.query(
-    'UPDATE trocas_servico SET status = $1, aprovado_por = $2, data_aprovacao = CURRENT_TIMESTAMP WHERE id = $3',
-    ['rejeitada', rejeitadoPor, troca.id]
+    'UPDATE trocas_servico SET status = $1, aprovado_por = $2, data_aprovacao = CURRENT_TIMESTAMP, observacoes_decisao = $3 WHERE id = $4',
+    ['rejeitada', rejeitadoPor, observacoes, troca.id]
   );
   await client.query(
     'UPDATE escala_usuarios SET troca_id = NULL WHERE id = $1',
@@ -266,7 +439,8 @@ const rejeitarTrocaComTransacao = async (client, troca, rejeitadoPor) => {
     'Sua solicitação de troca de serviço foi rejeitada.',
     'warning',
     'operacional',
-    troca.id
+    troca.id,
+    io
   );
   await criarNotificacao(
     client,
@@ -275,7 +449,8 @@ const rejeitarTrocaComTransacao = async (client, troca, rejeitadoPor) => {
     'Você rejeitou a solicitação de troca de serviço.',
     'warning',
     'operacional',
-    troca.id
+    troca.id,
+    io
   );
 };
 
@@ -419,6 +594,17 @@ router.post('/alas/escalas', authorizeRoles('Administrador'), [
     const rotation = rotateSequenceFrom(alaInicialNormalizada);
     const nomeBase = nome_base?.trim() || 'Escala Operacional';
     const resultados = [];
+    const datasServico = Array.from({ length: Number(quantidade_servicos) }, (_, index) => addDaysUtc(baseDate, index));
+    const participantesGerados = [...new Set(
+      datasServico.flatMap((_, index) => {
+        const alaAtual = rotation[index % rotation.length];
+        return alaMap[alaAtual] || [];
+      })
+    )];
+    const conflicts = await findEscalaConflicts(participantesGerados, datasServico);
+    if (conflicts.length > 0) {
+      return res.status(409).json({ error: formatEscalaConflictMessage(conflicts) });
+    }
 
     await transaction(async (client) => {
       if (alas) {
@@ -427,7 +613,7 @@ router.post('/alas/escalas', authorizeRoles('Administrador'), [
 
       for (let i = 0; i < Number(quantidade_servicos); i++) {
         const alaAtual = rotation[i % rotation.length];
-        const dataServico = addDaysUtc(baseDate, i);
+        const dataServico = datasServico[i];
         const dataFim = addDaysUtc(dataServico, 1);
         const escalaNome = `${nomeBase} - ${alaAtual} - ${dataServico.split('-').reverse().join('/')}`;
 
@@ -458,7 +644,9 @@ router.post('/alas/escalas', authorizeRoles('Administrador'), [
           );
 
           if (conflict.rows.length > 0) {
-            throw new Error(`Usuário ${usuarioId} já possui escala registrada em ${dataServico}`);
+            const error = new Error(`Usuário ${usuarioId} já possui escala registrada em ${formatDatePtBR(dataServico)}`);
+            error.statusCode = 409;
+            throw error;
           }
 
           await client.query(
@@ -484,7 +672,7 @@ router.post('/alas/escalas', authorizeRoles('Administrador'), [
     });
   } catch (error) {
     console.error('Erro ao gerar escalas operacionais:', error);
-    res.status(500).json({ error: error.message || 'Erro interno do servidor' });
+    res.status(error.statusCode || 500).json({ error: error.message || 'Erro interno do servidor' });
   }
 });
 
@@ -581,11 +769,16 @@ router.get('/escalas/:id', async (req, res) => {
     // Buscar usuários da escala
     const usuariosResult = await query(
       `SELECT eu.*, u.nome, u.matricula, u.posto_graduacao,
-              t.id as troca_id, t.status as troca_status, t.usuario_substituto_id,
+              t.id as troca_id, t.status as troca_status,
+              t.usuario_solicitante_id, t.usuario_substituto_id,
+              us.nome as troca_solicitante_nome,
+              usub.nome as troca_substituto_nome,
               t.data_servico_original, t.data_servico_troca, t.data_servico_compensacao
        FROM escala_usuarios eu
        JOIN usuarios u ON eu.usuario_id = u.id
        LEFT JOIN trocas_servico t ON eu.troca_id = t.id
+       LEFT JOIN usuarios us ON t.usuario_solicitante_id = us.id
+       LEFT JOIN usuarios usub ON t.usuario_substituto_id = usub.id
        WHERE eu.escala_id = $1
        ORDER BY eu.data_servico, u.nome`,
       [id]
@@ -621,7 +814,6 @@ router.post('/escalas', authorizeRoles('Administrador', 'Chefe'), [
     if (!unidadeId) {
       return res.status(400).json({ error: 'Selecione uma unidade para registrar a escala' });
     }
-
     const result = await query(
       `INSERT INTO escalas (nome, tipo, data_inicio, data_fim, turno, setor, observacoes, created_by, unidade_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -843,9 +1035,10 @@ router.post('/escalas/:id/usuarios', authorizeRoles('Administrador', 'Chefe'), [
     );
 
     // Criar notificação para o usuário
-    await query(
+    const notificacaoResult = await query(
       `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
       [
         usuario_id,
         'Nova Escala',
@@ -855,6 +1048,7 @@ router.post('/escalas/:id/usuarios', authorizeRoles('Administrador', 'Chefe'), [
         result.rows[0].id
       ]
     );
+    req.io?.to(`user_${usuario_id}`).emit('nova_notificacao', notificacaoResult.rows[0]);
 
     res.status(201).json({
       message: 'Usuário adicionado à escala com sucesso',
@@ -895,10 +1089,16 @@ router.get('/trocas', async (req, res) => {
       params.push(status);
     }
 
-    if (usuario_id) {
+    if (canViewAllTrocas(req.user) && usuario_id) {
       paramCount++;
       queryText += ` AND (t.usuario_solicitante_id = $${paramCount} OR t.usuario_substituto_id = $${paramCount})`;
       params.push(usuario_id);
+    }
+
+    if (!canViewAllTrocas(req.user)) {
+      paramCount++;
+      queryText += ` AND (t.usuario_solicitante_id = $${paramCount} OR t.usuario_substituto_id = $${paramCount})`;
+      params.push(req.user.id);
     }
 
     queryText = applyTenantFilter(queryText, params, unidadeId, 't.unidade_id');
@@ -941,20 +1141,54 @@ router.post('/trocas', [
     return res.status(400).json({ error: 'Selecione uma unidade para registrar a troca' });
   }
 
-  // Verificar se a escala original existe e pertence ao usuário
+  // Verificar se a escala original existe e pertence ao militar que vai folgar
+  if (Number(usuario_substituto_id) === Number(req.user.id)) {
+    return res.status(400).json({ error: 'Nao e permitido solicitar troca de servico consigo mesmo' });
+  }
+
+  const hoje = todayDateOnly();
+  const dataOriginal = extractDateOnly(data_servico_original);
+  const dataTroca = extractDateOnly(data_servico_troca);
+  if (dataOriginal < hoje || dataTroca < hoje) {
+    return res.status(400).json({ error: 'Nao e permitido solicitar troca para servico em data retroativa' });
+  }
+
   const escalaResult = await query(
-    `SELECT eu.id, e.unidade_id
+    `SELECT eu.id, eu.data_servico, e.unidade_id
      FROM escala_usuarios eu
      JOIN escalas e ON eu.escala_id = e.id
-     LEFT JOIN trocas_servico t ON eu.troca_id = t.id AND t.status = 'pendente'
+     LEFT JOIN trocas_servico t ON eu.troca_id = t.id AND t.status IN ('pendente', 'aguardando_aprovacao')
      WHERE eu.id = $1 AND eu.usuario_id = $2 AND t.id IS NULL${unidadeId ? ' AND e.unidade_id = $3' : ''}`,
-    unidadeId ? [escala_original_id, req.user.id, unidadeId] : [escala_original_id, req.user.id]
+    unidadeId ? [escala_original_id, usuario_substituto_id, unidadeId] : [escala_original_id, usuario_substituto_id]
   );
 
   if (escalaResult.rows.length === 0) {
-    return res.status(404).json({ error: 'Escala não encontrada ou não pertence ao usuário' });
+    return res.status(404).json({ error: 'Escala não encontrada ou não pertence ao militar selecionado' });
+  }
+  const dataEscalaOriginal = extractDateOnly(escalaResult.rows[0].data_servico);
+  if (dataEscalaOriginal !== dataOriginal) {
+    return res.status(400).json({ error: 'Data do servico selecionado nao confere com a escala' });
   }
  
+    const participantesResult = await query(
+      `SELECT id, setor, ativo, ala
+       FROM usuarios
+       WHERE id = ANY($1::int[])`,
+      [[req.user.id, usuario_substituto_id]]
+    );
+    const participantes = participantesResult.rows;
+    if (
+      participantes.length !== 2 ||
+      participantes.some((usuario) => usuario.ativo === false || (usuario.setor || '').toLowerCase() !== 'operacional')
+    ) {
+      return res.status(400).json({ error: 'Trocas de servico so podem envolver usuarios ativos do setor Operacional' });
+    }
+    const usuarioSolicitante = participantes.find((usuario) => Number(usuario.id) === Number(req.user.id));
+    const usuarioSelecionado = participantes.find((usuario) => Number(usuario.id) === Number(usuario_substituto_id));
+    if (usuarioSolicitante?.ala && usuarioSelecionado?.ala && usuarioSolicitante.ala === usuarioSelecionado.ala) {
+      return res.status(400).json({ error: 'Nao e permitido solicitar troca com militar da mesma ala' });
+    }
+
     const result = await query(
       `INSERT INTO trocas_servico 
        (usuario_solicitante_id, usuario_substituto_id, escala_original_id, data_servico_original, data_servico_troca, motivo, unidade_id)
@@ -980,18 +1214,20 @@ router.post('/trocas', [
     );
 
     // Criar notificação para o substituto
-    await query(
+    const notificacaoTrocaResult = await query(
       `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, modulo, referencia_id)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
       [
         usuario_substituto_id,
         'Solicitação de Troca',
-        `${req.user.nome} solicitou uma troca de serviço com você. Motivo: ${motivo}`,
+        `${req.user.nome} solicitou trabalhar no seu serviço. Motivo: ${motivo}`,
         'info',
         'operacional',
         result.rows[0].id
       ]
     );
+    req.io?.to(`user_${usuario_substituto_id}`).emit('nova_notificacao', notificacaoTrocaResult.rows[0]);
 
     res.status(201).json({
       message: 'Solicitação de troca enviada com sucesso',
@@ -1011,6 +1247,7 @@ router.post('/trocas/:id/confirmar', [
     const { id } = req.params;
     const { data_servico_compensacao } = req.body;
 
+    await ensureTrocasColumns();
     const unidadeId = determineUnidadeId(req);
     const trocaResult = await query('SELECT * FROM trocas_servico WHERE id = $1', [id]);
     if (trocaResult.rows.length === 0) {
@@ -1024,7 +1261,7 @@ router.post('/trocas/:id/confirmar', [
     if (troca.status !== 'pendente') {
       return res.status(400).json({ error: 'Troca já foi processada' });
     }
-    if (req.user.id !== troca.usuario_substituto_id && req.user.perfil_nome !== 'Administrador') {
+    if (req.user.id !== troca.usuario_substituto_id) {
       return res.status(403).json({ error: 'Você não pode confirmar esta troca' });
     }
 
@@ -1034,7 +1271,7 @@ router.post('/trocas/:id/confirmar', [
 
     try {
       await transaction(async (client) => {
-        await confirmarTrocaComTransacao(client, troca, req.user.id, compensacao);
+        await aceitarTrocaPeloSubstitutoComTransacao(client, troca, req.user.id, req.io);
       });
     } catch (error) {
       if ([
@@ -1047,7 +1284,7 @@ router.post('/trocas/:id/confirmar', [
       throw error;
     }
 
-    res.json({ message: 'Troca confirmada com sucesso' });
+    res.json({ message: 'Troca aceita e enviada para análise administrativa' });
   } catch (error) {
     console.error('Erro ao confirmar troca:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
@@ -1063,6 +1300,7 @@ router.put('/trocas/:id/responder', [
     const { id } = req.params;
     const { resposta, data_servico_compensacao } = req.body;
 
+    await ensureTrocasColumns();
     const unidadeId = determineUnidadeId(req);
     const trocaResult = await query('SELECT * FROM trocas_servico WHERE id = $1', [id]);
     if (trocaResult.rows.length === 0) {
@@ -1086,14 +1324,14 @@ router.put('/trocas/:id/responder', [
         troca.data_servico_original;
 
       await transaction(async (client) => {
-        await confirmarTrocaComTransacao(client, troca, req.user.id, compensacao);
+        await aceitarTrocaPeloSubstitutoComTransacao(client, troca, req.user.id, req.io);
       });
 
-      return res.json({ message: 'Troca confirmada com sucesso' });
+      return res.json({ message: 'Troca aceita e enviada para análise administrativa' });
     }
 
     await transaction(async (client) => {
-      await rejeitarTrocaComTransacao(client, troca, req.user.id);
+      await rejeitarTrocaComTransacao(client, troca, req.user.id, null, req.io);
     });
 
     res.json({ message: 'Troca rejeitada com sucesso' });
@@ -1107,8 +1345,9 @@ router.put('/trocas/:id/responder', [
 });
 
 // Aprovar/Rejeitar troca de serviço
-router.put('/trocas/:id/status', authorizeRoles('Administrador', 'Chefe'), [
-  body('status').isIn(['aprovada', 'rejeitada']).withMessage('Status deve ser aprovada ou rejeitada')
+router.put('/trocas/:id/status', [
+  body('status').isIn(['aprovada', 'rejeitada']).withMessage('Status deve ser aprovada ou rejeitada'),
+  body('observacoes').optional({ nullable: true, checkFalsy: true }).isString().trim().isLength({ max: 2000 }).withMessage('Observações devem ter até 2000 caracteres')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -1117,12 +1356,16 @@ router.put('/trocas/:id/status', authorizeRoles('Administrador', 'Chefe'), [
     }
 
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, observacoes = '' } = req.body;
+    if (!canAnalyzeTroca(req.user)) {
+      return res.status(403).json({ error: 'Apenas usuarios administrativos autorizados podem analisar trocas' });
+    }
+    await ensureTrocasColumns();
     const unidadeId = determineUnidadeId(req);
     await transaction(async (client) => {
       // Buscar dados da troca
       let selectQuery = 'SELECT * FROM trocas_servico WHERE id = $1 AND status = $2';
-      const selectParams = [id, 'pendente'];
+      const selectParams = [id, 'aguardando_aprovacao'];
       if (unidadeId) {
         selectQuery += ' AND unidade_id = $3';
         selectParams.push(unidadeId);
@@ -1134,6 +1377,13 @@ router.put('/trocas/:id/status', authorizeRoles('Administrador', 'Chefe'), [
       }
 
       const troca = trocaResult.rows[0];
+      if (status === 'aprovada') {
+        const compensacao = troca.data_servico_compensacao || null;
+        await aprovarTrocaComTransacao(client, troca, req.user.id, compensacao, observacoes, req.io);
+      } else {
+        await rejeitarTrocaComTransacao(client, troca, req.user.id, observacoes, req.io);
+      }
+      return;
 
       // Atualizar status da troca
       await client.query(
@@ -1179,7 +1429,14 @@ router.put('/trocas/:id/status', authorizeRoles('Administrador', 'Chefe'), [
 
     res.json({ message: `Troca ${status} com sucesso` });
   } catch (error) {
-    if (error.message.includes('não encontrada') || error.message.includes('já processada')) {
+    if (
+      error.message.includes('não encontrada') ||
+      error.message.includes('já processada') ||
+      error.message.includes('nao encontrada') ||
+      error.message.includes('ja possui servico') ||
+      error.message.includes('data de pagamento') ||
+      error.message.includes('pagamento do solicitante')
+    ) {
       return res.status(400).json({ error: error.message });
     }
     console.error('Erro ao processar troca:', error);

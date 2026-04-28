@@ -162,7 +162,7 @@ const Layout = () => {
       text: 'Operacional',
       icon: <ScheduleIcon />,
       path: '/operacional',
-      roles: ['Administrador', 'Chefe', 'Operador'],
+      roles: ['Administrador', 'Comandante', 'Chefe', 'Auxiliares', 'Operador'],
     },
     {
       text: 'Gestão de Pessoas',

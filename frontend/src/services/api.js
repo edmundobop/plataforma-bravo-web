@@ -241,6 +241,7 @@ export const operacionalService = {
   solicitarTroca: (trocaData) => api.post('/operacional/trocas', trocaData),
   responderTroca: (id, payload) => api.put(`/operacional/trocas/${id}/responder`, payload),
   confirmarTroca: (id, payload) => api.post(`/operacional/trocas/${id}/confirmar`, payload),
+  analisarTroca: (id, payload) => api.put(`/operacional/trocas/${id}/status`, payload),
   
   // Serviços extra
   getServicosExtra: (params) => api.get('/operacional/extras', { params }),

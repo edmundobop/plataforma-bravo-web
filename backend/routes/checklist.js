@@ -642,10 +642,10 @@ router.get('/viaturas', async (req, res) => {
     let paramCount = 0;
 
     // Filtro por unidade se disponível
-    // IMPORTANTE: Usar c.unidade_id (da tabela checklist_viaturas) para filtro tenant
+    // Usa c.unidade_id e faz fallback para a unidade da viatura em registros antigos.
     if (req.unidade?.id) {
       paramCount++;
-      queryText += ` AND c.unidade_id = $${paramCount}`;
+      queryText += ` AND COALESCE(c.unidade_id, v.unidade_id) = $${paramCount}`;
       params.push(req.unidade.id);
       console.log('🏢 Aplicando filtro de unidade:', req.unidade.id);
     }
@@ -714,9 +714,9 @@ router.get('/viaturas', async (req, res) => {
     let countParams = [];
     let countParamIndex = 1;
 
-    // IMPORTANTE: Usar c.unidade_id (tenant)
+    // Usa c.unidade_id e faz fallback para a unidade da viatura em registros antigos.
     if (req.unidade && req.unidade.id) {
-      countQuery += ` AND c.unidade_id = $${countParamIndex}`;
+      countQuery += ` AND COALESCE(c.unidade_id, v.unidade_id) = $${countParamIndex}`;
       countParams.push(req.unidade.id);
       countParamIndex++;
     }

@@ -1100,7 +1100,7 @@ const Notificacoes = () => {
                   frota: '/frota',
                   almoxarifado: '/almoxarifado',
                   emprestimos: '/emprestimos',
-                  operacional: '/operacional',
+                  operacional: '/operacional?tab=trocas',
                   dashboard: '/dashboard',
                 };
                 const moduloRaw = (selectedNotification.modulo || '').toLowerCase();

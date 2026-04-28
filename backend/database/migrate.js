@@ -417,6 +417,12 @@ const createTables = async () => {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trocas_servico' AND column_name='unidade_id') THEN
           ALTER TABLE trocas_servico ADD COLUMN unidade_id INTEGER REFERENCES unidades(id);
         END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trocas_servico' AND column_name='aceito_substituto_em') THEN
+          ALTER TABLE trocas_servico ADD COLUMN aceito_substituto_em TIMESTAMP;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trocas_servico' AND column_name='observacoes_decisao') THEN
+          ALTER TABLE trocas_servico ADD COLUMN observacoes_decisao TEXT;
+        END IF;
       END $$;
     `);
 

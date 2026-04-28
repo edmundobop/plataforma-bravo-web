@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Box,
   Grid,
@@ -68,6 +69,7 @@ import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
   DriveEta as DriveEtaIcon,
+  PictureAsPdf as PdfIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
@@ -113,6 +115,7 @@ const hasDriverLicense = (categoria) => {
 
 const Operacional = () => {
   const theme = useTheme();
+  const location = useLocation();
   const { user } = useAuth();
   const { markAsRead, markAllAsRead } = useNotifications();
   const { currentUnit } = useTenant();
@@ -151,6 +154,12 @@ const Operacional = () => {
     current_page: 1,
   });
   const [trocaActionLoading, setTrocaActionLoading] = useState(null);
+  const [decisionDialog, setDecisionDialog] = useState({
+    open: false,
+    troca: null,
+    status: 'aprovada',
+    observacoes: '',
+  });
   
   // Estados para serviços extras
   const [extras, setExtras] = useState([]);
@@ -194,7 +203,6 @@ const Operacional = () => {
   const [escalaViewMode, setEscalaViewMode] = useState('calendar');
   const [selectedAlas, setSelectedAlas] = useState([...VALID_ALAS]);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
-  const [escalaParticipantsCache, setEscalaParticipantsCache] = useState({});
   const [selectedColleagueId, setSelectedColleagueId] = useState(null);
   const [colleagueShifts, setColleagueShifts] = useState([]);
   const [pagarAgora, setPagarAgora] = useState(false);
@@ -204,6 +212,11 @@ const Operacional = () => {
   const [dialogType, setDialogType] = useState(''); // 'escala', 'troca', 'extra'
   const [selectedItem, setSelectedItem] = useState(null);
   const [anchorEl, setAnchorEl] = useState(null);
+  const [calendarActionMenu, setCalendarActionMenu] = useState({
+    anchorEl: null,
+    dateKey: '',
+    escalas: [],
+  });
   
   // Estados para formulários
   const [formData, setFormData] = useState({
@@ -213,6 +226,20 @@ const Operacional = () => {
   useEffect(() => {
     loadData();
   }, [activeTab, currentUnit?.id]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tab = params.get('tab');
+    const tabMap = {
+      alas: 0,
+      escalas: 1,
+      trocas: 2,
+      extras: 3,
+    };
+    if (tab && Object.prototype.hasOwnProperty.call(tabMap, tab)) {
+      setActiveTab(tabMap[tab]);
+    }
+  }, [location.search]);
 
   const loadData = () => {
     if (!currentUnit?.id) {
@@ -237,6 +264,23 @@ const Operacional = () => {
     }
   };
 
+  const buildEscalasRequestParams = (filters = escalasFilters) => {
+    if (escalaViewMode !== 'calendar') {
+      return filters;
+    }
+
+    const start = startOfWeek(startOfMonth(calendarMonth), { weekStartsOn: 0 });
+    const end = endOfWeek(endOfMonth(calendarMonth), { weekStartsOn: 0 });
+
+    return {
+      ...filters,
+      data_inicio: filters.data_inicio || format(start, 'yyyy-MM-dd'),
+      data_fim: filters.data_fim || format(end, 'yyyy-MM-dd'),
+      page: 1,
+      limit: Math.max(Number(filters.limit) || 0, 200),
+    };
+  };
+
   const loadEscalas = async () => {
     if (!currentUnit?.id) {
       setError('Selecione uma unidade para carregar as escalas');
@@ -244,7 +288,7 @@ const Operacional = () => {
     }
     try {
       setEscalasLoading(true);
-      const response = await operacionalService.getEscalas(escalasFilters);
+      const response = await operacionalService.getEscalas(buildEscalasRequestParams());
       const data = response.data || {};
       const lista = Array.isArray(data) ? data : (data.escalas || []);
       setEscalasPagination(data.pagination || {});
@@ -252,15 +296,8 @@ const Operacional = () => {
       const enriched = await Promise.all(
         lista.map(async (escala) => {
           try {
-            let participantes = escalaParticipantsCache[escala.id];
-            if (!participantes) {
-              const detalhes = await operacionalService.getEscalaById(escala.id);
-              participantes = detalhes?.data?.usuarios || [];
-              setEscalaParticipantsCache((prev) => ({
-                ...prev,
-                [escala.id]: participantes,
-              }));
-            }
+            const detalhes = await operacionalService.getEscalaById(escala.id);
+            const participantes = detalhes?.data?.usuarios || [];
             return { ...escala, participantes };
           } catch (error) {
             console.warn('Não foi possível obter participantes da escala', escala.id, error);
@@ -277,6 +314,13 @@ const Operacional = () => {
       setEscalasLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (activeTab === 1 && currentUnit?.id && escalaViewMode === 'calendar') {
+      loadEscalas();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calendarMonth, escalaViewMode]);
 
   const handleExportDayPdf = async (dateKey) => {
     if (!dateKey) return;
@@ -503,11 +547,11 @@ const Operacional = () => {
       setTrocaActionLoading(troca.id);
       setError('');
       if (action === 'accept') {
-        await operacionalService.confirmarTroca(troca.id, {});
+        await operacionalService.responderTroca(troca.id, { resposta: 'aceitar' });
       } else {
-        await operacionalService.rejeitarTroca(troca.id);
+        await operacionalService.responderTroca(troca.id, { resposta: 'rejeitar' });
       }
-      setSuccessMessage(action === 'accept' ? 'Troca confirmada com sucesso.' : 'Troca rejeitada com sucesso.');
+      setSuccessMessage(action === 'accept' ? 'Troca aceita. Agora aguarda análise administrativa.' : 'Troca rejeitada com sucesso.');
       loadTrocas();
     } catch (err) {
       console.error('Erro ao responder troca:', err);
@@ -517,6 +561,52 @@ const Operacional = () => {
     }
   };
 
+  const openDecisionDialog = (troca, status) => {
+    setDecisionDialog({ open: true, troca, status, observacoes: '' });
+  };
+
+  const closeDecisionDialog = () => {
+    setDecisionDialog({ open: false, troca: null, status: 'aprovada', observacoes: '' });
+  };
+
+  const handleAdminTrocaDecision = async () => {
+    if (!decisionDialog.troca) return;
+    try {
+      setTrocaActionLoading(decisionDialog.troca.id);
+      setError('');
+      await operacionalService.analisarTroca(decisionDialog.troca.id, {
+        status: decisionDialog.status,
+        observacoes: decisionDialog.observacoes,
+      });
+      setSuccessMessage(decisionDialog.status === 'aprovada' ? 'Troca aprovada com sucesso.' : 'Troca rejeitada com sucesso.');
+      closeDecisionDialog();
+      loadTrocas();
+    } catch (err) {
+      console.error('Erro ao analisar troca:', err);
+      setError(err.response?.data?.error || 'Erro ao analisar a troca');
+    } finally {
+      setTrocaActionLoading(null);
+    }
+  };
+
+  const handleOpenCalendarActionMenu = (event, dateKey, dayEscalas) => {
+    setCalendarActionMenu({
+      anchorEl: event.currentTarget,
+      dateKey,
+      escalas: dayEscalas || [],
+    });
+  };
+
+  const handleCloseCalendarActionMenu = () => {
+    setCalendarActionMenu({ anchorEl: null, dateKey: '', escalas: [] });
+  };
+
+  const handleCalendarPdfAction = async () => {
+    const dateKey = calendarActionMenu.dateKey;
+    handleCloseCalendarActionMenu();
+    await handleExportDayPdf(dateKey);
+  };
+
   const getStatusColor = (status) => {
     switch (status?.toLowerCase()) {
       case 'ativa':
@@ -524,6 +614,7 @@ const Operacional = () => {
       case 'aprovada':
         return 'success';
       case 'pendente':
+      case 'aguardando_aprovacao':
         return 'warning';
       case 'rejeitado':
       case 'rejeitada':
@@ -544,9 +635,18 @@ const Operacional = () => {
 
   const formatDate = (dateString) => {
     if (!dateString) return '-';
+    const dateOnly = String(dateString).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (dateOnly) {
+      const [, year, month, day] = dateOnly;
+      return `${day}/${month}/${year}`;
+    }
     const date = new Date(dateString);
     return isNaN(date.getTime()) ? '-' : date.toLocaleDateString('pt-BR');
   };
+
+  const getTodayDateKey = () => format(new Date(), 'yyyy-MM-dd');
+
+  const isRetroactiveDate = (dateKey) => Boolean(dateKey) && dateKey < getTodayDateKey();
 
   const formatDateTime = (dateString) => {
     if (!dateString) return '-';
@@ -554,7 +654,188 @@ const Operacional = () => {
     return isNaN(date.getTime()) ? '-' : date.toLocaleString('pt-BR');
   };
 
+  const getTrocaTimelineSteps = (troca) => {
+    const status = troca.status?.toLowerCase();
+    const foiAceitaPeloColega = Boolean(troca.aceito_substituto_em) || ['aguardando_aprovacao', 'aprovada'].includes(status);
+    const rejeitada = status === 'rejeitada';
+
+    const steps = [
+      { key: 'solicitada', label: 'Solicitada', state: 'completed' },
+      { key: 'colega', label: 'Aceita pelo colega', state: 'future' },
+      { key: 'analise', label: 'Análise administrativa', state: 'future' },
+      { key: 'decisao', label: 'Decisão', state: 'future' },
+    ];
+
+    if (status === 'pendente') {
+      steps[1].state = 'current';
+      return steps;
+    }
+
+    if (status === 'aguardando_aprovacao') {
+      steps[1].state = 'completed';
+      steps[2].state = 'current';
+      return steps;
+    }
+
+    if (status === 'aprovada') {
+      steps[1].state = 'completed';
+      steps[2].state = 'completed';
+      steps[3] = { ...steps[3], label: 'Aprovada', state: 'completed' };
+      return steps;
+    }
+
+    if (rejeitada && foiAceitaPeloColega) {
+      steps[1].state = 'completed';
+      steps[2].state = 'completed';
+      steps[3] = { ...steps[3], label: 'Rejeitada', state: 'rejected' };
+      return steps;
+    }
+
+    if (rejeitada) {
+      steps[1] = { ...steps[1], label: 'Recusada pelo colega', state: 'rejected' };
+      return steps;
+    }
+
+    steps[0].state = 'current';
+    return steps;
+  };
+
+  const getTimelineStepStyle = (state) => {
+    switch (state) {
+      case 'completed':
+        return {
+          color: theme.palette.success.main,
+          bgcolor: theme.palette.success.light,
+          borderColor: theme.palette.success.main,
+          icon: <CheckIcon fontSize="inherit" />,
+        };
+      case 'current':
+        return {
+          color: theme.palette.warning.dark,
+          bgcolor: theme.palette.warning.light,
+          borderColor: theme.palette.warning.main,
+          icon: <TimeIcon fontSize="inherit" />,
+        };
+      case 'rejected':
+        return {
+          color: theme.palette.error.main,
+          bgcolor: theme.palette.error.light,
+          borderColor: theme.palette.error.main,
+          icon: <CloseIcon fontSize="inherit" />,
+        };
+      default:
+        return {
+          color: theme.palette.text.secondary,
+          bgcolor: theme.palette.action.hover,
+          borderColor: theme.palette.divider,
+          icon: <TimeIcon fontSize="inherit" />,
+        };
+    }
+  };
+
+  const renderTrocaTimeline = (troca) => {
+    const steps = getTrocaTimelineSteps(troca);
+    return (
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', sm: 'repeat(4, minmax(0, 1fr))' },
+          gap: 1,
+          mt: 0.5,
+        }}
+      >
+        {steps.map((step) => {
+          const stepStyle = getTimelineStepStyle(step.state);
+          return (
+            <Box
+              key={step.key}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.75,
+                p: 1,
+                border: '1px solid',
+                borderColor: stepStyle.borderColor,
+                borderRadius: 1,
+                bgcolor: stepStyle.bgcolor,
+                color: stepStyle.color,
+                minHeight: 40,
+              }}
+            >
+              <Box
+                sx={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: '50%',
+                  border: '1px solid',
+                  borderColor: stepStyle.borderColor,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  bgcolor: theme.palette.background.paper,
+                  flex: '0 0 auto',
+                  fontSize: 14,
+                }}
+              >
+                {stepStyle.icon}
+              </Box>
+              <Typography variant="caption" fontWeight={step.state === 'current' ? 700 : 600}>
+                {step.label}
+              </Typography>
+            </Box>
+          );
+        })}
+      </Box>
+    );
+  };
+
   const isAdmin = user?.perfil_nome === 'Administrador';
+  const canAnalyzeTrocas = isAdmin || (
+    String(user?.setor || user?.setor_nome || '').toLowerCase() !== 'operacional' &&
+    Number(user?.perfil_id) >= 2 &&
+    Number(user?.perfil_id) <= 5
+  );
+
+  const getUsuarioAla = (usuarioId) => {
+    const usuario = usuariosMap[usuarioId];
+    if (usuario?.ala) return usuario.ala;
+    return VALID_ALAS.find((ala) => (
+      (alaBoard[ala] || []).some((id) => Number(id) === Number(usuarioId))
+    )) || null;
+  };
+
+  const getCurrentUserAla = () => user?.ala || getUsuarioAla(user?.id);
+
+  const isEligibleSwapTarget = (participante, escala = null) => {
+    if (!participante || Number(participante.usuario_id) === Number(user?.id)) return false;
+    const userAla = getCurrentUserAla();
+    const targetAla = participante.ala || getUsuarioAla(participante.usuario_id) || escala?.ala;
+    if (userAla && targetAla && userAla === targetAla) return false;
+    return true;
+  };
+
+  const getEligibleSwapEntries = (escalas = []) => (
+    escalas.flatMap((escala) => (
+      (escala.participantes || [])
+        .filter((participante) => isEligibleSwapTarget(participante, escala))
+        .map((participante) => ({ escala, participante }))
+    ))
+  );
+
+  const canRequestSwapFromCalendarMenu = () => (
+    !isRetroactiveDate(calendarActionMenu.dateKey) &&
+    getEligibleSwapEntries(calendarActionMenu.escalas).length > 0
+  );
+
+  const getCalendarSwapActionLabel = () => {
+    if (isRetroactiveDate(calendarActionMenu.dateKey)) {
+      return 'Solicitar troca (data retroativa bloqueada)';
+    }
+    if (calendarActionMenu.escalas.length > 0 && getEligibleSwapEntries(calendarActionMenu.escalas).length === 0) {
+      return 'Solicitar troca (mesma ala bloqueada)';
+    }
+    return 'Solicitar troca';
+  };
 
   const getTrocaBg = (status) => {
     switch (status?.toLowerCase()) {
@@ -689,68 +970,85 @@ const Operacional = () => {
     setAlasForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  const getShiftsForUser = (userId) => {
-    const shifts = [];
-    decorateEscalas.forEach((escala) => {
-      const participantes = escala.participantes || [];
-      participantes.forEach((participante) => {
-        if (participante.usuario_id !== userId) return;
-        const data = getDateKey(participante.data_servico || escala.data_inicio) || escala.dataKey;
-        if (!data) return;
-        shifts.push({
-          escala_usuario_id: participante.id,
-          escala_id: escala.id,
-          data_servico: data,
-          label: `${format(parseISO(data), 'dd/MM/yyyy', { locale: ptBR })} · Ala ${escala.ala}`,
-        });
-      });
-    });
-    return shifts;
-  };
-
   const handleColleagueChange = (participantId) => {
-    const entry = selectedItem?.escala?.participantes?.find((p) => p.id === participantId);
+    const entry = selectedItem?.escala?.participantes?.find((p) => Number(p.id) === Number(participantId));
     if (!entry) return;
-    const dataSubstituto = getDateKey(entry.data_servico || selectedItem.escala.data_inicio) || '';
-    setColleagueShifts(getShiftsForUser(entry.usuario_id));
+    if (Number(entry.usuario_id) === Number(user?.id)) {
+      setError('Você não pode solicitar troca consigo mesmo.');
+      return;
+    }
+    if (!isEligibleSwapTarget(entry, selectedItem?.escala)) {
+      setError('Não é permitido solicitar troca com militar da mesma ala.');
+      return;
+    }
+    const dataSelecionada = getDateKey(entry.data_servico || selectedItem.escala.data_inicio) || '';
     setSelectedColleagueId(participantId);
     setFormData((prev) => ({
       ...prev,
       substituto_nome: entry.nome,
       substituto_id: entry.usuario_id,
-      data_servico_troca: dataSubstituto,
+      escala_original_id: entry.id,
+      data_servico_original: dataSelecionada,
+      data_servico_troca: dataSelecionada,
     }));
   };
+
+  const sortShiftsByDate = (shifts) => (
+    [...(shifts || [])].sort((a, b) => String(a.data_servico).localeCompare(String(b.data_servico)))
+  );
 
   const handleOpenSwapDialog = (participante, escala) => {
     if (!participante || !escala) return;
     setError('');
-    const shifts = userShifts;
-    if (shifts.length === 0) {
-      setError('Você não possui turnos cadastrados para solicitar uma troca.');
+    const dataSelecionada = getDateKey(participante.data_servico || escala.data_inicio) || escala.dataKey || '';
+    if (isRetroactiveDate(dataSelecionada)) {
+      setError('Não é possível solicitar troca para uma data retroativa. Selecione uma escala de hoje ou futura. Apenas o pagamento pode ser retroativo.');
       return;
     }
-    const defaultShift = shifts[0];
-    const dataSubstituto = getDateKey(participante.data_servico || escala.data_inicio) || '';
-    const dataColleague = getDateKey(escala.data_inicio) || '';
+    if (Number(participante.usuario_id) === Number(user?.id)) {
+      setError('Você não pode solicitar troca consigo mesmo.');
+      return;
+    }
+    if (!isEligibleSwapTarget(participante, escala)) {
+      setError('Não é permitido solicitar troca com militar da mesma ala.');
+      return;
+    }
     setDialogType('swap');
     setSelectedItem({ participante, escala });
-    setColleagueShifts(getShiftsForUser(participante.usuario_id));
+    setColleagueShifts(sortShiftsByDate(userShifts));
     setSelectedColleagueId(participante.id);
     setFormData({
       solicitante_nome: user?.nome || '',
       solicitante_id: user?.id,
-      escala_original_id: defaultShift.escala_usuario_id,
+      escala_original_id: participante.id,
       substituto_nome: participante.nome,
       substituto_id: participante.usuario_id,
-      data_servico_original: defaultShift.data_servico,
-      data_servico_troca: dataSubstituto,
-      data_servico_substituto: dataColleague,
+      data_servico_original: dataSelecionada,
+      data_servico_troca: dataSelecionada,
+      data_servico_substituto: dataSelecionada,
       data_servico_compensacao: '',
       observacoes: ''
     });
     setPagarAgora(false);
     setDialogOpen(true);
+  };
+
+  const handleOpenSwapFromCalendarMenu = () => {
+    if (isRetroactiveDate(calendarActionMenu.dateKey)) {
+      setError('Não é possível solicitar troca para uma data retroativa. Selecione uma escala de hoje ou futura. Apenas o pagamento pode ser retroativo.');
+      handleCloseCalendarActionMenu();
+      return;
+    }
+
+    const [entry] = getEligibleSwapEntries(calendarActionMenu.escalas);
+    if (!entry) {
+      setError('Não há militares de outra ala disponíveis nesse dia para solicitar uma troca.');
+      handleCloseCalendarActionMenu();
+      return;
+    }
+
+    handleCloseCalendarActionMenu();
+    handleOpenSwapDialog(entry.participante, entry.escala);
   };
 
   const parseDateValue = (value) => {
@@ -806,10 +1104,38 @@ const Operacional = () => {
     return VALID_ALAS[0];
   };
 
-  const isSwappedParticipant = (participante) => (
-    participante.troca_status === 'aprovada' &&
-    participante.usuario_id === participante.usuario_substituto_id
+  const isApprovedTrocaParticipant = (participante) => participante.troca_status === 'aprovada';
+
+  const isMainSwapParticipant = (participante) => (
+    isApprovedTrocaParticipant(participante) &&
+    Number(participante.usuario_id) === Number(participante.usuario_solicitante_id) &&
+    getDateKey(participante.data_servico) === getDateKey(participante.data_servico_original)
   );
+
+  const isPaymentSwapParticipant = (participante) => (
+    isApprovedTrocaParticipant(participante) &&
+    Boolean(participante.data_servico_compensacao) &&
+    Number(participante.usuario_id) === Number(participante.usuario_substituto_id) &&
+    getDateKey(participante.data_servico) === getDateKey(participante.data_servico_compensacao)
+  );
+
+  const isSwappedParticipant = (participante) => (
+    isMainSwapParticipant(participante) || isPaymentSwapParticipant(participante)
+  );
+
+  const getSwapParticipantLabel = (participante) => {
+    if (isMainSwapParticipant(participante)) {
+      const worker = participante.troca_solicitante_nome || participante.nome;
+      const original = participante.troca_substituto_nome;
+      return original ? `${worker} trabalhando para ${original}` : participante.nome;
+    }
+    if (isPaymentSwapParticipant(participante)) {
+      const worker = participante.troca_substituto_nome || participante.nome;
+      const original = participante.troca_solicitante_nome;
+      return original ? `Pagamento: ${worker} trabalhando para ${original}` : participante.nome;
+    }
+    return participante.nome;
+  };
 
   const handleToggleViewMode = (event, newValue) => {
     if (newValue) {
@@ -939,7 +1265,7 @@ const Operacional = () => {
                 return (
                   <Grid item xs={1} key={dateKey}>
                     <Paper
-                      onClick={() => handleExportDayPdf(dateKey)}
+                      onClick={(event) => handleOpenCalendarActionMenu(event, dateKey, dayEscalas)}
                       sx={{
                         minHeight: 140,
                         p: 1,
@@ -996,7 +1322,7 @@ const Operacional = () => {
                                 {isSwappedParticipant(participante) ? (
                                   <Box component="span" display="inline-flex" alignItems="center" gap={0.25}>
                                     <span aria-hidden="true">🔁</span>
-                                    {participante.nome}
+                                    {getSwapParticipantLabel(participante)}
                                   </Box>
                                 ) : (
                                   participante.nome
@@ -1127,6 +1453,10 @@ const Operacional = () => {
                           variant="outlined"
                           size="small"
                           onClick={() => handleOpenSwapDialog(participante, escala)}
+                          disabled={
+                            isRetroactiveDate(escala.dataKey) ||
+                            !isEligibleSwapTarget(participante, escala)
+                          }
                           sx={{
                             textTransform: 'none',
                             borderColor: style.border,
@@ -1136,7 +1466,7 @@ const Operacional = () => {
                           {isSwappedParticipant(participante) ? (
                             <Box display="inline-flex" alignItems="center" gap={0.25}>
                               <span aria-hidden="true">🔁</span>
-                              {participante.nome}
+                              {getSwapParticipantLabel(participante)}
                             </Box>
                           ) : (
                             participante.nome
@@ -1265,6 +1595,7 @@ const Operacional = () => {
                 >
                   <MenuItem value="">Todos</MenuItem>
                   <MenuItem value="pendente">Pendente</MenuItem>
+                  <MenuItem value="aguardando_aprovacao">Aguardando aprovação</MenuItem>
                   <MenuItem value="aprovada">Aprovada</MenuItem>
                   <MenuItem value="rejeitada">Rejeitada</MenuItem>
                 </Select>
@@ -1284,82 +1615,162 @@ const Operacional = () => {
         </CardContent>
       </Card>
 
-      <Paper>
-        <List>
-          {trocasLoading ? (
-            <ListItem>
-              <Box display="flex" justifyContent="center" width="100%">
-                <CircularProgress />
-              </Box>
-            </ListItem>
-          ) : trocas.length === 0 ? (
-            <ListItem>
-              <ListItemText
-                primary="Nenhuma troca de serviço encontrada"
-                sx={{ textAlign: 'center' }}
-              />
-            </ListItem>
-          ) : (
-            trocas.map((troca, index) => {
+      {trocasLoading ? (
+        <Paper sx={{ p: 4, display: 'flex', justifyContent: 'center' }}>
+          <CircularProgress />
+        </Paper>
+      ) : trocas.length === 0 ? (
+        <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <Typography variant="subtitle1" color="textSecondary">
+            Nenhuma troca de serviço encontrada
+          </Typography>
+        </Paper>
+      ) : (
+        <Stack spacing={2}>
+          {trocas.map((troca) => {
               const statusLabel = formatTrocaStatusLabel(troca.status);
               const isPending = troca.status?.toLowerCase() === 'pendente';
+              const isAwaitingAdmin = troca.status?.toLowerCase() === 'aguardando_aprovacao';
               const isApproved = troca.status?.toLowerCase() === 'aprovada';
               const solicitante = troca.solicitante_nome || 'Solicitante';
               const substituto = troca.substituto_nome || 'Substituto';
+              const statusColor = getStatusColor(troca.status);
+              const statusPalette = theme.palette[statusColor] || theme.palette.grey;
+              const accentColor = statusPalette.main || theme.palette.grey[500];
+              const accentBg = statusPalette.light || theme.palette.action.hover;
+              const accentText = statusPalette.dark || accentColor;
               return (
-                <React.Fragment key={troca.id}>
-                  <ListItem sx={{ bg: getTrocaBg(troca.status), borderRadius: 1, mb: 1 }}>
-                    <ListItemAvatar>
-                      <Avatar>
-                        <SwapIcon />
-                      </Avatar>
-                    </ListItemAvatar>
-                    <ListItemText
-                      primary={
-                        <Box display="flex" alignItems="center" gap={1}>
-                          <Typography variant="subtitle1">
-                            {solicitante} → {substituto}
+                <Paper
+                  key={troca.id}
+                  elevation={1}
+                  sx={{
+                    p: { xs: 1.5, sm: 2 },
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderLeft: '6px solid',
+                    borderLeftColor: accentColor,
+                    borderRadius: 1.5,
+                    bgcolor: 'background.paper',
+                    boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
+                  }}
+                >
+                  <Stack spacing={1.5}>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: { xs: 'flex-start', sm: 'center' },
+                        justifyContent: 'space-between',
+                        flexDirection: { xs: 'column', sm: 'row' },
+                        gap: 1,
+                      }}
+                    >
+                      <Box display="flex" alignItems="flex-start" gap={1.25}>
+                        <Avatar
+                          sx={{
+                            width: 36,
+                            height: 36,
+                            bgcolor: accentBg,
+                            color: accentText,
+                          }}
+                        >
+                          <SwapIcon fontSize="small" />
+                        </Avatar>
+                        <Box>
+                          <Typography variant="subtitle1" fontWeight={700} lineHeight={1.25}>
+                            {solicitante} trabalha para {substituto}
                           </Typography>
-                          <Chip
-                            label={statusLabel}
-                            color={getStatusColor(troca.status)}
-                            size="small"
-                          />
-                        </Box>
-                      }
-                      secondary={
-                        <Box display="flex" flexDirection="column" gap={0.5}>
-                          <Typography variant="body2" color="textSecondary">
-                            Data solicitada: {formatDate(troca.data_solicitacao)}
-                          </Typography>
-                          <Typography variant="body2" color="textSecondary">
-                            Serviço original: {formatDate(troca.data_servico_original)}
-                          </Typography>
-                          <Typography variant="body2" color="textSecondary">
-                            Serviço trocado: {formatDate(troca.data_servico_troca)}
-                          </Typography>
-                          {troca.data_servico_compensacao && (
-                            <Typography variant="body2" color="textSecondary">
-                              Compensação: {formatDate(troca.data_servico_compensacao)}
-                            </Typography>
-                          )}
-                          {troca.motivo && (
-                            <Typography variant="body2" color="textSecondary">
-                              Motivo: {troca.motivo}
-                            </Typography>
-                          )}
-                          {isApproved && troca.aprovado_por_nome && (
-                            <Typography variant="caption" color="textSecondary">
-                              Aprovado por {troca.aprovado_por_nome} em {formatDateTime(troca.data_aprovacao)}
-                            </Typography>
-                          )}
                           <Typography variant="caption" color="textSecondary">
                             Solicitação efetuada em {formatDateTime(troca.data_solicitacao)}
                           </Typography>
                         </Box>
-                      }
-                    />
-                    <Box display="flex" gap={1}>
+                      </Box>
+                      <Chip
+                        label={statusLabel}
+                        color={statusColor}
+                        size="small"
+                        sx={{ alignSelf: { xs: 'flex-start', sm: 'center' } }}
+                      />
+                    </Box>
+
+                    <Box
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
+                        gap: 1,
+                      }}
+                    >
+                      <Box sx={{ p: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'action.hover' }}>
+                        <Typography variant="caption" color="textSecondary">
+                          Quem folga
+                        </Typography>
+                        <Typography variant="body2" fontWeight={700}>
+                          {substituto}
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          Serviço de {formatDate(troca.data_servico_original)}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ p: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'action.hover' }}>
+                        <Typography variant="caption" color="textSecondary">
+                          Quem trabalha
+                        </Typography>
+                        <Typography variant="body2" fontWeight={700}>
+                          {solicitante}
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          Referência da troca: {formatDate(troca.data_servico_troca)}
+                        </Typography>
+                      </Box>
+                    </Box>
+
+                    <Box sx={{ p: 1.25, borderRadius: 1, bgcolor: getTrocaBg(troca.status) }}>
+                      <Typography variant="body2" fontWeight={600}>
+                        {solicitante} irá trabalhar no serviço de {substituto} em {formatDate(troca.data_servico_original)}.
+                      </Typography>
+                    </Box>
+
+                    {renderTrocaTimeline(troca)}
+
+                    {troca.data_servico_compensacao && (
+                      <Alert severity="info" sx={{ py: 0.75 }}>
+                        Pagamento: {substituto} trabalha para {solicitante} em {formatDate(troca.data_servico_compensacao)}.
+                      </Alert>
+                    )}
+
+                    {(troca.motivo || troca.observacoes_decisao || (isApproved && troca.aprovado_por_nome)) && (
+                      <Stack spacing={0.5}>
+                        {troca.motivo && (
+                          <Typography variant="body2" color="textSecondary">
+                            Motivo: {troca.motivo}
+                          </Typography>
+                        )}
+                        {troca.observacoes_decisao && (
+                          <Typography variant="body2" color="textSecondary">
+                            Observações da decisão: {troca.observacoes_decisao}
+                          </Typography>
+                        )}
+                        {isApproved && troca.aprovado_por_nome && (
+                          <Typography variant="caption" color="textSecondary">
+                            Aprovado por {troca.aprovado_por_nome} em {formatDateTime(troca.data_aprovacao)}
+                          </Typography>
+                        )}
+                      </Stack>
+                    )}
+
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: 1,
+                        pt: 1,
+                        borderTop: '1px solid',
+                        borderColor: 'divider',
+                        justifyContent: { xs: 'stretch', sm: 'flex-end' },
+                        '& .MuiButton-root': {
+                          width: { xs: '100%', sm: 'auto' },
+                        },
+                      }}
+                    >
                       {isPending && user?.id === troca.usuario_substituto_id && (
                         <>
                           <Button
@@ -1382,23 +1793,45 @@ const Operacional = () => {
                           </Button>
                         </>
                       )}
-                      {isPending && isAdmin && (
+                      {isPending && canAnalyzeTrocas && (
                         <Typography variant="caption" color="textSecondary">
                           Aguarda confirmação do substituto
                         </Typography>
                       )}
-                      <IconButton onClick={() => handleOpenDialog('troca', troca)}>
-                        <ViewIcon />
-                      </IconButton>
+                      {isAwaitingAdmin && canAnalyzeTrocas && (
+                        <>
+                          <Button
+                            size="small"
+                            variant="contained"
+                            color="success"
+                            onClick={() => openDecisionDialog(troca, 'aprovada')}
+                            disabled={trocaActionLoading === troca.id}
+                          >
+                            Aprovar
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="error"
+                            onClick={() => openDecisionDialog(troca, 'rejeitada')}
+                            disabled={trocaActionLoading === troca.id}
+                          >
+                            Rejeitar
+                          </Button>
+                        </>
+                      )}
+                      {isAwaitingAdmin && !canAnalyzeTrocas && (
+                        <Typography variant="caption" color="textSecondary">
+                          Aguarda análise administrativa
+                        </Typography>
+                      )}
                     </Box>
-                  </ListItem>
-                  {index < trocas.length - 1 && <Divider />}
-                </React.Fragment>
+                  </Stack>
+                </Paper>
               );
-            })
-          )}
-        </List>
-      </Paper>
+            })}
+        </Stack>
+      )}
 
       {trocasPagination.pages > 1 && (
         <Box display="flex" justifyContent="center" mt={3}>
@@ -1918,7 +2351,7 @@ const Operacional = () => {
           <Tab 
             icon={
               <Badge 
-                badgeContent={trocas.filter(t => t.status === 'pendente').length} 
+                badgeContent={trocas.filter(t => ['pendente', 'aguardando_aprovacao'].includes(t.status)).length}
                 color="warning"
               >
                 <SwapIcon />
@@ -1968,6 +2401,62 @@ const Operacional = () => {
       )}
 
       {/* Dialog para formulários */}
+      <Menu
+        anchorEl={calendarActionMenu.anchorEl}
+        open={Boolean(calendarActionMenu.anchorEl)}
+        onClose={handleCloseCalendarActionMenu}
+      >
+        <MenuItem onClick={handleCalendarPdfAction}>
+          <PdfIcon sx={{ mr: 1 }} fontSize="small" />
+          Baixar escala em PDF
+        </MenuItem>
+        <MenuItem
+          onClick={handleOpenSwapFromCalendarMenu}
+          disabled={!canRequestSwapFromCalendarMenu()}
+        >
+          <SwapIcon sx={{ mr: 1 }} fontSize="small" />
+          {getCalendarSwapActionLabel()}
+        </MenuItem>
+      </Menu>
+
+      <Dialog
+        open={decisionDialog.open}
+        onClose={closeDecisionDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          {decisionDialog.status === 'aprovada' ? 'Aprovar Troca de Serviço' : 'Rejeitar Troca de Serviço'}
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} mt={1}>
+            <Alert severity={decisionDialog.status === 'aprovada' ? 'success' : 'warning'}>
+              A decisão será enviada aos usuários envolvidos na troca.
+            </Alert>
+            <TextField
+              label="Observações da decisão"
+              multiline
+              minRows={3}
+              fullWidth
+              value={decisionDialog.observacoes}
+              onChange={(e) => setDecisionDialog((prev) => ({ ...prev, observacoes: e.target.value }))}
+              placeholder="Registre a justificativa ou orientação administrativa"
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeDecisionDialog}>Cancelar</Button>
+          <Button
+            onClick={handleAdminTrocaDecision}
+            variant="contained"
+            color={decisionDialog.status === 'aprovada' ? 'success' : 'error'}
+            disabled={trocaActionLoading === decisionDialog.troca?.id}
+          >
+            {trocaActionLoading === decisionDialog.troca?.id ? <CircularProgress size={20} /> : 'Confirmar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog
         open={dialogOpen}
         onClose={handleCloseDialog}
@@ -1984,106 +2473,127 @@ const Operacional = () => {
           {dialogType === 'swap' ? (
             <Stack spacing={2} mt={1}>
               <Alert severity="info">
-                Escolha o dia em que você deseja que o colega selecionado cubra seu serviço. Em breve a solicitação será enviada automaticamente para aprovação.
+                Você está solicitando trabalhar no serviço do militar selecionado. Se houver pagamento, escolha a data em que esse militar trabalhará para você.
               </Alert>
-              <TextField
-                label="Nome do militar que irá folgar"
-                value={formData.solicitante_nome || ''}
-                fullWidth
-                disabled
-                sx={{ mb: 1 }}
-              />
+
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                  gap: 1,
+                }}
+              >
+                {[
+                  {
+                    label: 'Quem folga',
+                    value: formData.substituto_nome || 'Selecione um militar',
+                  },
+                  {
+                    label: 'Quem trabalha',
+                    value: formData.solicitante_nome || user?.nome || '-',
+                  },
+                  {
+                    label: 'Serviço selecionado',
+                    value: formData.data_servico_original ? formatDate(formData.data_servico_original) : 'Selecione um turno',
+                  },
+                ].map((item) => (
+                  <Box
+                    key={item.label}
+                    sx={{
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: 1,
+                      p: 1.5,
+                      bgcolor: 'background.default',
+                    }}
+                  >
+                    <Typography variant="caption" color="textSecondary" display="block">
+                      {item.label}
+                    </Typography>
+                    <Typography variant="subtitle2" fontWeight={700}>
+                      {item.value}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+
               <FormControl fullWidth sx={{ mb: 1 }}>
-                <InputLabel>Nome do militar que irá trabalhar</InputLabel>
+                <InputLabel>Militar que irá folgar</InputLabel>
                 <Select
                   value={selectedColleagueId || ''}
-                  label="Nome do militar que irá trabalhar"
+                  label="Militar que irá folgar"
                   onChange={(e) => handleColleagueChange(e.target.value)}
                 >
-                  {selectedItem?.escala?.participantes?.map((participante) => (
-                    <MenuItem key={participante.id} value={participante.id}>
-                      {participante.nome}
-                    </MenuItem>
-                  ))}
+                  {(selectedItem?.escala?.participantes || [])
+                    .filter((participante) => isEligibleSwapTarget(participante, selectedItem?.escala))
+                    .map((participante) => (
+                      <MenuItem key={participante.id} value={participante.id}>
+                        {participante.nome}
+                      </MenuItem>
+                    ))}
                 </Select>
               </FormControl>
-              <FormControl fullWidth sx={{ mb: 1 }}>
-                <InputLabel>Escolha o turno que deseja trocar</InputLabel>
-                <Select
-                  value={formData.escala_original_id || ''}
-                  label="Escolha o turno que deseja trocar"
-                  onChange={(e) => {
-                    const selected = userShifts.find((shift) => shift.escala_usuario_id === e.target.value);
-                    if (!selected) return;
-                    handleFormChange('escala_original_id', selected.escala_usuario_id);
-                    handleFormChange('data_servico_original', selected.data_servico);
-                    handleFormChange('data_servico_troca', selected.data_servico);
-                  }}
-                >
-                  {userShifts.map((shift) => (
-                    <MenuItem key={shift.escala_usuario_id} value={shift.escala_usuario_id}>
-                      {shift.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-                <Typography variant="caption" color="textSecondary">
-                  Escolha um dos dias em que você está programado para trabalhar.
+              <Box sx={{ p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                <Typography variant="caption" color="textSecondary" display="block">
+                  Serviço que você irá trabalhar
                 </Typography>
-              </FormControl>
+                <Typography variant="body2" fontWeight={600}>
+                  {formData.substituto_nome || 'Militar selecionado'} em {formatDate(formData.data_servico_original)}
+                </Typography>
+              </Box>
               <FormControlLabel
                 control={
                   <Checkbox
                     checked={pagarAgora}
-                    onChange={(e) => setPagarAgora(e.target.checked)}
+                    onChange={(e) => {
+                      setPagarAgora(e.target.checked);
+                      if (!e.target.checked) {
+                        handleFormChange('data_servico_compensacao', '');
+                      }
+                    }}
                   />
                 }
-                label="Definir agora a data de pagamento"
+                label="Informar pagamento agora"
               />
               {pagarAgora && (
                 <Box sx={{ border: '1px dashed', borderColor: 'divider', p: 2, borderRadius: 2, mb: 1 }}>
                   <Typography variant="subtitle2" gutterBottom>
-                    Fase de compensação
+                    Pagamento da troca
                   </Typography>
-                  <TextField
-                    label="Nome do militar que irá trabalhar"
-                    value={user?.nome || ''}
-                    fullWidth
-                    disabled
-                    sx={{ mb: 1 }}
-                  />
-                  <TextField
-                    label="Nome do militar que irá folgar"
-                    value={formData.substituto_nome || ''}
-                    fullWidth
-                    disabled
-                    sx={{ mb: 1 }}
-                  />
+                  <Typography variant="body2" color="textSecondary" mb={2}>
+                    Quando informado, este é o seu serviço em que o militar selecionado trabalhará para pagar a troca.
+                  </Typography>
                   <FormControl fullWidth>
-                    <InputLabel>Data em que o colega folgará</InputLabel>
+                    <InputLabel>Seu serviço que será usado como pagamento</InputLabel>
                     <Select
                       value={formData.data_servico_compensacao || ''}
-                      label="Data em que o colega folgará"
+                      label="Seu serviço que será usado como pagamento"
                       onChange={(e) => handleFormChange('data_servico_compensacao', e.target.value)}
                     >
-                      {colleagueShifts.map((shift) => (
+                      {sortShiftsByDate(colleagueShifts).map((shift) => (
                         <MenuItem key={shift.escala_usuario_id} value={shift.data_servico}>
                           {shift.label}
                         </MenuItem>
                       ))}
                     </Select>
                     <Typography variant="caption" color="textSecondary">
-                      Escolha um dia em que a Luciana originalmente trabalharia.
+                      O pagamento pode ser uma data passada ou futura, conforme combinado entre os envolvidos.
                     </Typography>
                   </FormControl>
+                  {formData.data_servico_compensacao && (
+                    <Alert severity="success" sx={{ mt: 2 }}>
+                      Pagamento: {formData.substituto_nome || 'O militar selecionado'} trabalhará para {formData.solicitante_nome || user?.nome || 'você'} em {formatDate(formData.data_servico_compensacao)}.
+                    </Alert>
+                  )}
                 </Box>
               )}
               <TextField
-                label="Observações"
+                label="Motivo ou observações"
                 multiline
                 minRows={3}
                 value={formData.observacoes || ''}
                 onChange={(e) => handleFormChange('observacoes', e.target.value)}
-                placeholder="Descreva o motivo da troca (opcional)"
+                placeholder="Explique o motivo ou combinado da troca (opcional)"
               />
             </Stack>
           ) : (
